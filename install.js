@@ -54,6 +54,11 @@ function setupPhases() {
 
   const srcPhases = path.join(PLUGIN_DIR, 'workflow-phases');
 
+  // .claudeディレクトリ作成
+  if (!fs.existsSync(CLAUDE_DIR)) {
+    fs.mkdirSync(CLAUDE_DIR, { recursive: true });
+  }
+
   // 既存のリンク/ディレクトリを確認
   if (fs.existsSync(PHASES_LINK)) {
     const stat = fs.lstatSync(PHASES_LINK);
