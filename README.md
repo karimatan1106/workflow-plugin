@@ -23,16 +23,22 @@ Claude Code 用のワークフロー管理プラグイン。TDD（テスト駆�
 
 ## インストール
 
-### 方法1: 自動インストール（推奨）
+### 方法1: 1コマンドインストール（推奨）
 
 ```bash
-# 1. プラグインをプロジェクトにコピー/クローン
-git clone https://github.com/yourname/workflow-plugin.git
-# または
-cp -r workflow-plugin /path/to/your/project/
+curl -fsSL https://raw.githubusercontent.com/karimatan1106/workflow-plugin/master/remote-install.sh | bash
+```
 
-# 2. インストールスクリプトを実行
-node workflow-plugin/install.js
+または wget を使用:
+
+```bash
+wget -qO- https://raw.githubusercontent.com/karimatan1106/workflow-plugin/master/remote-install.sh | bash
+```
+
+### 方法2: 手動クローン + インストール
+
+```bash
+git clone https://github.com/karimatan1106/workflow-plugin.git && node workflow-plugin/install.js
 ```
 
 インストールスクリプトが自動的に以下を実行します：
@@ -43,19 +49,19 @@ node workflow-plugin/install.js
 - `.mcp.json` へのMCPサーバー設定追加
 - MCPサーバーのビルド（必要な場合）
 
-### 方法2: 手動インストール
+### 方法3: 手動インストール
 
-#### 2-1. プラグインをプロジェクトにコピー
+#### 3-1. プラグインをプロジェクトにコピー
 
 ```bash
 cp -r workflow-plugin /path/to/your/project/
 ```
 
-#### 2-2. Claude Code 設定をマージ
+#### 3-2. Claude Code 設定をマージ
 
 `workflow-plugin/settings.json` の内容を `.claude/settings.json` にマージします。
 
-#### 2-3. MCP サーバーをビルド
+#### 3-3. MCP サーバーをビルド
 
 ```bash
 cd workflow-plugin/mcp-server
@@ -63,7 +69,7 @@ npm install  # または pnpm install
 npm run build
 ```
 
-#### 2-4. MCP サーバーを設定
+#### 3-4. MCP サーバーを設定
 
 `.mcp.json` に以下を追加：
 
@@ -79,7 +85,7 @@ npm run build
 }
 ```
 
-#### 2-5. コマンドをリンク
+#### 3-5. コマンドをリンク
 
 ```bash
 # Unix/macOS
