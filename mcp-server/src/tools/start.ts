@@ -7,44 +7,29 @@
  */
 
 import { stateManager } from '../state/manager.js';
-import type { StartResult, TaskSize } from '../state/types.js';
+import type { StartResult } from '../state/types.js';
 import { DEFAULT_TASK_SIZE } from '../state/types.js';
-import { isValidTaskSize } from '../phases/definitions.js';
 import { validateRequiredString, safeExecute } from './helpers.js';
-import { MISSING_PARAM_ERRORS, invalidValueError } from '../utils/errors.js';
-
-/** 有効なタスクサイズの一覧 */
-const VALID_TASK_SIZES: readonly string[] = ['small', 'medium', 'large'];
+import { MISSING_PARAM_ERRORS } from '../utils/errors.js';
 
 /**
  * 新規タスクを開始
  *
  * @param taskName タスク名（日本語可）
- * @param size タスクサイズ（省略時はlarge）
  * @returns 開始結果
+ *
+ * 注: sizeパラメータは廃止されました。全てのタスクはlargeサイズで開始されます。
  */
-export function workflowStart(taskName: string, size?: string): StartResult {
+export function workflowStart(taskName: string): StartResult {
   // タスク名の検証
   const nameValidation = validateRequiredString(taskName, MISSING_PARAM_ERRORS.TASK_NAME);
   if ('error' in nameValidation) {
     return nameValidation.error as StartResult;
   }
 
-  // タスクサイズの検証
-  let taskSize: TaskSize = DEFAULT_TASK_SIZE;
-  if (size !== undefined) {
-    if (!isValidTaskSize(size)) {
-      return {
-        success: false,
-        message: invalidValueError('タスクサイズ', size, VALID_TASK_SIZES),
-      };
-    }
-    taskSize = size;
-  }
-
-  // タスク作成を実行
+  // タスク作成を実行（常にlargeサイズ）
   return safeExecute('タスク開始', () => {
-    const taskState = stateManager.createTask(nameValidation.value, taskSize);
+    const taskState = stateManager.createTask(nameValidation.value, DEFAULT_TASK_SIZE);
 
     return {
       success: true,
@@ -53,7 +38,7 @@ export function workflowStart(taskName: string, size?: string): StartResult {
       phase: taskState.phase,
       workflowDir: taskState.workflowDir,
       taskSize: taskState.taskSize,
-      message: `タスク「${taskState.taskName}」を開始しました。フェーズ: research、サイズ: ${taskSize}`,
+      message: `タスク「${taskState.taskName}」を開始しました。フェーズ: research、サイズ: large`,
     };
   }) as StartResult;
 }
@@ -62,6 +47,7 @@ export function workflowStart(taskName: string, size?: string): StartResult {
  * ツール定義（MCP SDK用）
  *
  * MCPサーバーがクライアントに公開するツールのスキーマ定義。
+ * 注: sizeパラメータは廃止されました。全てのタスクはlarge（18フェーズ）で開始されます。
  */
 export const startToolDefinition = {
   name: 'workflow_start',
@@ -72,11 +58,6 @@ export const startToolDefinition = {
       taskName: {
         type: 'string',
         description: 'タスク名（日本語可）',
-      },
-      size: {
-        type: 'string',
-        description: 'タスクサイズ（small: 6フェーズ、medium: 12フェーズ、large: 17フェーズ）',
-        enum: ['small', 'medium', 'large'],
       },
     },
     required: ['taskName'],

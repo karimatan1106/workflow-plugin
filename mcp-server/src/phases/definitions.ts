@@ -45,49 +45,12 @@ export const PHASES_LARGE: PhaseName[] = [
 export const PHASES = PHASES_LARGE;
 
 /**
- * Small: 6フェーズ（最小限のワークフロー）
- *
- * 簡単なタスクや緊急対応用の軽量ワークフロー。
- */
-export const PHASES_SMALL: PhaseName[] = [
-  'research',       // 調査
-  'requirements',   // 要件定義
-  'implementation', // 実装
-  'testing',        // テスト実行
-  'commit',         // コミット
-  'completed',      // 完了
-];
-
-/**
- * Medium: 12フェーズ（中規模のワークフロー）
- *
- * TDDを含む中規模のワークフロー。
- * 並列分析とアーキテクチャレビューを省略。
- */
-export const PHASES_MEDIUM: PhaseName[] = [
-  'research',          // 調査
-  'requirements',      // 要件定義
-  'parallel_design',   // 並列設計
-  'design_review',     // 設計レビュー
-  'test_design',       // テスト設計
-  'test_impl',         // テスト実装（TDD Red）
-  'implementation',    // 実装（TDD Green）
-  'refactoring',       // リファクタリング（TDD Refactor）
-  'parallel_quality',  // 並列品質チェック
-  'testing',           // テスト実行
-  'docs_update',       // ドキュメント更新
-  'commit',            // コミット
-  'completed',         // 完了
-];
-
-/**
  * サイズ別フェーズマップ
  *
  * タスクサイズに応じたフェーズ配列を取得するためのマップ。
+ * 注: small/mediumは廃止されました。largeのみサポートします。
  */
 export const PHASES_BY_SIZE: Record<TaskSize, PhaseName[]> = {
-  small: PHASES_SMALL,
-  medium: PHASES_MEDIUM,
   large: PHASES_LARGE,
 };
 
@@ -102,7 +65,7 @@ export const PHASES_BY_SIZE: Record<TaskSize, PhaseName[]> = {
  * @returns TaskSize型であればtrue
  */
 export function isValidTaskSize(size: unknown): size is TaskSize {
-  return size === 'small' || size === 'medium' || size === 'large';
+  return size === 'large';
 }
 
 /**

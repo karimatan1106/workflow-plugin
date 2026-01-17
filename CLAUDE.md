@@ -24,25 +24,9 @@
 
 ## フェーズ順序
 
-### タスクサイズ別フェーズ構成
+### フェーズ構成（18フェーズ）
 
-タスクの規模に応じて3つのサイズから選択する。
-
-#### Small（6フェーズ）- 単純なバグ修正・小さな変更
-
-```
-research → requirements → implementation → testing → commit → completed
-```
-
-#### Medium（13フェーズ）- 機能追加・中規模変更
-
-```
-research → requirements → parallel_design → design_review【要承認】
-→ test_design → test_impl → implementation → refactoring
-→ parallel_quality → testing → docs_update → commit → completed
-```
-
-#### Large（18フェーズ）- アーキテクチャ変更・大規模機能
+全てのタスクは以下の18フェーズで実行されます。
 
 ```
 research → requirements → parallel_analysis（threat_modeling + planning）
@@ -53,6 +37,8 @@ research → requirements → parallel_analysis（threat_modeling + planning）
 → parallel_verification（manual_test + security_scan + performance_test + e2e_test）
 → docs_update → commit → push → ci_verification → deploy → completed
 ```
+
+注: small/mediumサイズは廃止されました。品質管理の一貫性を保つため、全てのタスクで完全なワークフローを実行します。
 
 ---
 
@@ -182,7 +168,7 @@ parallel_verification のサブフェーズ。エンドツーエンドテスト�
 
 | コマンド | 説明 |
 |---------|------|
-| `/workflow start <タスク名>` | タスクを開始（`-s small\|medium\|large` でサイズ指定可能） |
+| `/workflow start <タスク名>` | タスクを開始（常に18フェーズで実行） |
 | `/workflow next` | 次のフェーズへ進む |
 | `/workflow status` | 現在の状態を確認 |
 | `/workflow approve design` | 設計レビューを承認（design_reviewフェーズのみ） |

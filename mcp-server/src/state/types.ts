@@ -15,11 +15,11 @@
  * タスクサイズ
  *
  * ワークフローのフェーズ数を決定する:
- * - small: 6フェーズ（最小限のワークフロー）
- * - medium: 12フェーズ（中規模のワークフロー）
- * - large: 17フェーズ（全ワークフロー）
+ * - large: 18フェーズ（全ワークフロー）
+ *
+ * 注: small/mediumは廃止されました。全てのタスクはlargeサイズで実行されます。
  */
-export type TaskSize = 'small' | 'medium' | 'large';
+export type TaskSize = 'large';
 
 /** デフォルトのタスクサイズ */
 export const DEFAULT_TASK_SIZE: TaskSize = 'large';
