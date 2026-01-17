@@ -26,13 +26,13 @@ Claude Code 用のワークフロー管理プラグイン。TDD（テスト駆�
 ### 方法1: 1コマンドインストール（推奨）
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/karimatan1106/workflow-plugin/master/remote-install.sh | bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/karimatan1106/workflow-plugin/master/remote-install.sh)"
 ```
 
 または wget を使用:
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/karimatan1106/workflow-plugin/master/remote-install.sh | bash
+bash -c "$(wget -qO- https://raw.githubusercontent.com/karimatan1106/workflow-plugin/master/remote-install.sh)"
 ```
 
 ### 方法2: 手動クローン + インストール
