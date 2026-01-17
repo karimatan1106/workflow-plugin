@@ -1,0 +1,58 @@
+{
+  "name": "workflow-plugin",
+  "version": "1.3.0",
+  "description": "開発タスクを体系的に管理するワークフロープラグイン。TDD方式での高品質な開発プロセスを強制し、フェーズスキップを防止します。",
+  "type": "module",
+  "bin": {
+    "workflow-plugin-install": "./install.js"
+  },
+  "scripts": {
+    "install-plugin": "node install.js",
+    "postinstall": "node install.js",
+    "build": "cd mcp-server && pnpm build",
+    "test": "cd mcp-server && pnpm test",
+    "test:hooks": "node --test hooks/__tests__/*.test.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "audit": "npm audit --audit-level=moderate"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "eslint": "^9.17.0",
+    "globals": "^15.14.0",
+    "typescript-eslint": "^8.18.2"
+  },
+  "keywords": [
+    "workflow",
+    "claude-code",
+    "plugin",
+    "tdd",
+    "mcp",
+    "development-process",
+    "spec-first"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/example/workflow-plugin"
+  },
+  "homepage": "https://github.com/example/workflow-plugin#readme",
+  "bugs": {
+    "url": "https://github.com/example/workflow-plugin/issues"
+  },
+  "author": "Contributors",
+  "license": "MIT",
+  "files": [
+    "install.js",
+    "commands/",
+    "hooks/",
+    "mcp-server/dist/",
+    "mcp-server/package.json",
+    "workflow-phases/",
+    "skills/",
+    "settings.json",
+    "README.md"
+  ]
+}

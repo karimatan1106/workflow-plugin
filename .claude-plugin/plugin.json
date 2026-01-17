@@ -1,0 +1,95 @@
+{
+  "name": "workflow-plugin",
+  "version": "1.0.0",
+  "description": "開発タスクを体系的に管理するワークフロープラグイン。TDD方式での高品質な開発プロセスを強制し、フェーズスキップを防止します。",
+  "author": "Anthropic Community",
+  "license": "MIT",
+  "homepage": "https://github.com/anthropics/workflow-plugin",
+
+  "skills": [
+    {
+      "name": "workflow",
+      "path": "skills/workflow/SKILL.md",
+      "description": "ワークフロー管理コマンド（/workflow start, next, status, approve, reset）"
+    }
+  ],
+
+  "commands": [
+    {
+      "name": "workflow",
+      "path": "commands/workflow.md",
+      "description": "開発ワークフロー管理（21フェーズ）"
+    }
+  ],
+
+  "hooks": {
+    "preToolUse": [
+      {
+        "path": "hooks/spec-first-guard.js",
+        "description": "仕様ファースト強制 - 仕様書更新前のコード編集をブロック"
+      }
+    ],
+    "postToolUse": [
+      {
+        "path": "hooks/check-workflow-artifact.js",
+        "description": "成果物反映チェック - 必須成果物がdocs/specs/に反映されているか確認"
+      },
+      {
+        "path": "hooks/spec-guard-reset.js",
+        "description": "仕様書ガードリセット - git commit後に状態をリセット"
+      }
+    ]
+  },
+
+  "mcpServers": {
+    "workflow": {
+      "path": "mcp-server/dist/index.js",
+      "description": "ワークフロー状態管理MCPサーバー"
+    }
+  },
+
+  "assets": [
+    {
+      "path": "workflow-phases/",
+      "description": "各フェーズのプロンプトファイル（23フェーズ）"
+    }
+  ],
+
+  "keywords": [
+    "workflow",
+    "tdd",
+    "task-management",
+    "development-process",
+    "code-quality",
+    "phase-management",
+    "spec-first"
+  ],
+
+  "engines": {
+    "claude-code": ">=1.0.0"
+  },
+
+  "configuration": {
+    "workflowDir": {
+      "type": "string",
+      "default": "docs/workflows",
+      "description": "ワークフロー状態を保存するディレクトリ"
+    },
+    "specDir": {
+      "type": "string",
+      "default": "docs/specs",
+      "description": "仕様書を保存するディレクトリ"
+    },
+    "defaultSize": {
+      "type": "string",
+      "enum": ["small", "medium", "large", "auto"],
+      "default": "auto",
+      "description": "デフォルトのタスクサイズ"
+    },
+    "strictMode": {
+      "type": "boolean",
+      "default": true,
+      "description": "厳格モード（フェーズスキップを完全に禁止）"
+    }
+  }
+}

@@ -1,0 +1,87 @@
+{
+  "$schema": "https://claude-code.anthropic.com/settings-schema.json",
+  "description": "ワークフロープラグインの設定。この内容を .claude/settings.json にマージしてください。",
+
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node workflow-plugin/hooks/enforce-workflow.js"
+          },
+          {
+            "type": "command",
+            "command": "node workflow-plugin/hooks/phase-edit-guard.js"
+          },
+          {
+            "type": "command",
+            "command": "node workflow-plugin/hooks/spec-first-guard.js"
+          },
+          {
+            "type": "command",
+            "command": "node workflow-plugin/hooks/loop-detector.js"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node workflow-plugin/hooks/check-spec.js"
+          },
+          {
+            "type": "command",
+            "command": "node workflow-plugin/hooks/check-test-first.js"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "mcp__workflow__workflow_next",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node workflow-plugin/hooks/check-workflow-artifact.js"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node workflow-plugin/hooks/spec-guard-reset.js"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node workflow-plugin/hooks/check-spec-sync.js"
+          }
+        ]
+      }
+    ]
+  },
+
+  "permissions": {
+    "allow": [
+      "Read(**)",
+      "Glob(**)",
+      "Grep(**)"
+    ],
+    "deny": []
+  },
+
+  "environment": {
+    "WORKFLOW_STRICT_MODE": "true",
+    "WORKFLOW_DIR": "docs/workflows",
+    "SPEC_DIR": "docs/specs"
+  }
+}

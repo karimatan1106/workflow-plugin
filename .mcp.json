@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "workflow": {
+      "command": "node",
+      "args": ["mcp-server/dist/index.js"],
+      "cwd": "mcp-server"
+    }
+  }
+}
