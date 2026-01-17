@@ -12,13 +12,23 @@
  */
 
 const HOOK_NAME = 'loop-detector.js';
-const ERROR_LOG = require('path').join(process.cwd(), '.claude-hook-errors.log');
+const STATE_DIR = require('path').join(process.cwd(), '.claude', 'state');
+const ERROR_LOG = require('path').join(STATE_DIR, 'hook-errors.log');
+
+// 状態ディレクトリを確保
+function ensureStateDir() {
+  const fs = require('fs');
+  if (!fs.existsSync(STATE_DIR)) {
+    fs.mkdirSync(STATE_DIR, { recursive: true });
+  }
+}
 
 // エラーをログファイルに書き出す
 function logError(type, message, stack) {
   const timestamp = new Date().toISOString();
   const entry = `[${timestamp}] [${HOOK_NAME}] ${type}: ${message}\n${stack ? `  Stack: ${stack}\n` : ''}\n`;
   try {
+    ensureStateDir();
     require('fs').appendFileSync(ERROR_LOG, entry);
   } catch (e) { /* ignore */ }
   console.error(`[${HOOK_NAME}] ${type}: ${message}`);
@@ -40,8 +50,8 @@ const fs = require('fs');
 const path = require('path');
 
 // 設定
-const STATE_FILE = path.join(process.cwd(), '.claude-loop-detector-state.json');
-const LOG_FILE = path.join(process.cwd(), '.claude-loop-detection-log.json');
+const STATE_FILE = path.join(STATE_DIR, 'loop-detector-state.json');
+const LOG_FILE = path.join(STATE_DIR, 'loop-detection-log.json');
 const EDIT_THRESHOLD = 5; // 警告閾値（5回以上）
 const TIME_WINDOW = 5 * 60 * 1000; // 時間ウィンドウ（5分）
 const WARNING_SUPPRESS_TIME = 60 * 1000; // 警告抑止期間（1分）
@@ -88,6 +98,7 @@ function loadState() {
  */
 function saveState(state) {
   try {
+    ensureStateDir();
     fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), 'utf8');
   } catch (e) {
     // ファイル保存エラーは無視（DoS防止）
@@ -121,6 +132,7 @@ function loadLogs() {
  */
 function saveLogs(logs) {
   try {
+    ensureStateDir();
     // 最新100件のみ保持
     const trimmedLogs = logs.length > 100 ? logs.slice(-100) : logs;
     fs.writeFileSync(LOG_FILE, JSON.stringify(trimmedLogs, null, 2), 'utf8');
