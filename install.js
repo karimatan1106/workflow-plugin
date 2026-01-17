@@ -231,12 +231,9 @@ function setupMcpServer() {
     mcpConfig = JSON.parse(fs.readFileSync(mcpJsonPath, 'utf-8'));
   }
 
-  // プラグインディレクトリ名を取得（相対パス用）
-  const pluginDirName = path.basename(PLUGIN_DIR);
-
-  // 相対パスを使用（プロジェクトルートからの相対パス）
-  const relativeServerPath = `${pluginDirName}/mcp-server/dist/index.js`;
-  const relativeServerCwd = `${pluginDirName}/mcp-server`;
+  // .mcp.jsonがプラグインディレクトリ内にあるため、相対パスはプラグイン内部からの参照
+  const relativeServerPath = `mcp-server/dist/index.js`;
+  const relativeServerCwd = `mcp-server`;
 
   mcpConfig.mcpServers.workflow = {
     command: 'node',
