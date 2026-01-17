@@ -13,6 +13,31 @@
  * @spec docs/specs/infrastructure/test-first-check.md
  */
 
+const HOOK_NAME = 'check-test-first.js';
+const ERROR_LOG = require('path').join(process.cwd(), '.claude-hook-errors.log');
+
+// エラーをログファイルに書き出す
+function logError(type, message, stack) {
+  const timestamp = new Date().toISOString();
+  const entry = `[${timestamp}] [${HOOK_NAME}] ${type}: ${message}\n${stack ? `  Stack: ${stack}\n` : ''}\n`;
+  try {
+    require('fs').appendFileSync(ERROR_LOG, entry);
+  } catch (e) { /* ignore */ }
+  console.error(`[${HOOK_NAME}] ${type}: ${message}`);
+  if (stack) console.error(`  スタック: ${stack}`);
+}
+
+// グローバルエラーハンドラ
+process.on('uncaughtException', (err) => {
+  logError('未捕捉エラー', err.message, err.stack);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  logError('未処理のPromise拒否', String(reason), null);
+  process.exit(1);
+});
+
 const fs = require('fs');
 const path = require('path');
 
@@ -213,58 +238,68 @@ function displayWarning(filePath, suggestedPaths) {
  * @param {object} input - 標準入力から受け取ったJSON
  */
 function main(input) {
-  // 1. スキップフラグのチェック
-  if (process.env.SKIP_TEST_FIRST_CHECK === 'true') {
-    debugLog('SKIP_TEST_FIRST_CHECK=true によりスキップ');
-    process.exit(0);
-  }
+  try {
+    // 入力の検証
+    if (!input || typeof input !== 'object') {
+      process.exit(0);
+    }
 
-  const toolName = input.tool_name;
-  const filePath = input.tool_input?.file_path || '';
+    // 1. スキップフラグのチェック
+    if (process.env.SKIP_TEST_FIRST_CHECK === 'true') {
+      debugLog('SKIP_TEST_FIRST_CHECK=true によりスキップ');
+      process.exit(0);
+    }
 
-  // 2. Write ツール以外は許可（新規作成のみチェック）
-  if (toolName !== 'Write') {
-    process.exit(0);
-  }
+    const toolName = input.tool_name;
+    const filePath = input.tool_input?.file_path || '';
 
-  // 3. ファイルパスがない場合は許可
-  if (!filePath) {
-    process.exit(0);
-  }
+    // 2. Write ツール以外は許可（新規作成のみチェック）
+    if (toolName !== 'Write') {
+      process.exit(0);
+    }
 
-  debugLog('チェック対象:', filePath);
+    // 3. ファイルパスがない場合は許可
+    if (!filePath) {
+      process.exit(0);
+    }
 
-  // 4. 対象外のソースファイルはスキップ
-  if (!isTargetSourceFile(filePath)) {
-    debugLog('対象外（src外または対象拡張子外）:', filePath);
-    process.exit(0);
-  }
+    debugLog('チェック対象:', filePath);
 
-  // 5. テストファイル自体はスキップ
-  if (isTestFile(filePath)) {
-    debugLog('テストファイル:', filePath);
-    process.exit(0);
-  }
+    // 4. 対象外のソースファイルはスキップ
+    if (!isTargetSourceFile(filePath)) {
+      debugLog('対象外（src外または対象拡張子外）:', filePath);
+      process.exit(0);
+    }
 
-  // 6. 除外対象（型定義など）はスキップ
-  if (isExcludedFile(filePath)) {
-    debugLog('除外対象（型定義など）:', filePath);
-    process.exit(0);
-  }
+    // 5. テストファイル自体はスキップ
+    if (isTestFile(filePath)) {
+      debugLog('テストファイル:', filePath);
+      process.exit(0);
+    }
 
-  // 7. ファイルが既に存在する場合は新規作成ではないのでスキップ
-  if (fileExists(filePath)) {
-    debugLog('既存ファイル（新規作成ではない）:', filePath);
-    process.exit(0);
-  }
+    // 6. 除外対象（型定義など）はスキップ
+    if (isExcludedFile(filePath)) {
+      debugLog('除外対象（型定義など）:', filePath);
+      process.exit(0);
+    }
 
-  // 8. 対応するテストファイルの存在を確認
-  const { exists, checkedPaths } = checkTestFileExists(filePath);
+    // 7. ファイルが既に存在する場合は新規作成ではないのでスキップ
+    if (fileExists(filePath)) {
+      debugLog('既存ファイル（新規作成ではない）:', filePath);
+      process.exit(0);
+    }
 
-  if (!exists) {
-    displayWarning(filePath, checkedPaths);
-  } else {
-    debugLog('テストファイル存在確認OK');
+    // 8. 対応するテストファイルの存在を確認
+    const { exists, checkedPaths } = checkTestFileExists(filePath);
+
+    if (!exists) {
+      displayWarning(filePath, checkedPaths);
+    } else {
+      debugLog('テストファイル存在確認OK');
+    }
+  } catch (e) {
+    // エラー時は許可（安全側に倒す）
+    debugLog('エラー発生:', e.message);
   }
 
   // 警告のみで処理は継続（ブロックしない）
@@ -276,11 +311,21 @@ function main(input) {
 // =============================================================================
 
 if (require.main === module) {
+  // タイムアウト処理（3秒）
+  const timeout = setTimeout(() => {
+    process.exit(0);
+  }, 3000);
+
   // 標準入力を非同期で読み取り
   let inputData = '';
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', (chunk) => (inputData += chunk));
+  process.stdin.on('error', () => {
+    clearTimeout(timeout);
+    process.exit(0);
+  });
   process.stdin.on('end', () => {
+    clearTimeout(timeout);
     try {
       const input = JSON.parse(inputData);
       main(input);

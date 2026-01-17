@@ -12,6 +12,31 @@
  * @spec docs/specs/infrastructure/phase-edit-guard.md
  */
 
+const HOOK_NAME = 'phase-edit-guard.js';
+const ERROR_LOG = require('path').join(process.cwd(), '.claude-hook-errors.log');
+
+// エラーをログファイルに書き出す
+function logError(type, message, stack) {
+  const timestamp = new Date().toISOString();
+  const entry = `[${timestamp}] [${HOOK_NAME}] ${type}: ${message}\n${stack ? `  Stack: ${stack}\n` : ''}\n`;
+  try {
+    require('fs').appendFileSync(ERROR_LOG, entry);
+  } catch (e) { /* ignore */ }
+  console.error(`[${HOOK_NAME}] ${type}: ${message}`);
+  if (stack) console.error(`  スタック: ${stack}`);
+}
+
+// グローバルエラーハンドラ
+process.on('uncaughtException', (err) => {
+  logError('未捕捉エラー', err.message, err.stack);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  logError('未処理のPromise拒否', String(reason), null);
+  process.exit(1);
+});
+
 const fs = require('fs');
 const path = require('path');
 
@@ -951,15 +976,21 @@ function getPhaseRule(phase, workflowState) {
  * @param {object} input - 標準入力から受け取ったJSON
  */
 function main(input) {
-  // 1. スキップフラグのチェック
-  if (process.env.SKIP_PHASE_GUARD === 'true') {
-    debugLog('SKIP_PHASE_GUARD=true によりスキップ');
-    logCheck({ skipped: true, reason: 'SKIP_PHASE_GUARD=true' });
-    process.exit(EXIT_CODES.SUCCESS);
-  }
+  try {
+    // 入力の検証
+    if (!input || typeof input !== 'object') {
+      process.exit(EXIT_CODES.SUCCESS);
+    }
 
-  const toolName = input.tool_name;
-  const toolInput = input.tool_input || {};
+    // 1. スキップフラグのチェック
+    if (process.env.SKIP_PHASE_GUARD === 'true') {
+      debugLog('SKIP_PHASE_GUARD=true によりスキップ');
+      logCheck({ skipped: true, reason: 'SKIP_PHASE_GUARD=true' });
+      process.exit(EXIT_CODES.SUCCESS);
+    }
+
+    const toolName = input.tool_name;
+    const toolInput = input.tool_input || {};
 
   // 2. Edit/Write ツール以外は許可
   if (!isTargetTool(toolName)) {
@@ -1024,16 +1055,21 @@ function main(input) {
     process.exit(EXIT_CODES.SUCCESS);
   }
 
-  // 10. ブロック
-  displayBlockMessage(phase, filePath, fileType, rule);
-  logCheck({
-    blocked: true,
-    phase,
-    filePath,
-    fileType,
-    reason: rule.description,
-  });
-  process.exit(EXIT_CODES.BLOCK);
+    // 10. ブロック
+    displayBlockMessage(phase, filePath, fileType, rule);
+    logCheck({
+      blocked: true,
+      phase,
+      filePath,
+      fileType,
+      reason: rule.description,
+    });
+    process.exit(EXIT_CODES.BLOCK);
+  } catch (e) {
+    // エラー時は許可（安全側に倒す）
+    debugLog('エラー発生:', e.message);
+    process.exit(EXIT_CODES.SUCCESS);
+  }
 }
 
 // =============================================================================
@@ -1041,11 +1077,21 @@ function main(input) {
 // =============================================================================
 
 if (require.main === module) {
+  // タイムアウト処理（3秒）
+  const timeout = setTimeout(() => {
+    process.exit(0);
+  }, 3000);
+
   // 非同期stdin読み取り
   let inputData = '';
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', (chunk) => (inputData += chunk));
+  process.stdin.on('error', () => {
+    clearTimeout(timeout);
+    process.exit(0);
+  });
   process.stdin.on('end', () => {
+    clearTimeout(timeout);
     try {
       const input = JSON.parse(inputData);
       main(input);

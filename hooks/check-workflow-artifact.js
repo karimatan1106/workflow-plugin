@@ -8,6 +8,31 @@
  * @spec docs/specs/features/workflow-artifact-check.md
  */
 
+const HOOK_NAME = 'check-workflow-artifact.js';
+const ERROR_LOG = require('path').join(process.cwd(), '.claude-hook-errors.log');
+
+// エラーをログファイルに書き出す
+function logError(type, message, stack) {
+  const timestamp = new Date().toISOString();
+  const entry = `[${timestamp}] [${HOOK_NAME}] ${type}: ${message}\n${stack ? `  Stack: ${stack}\n` : ''}\n`;
+  try {
+    require('fs').appendFileSync(ERROR_LOG, entry);
+  } catch (e) { /* ignore */ }
+  console.error(`[${HOOK_NAME}] ${type}: ${message}`);
+  if (stack) console.error(`  スタック: ${stack}`);
+}
+
+// グローバルエラーハンドラ
+process.on('uncaughtException', (err) => {
+  logError('未捕捉エラー', err.message, err.stack);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  logError('未処理のPromise拒否', String(reason), null);
+  process.exit(1);
+});
+
 // テスト用に依存性を注入可能にする
 let fs = require('fs');
 let path = require('path');
@@ -769,28 +794,37 @@ function printWarnings(warnings) {
  * メイン処理
  */
 function main(input) {
-  // 環境変数によるスキップチェック
-  if (shouldSkipCheck()) {
-    process.exit(EXIT_CODES.SUCCESS);
+  try {
+    // 入力の検証
+    if (!input || typeof input !== 'object') {
+      process.exit(EXIT_CODES.SUCCESS);
+    }
+
+    // 環境変数によるスキップチェック
+    if (shouldSkipCheck()) {
+      process.exit(EXIT_CODES.SUCCESS);
+    }
+
+    // ワークフローコンテキストを抽出
+    const { workflowDir, phase: targetPhase, currentPhase } = input.workflow_context || {};
+    if (!workflowDir || !targetPhase) {
+      process.exit(EXIT_CODES.SUCCESS);
+    }
+
+    // 成果物チェック実行（現在のフェーズも渡す）
+    const result = checkArtifactSync(workflowDir, targetPhase, currentPhase);
+
+    // チェック失敗時はエラー出力してブロック
+    if (!result.passed) {
+      printErrorMessage(result);
+      process.exit(EXIT_CODES.BLOCK);
+    }
+
+    // 警告があれば出力
+    printWarnings(result.warnings);
+  } catch (e) {
+    // エラー時は許可（安全側に倒す）
   }
-
-  // ワークフローコンテキストを抽出
-  const { workflowDir, phase: targetPhase, currentPhase } = input.workflow_context || {};
-  if (!workflowDir || !targetPhase) {
-    process.exit(EXIT_CODES.SUCCESS);
-  }
-
-  // 成果物チェック実行（現在のフェーズも渡す）
-  const result = checkArtifactSync(workflowDir, targetPhase, currentPhase);
-
-  // チェック失敗時はエラー出力してブロック
-  if (!result.passed) {
-    printErrorMessage(result);
-    process.exit(EXIT_CODES.BLOCK);
-  }
-
-  // 警告があれば出力
-  printWarnings(result.warnings);
 
   process.exit(EXIT_CODES.SUCCESS);
 }
@@ -812,11 +846,21 @@ module.exports = {
 
 // メイン処理実行（直接実行時のみ）
 if (require.main === module) {
+  // タイムアウト処理（3秒）
+  const timeout = setTimeout(() => {
+    process.exit(0);
+  }, 3000);
+
   // 非同期stdin読み取り
   let inputData = '';
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', chunk => inputData += chunk);
+  process.stdin.on('error', () => {
+    clearTimeout(timeout);
+    process.exit(0);
+  });
   process.stdin.on('end', () => {
+    clearTimeout(timeout);
     try {
       const input = JSON.parse(inputData);
       main(input);

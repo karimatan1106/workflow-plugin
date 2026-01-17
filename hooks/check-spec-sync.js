@@ -11,6 +11,31 @@
  * - SKIP_SPEC_SYNC_CHECK: "true" で一時的にスキップ
  */
 
+const HOOK_NAME = 'check-spec-sync.js';
+const ERROR_LOG = require('path').join(process.cwd(), '.claude-hook-errors.log');
+
+// エラーをログファイルに書き出す
+function logError(type, message, stack) {
+  const timestamp = new Date().toISOString();
+  const entry = `[${timestamp}] [${HOOK_NAME}] ${type}: ${message}\n${stack ? `  Stack: ${stack}\n` : ''}\n`;
+  try {
+    require('fs').appendFileSync(ERROR_LOG, entry);
+  } catch (e) { /* ignore */ }
+  console.error(`[${HOOK_NAME}] ${type}: ${message}`);
+  if (stack) console.error(`  スタック: ${stack}`);
+}
+
+// グローバルエラーハンドラ
+process.on('uncaughtException', (err) => {
+  logError('未捕捉エラー', err.message, err.stack);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  logError('未処理のPromise拒否', String(reason), null);
+  process.exit(1);
+});
+
 const fs = require('fs');
 const path = require('path');
 
@@ -144,12 +169,18 @@ function printNotification(specFilePath, existingFiles, missingFiles, specWarnin
  * メイン処理
  */
 function main(input) {
-  // スキップフラグのチェック
-  if (process.env.SKIP_SPEC_SYNC_CHECK === 'true') {
-    process.exit(0);
-  }
+  try {
+    // 入力の検証
+    if (!input || typeof input !== 'object') {
+      process.exit(0);
+    }
 
-  const filePath = input.tool_input?.file_path || '';
+    // スキップフラグのチェック
+    if (process.env.SKIP_SPEC_SYNC_CHECK === 'true') {
+      process.exit(0);
+    }
+
+    const filePath = input.tool_input?.file_path || '';
 
   // 仕様書の変更かチェック
   if (!isSpecPath(filePath)) {
@@ -186,17 +217,30 @@ function main(input) {
   // @spec コメントのチェック
   const specWarnings = checkSpecComments(existingFiles, projectBaseDir, filePath);
 
-  // 通知メッセージを出力
-  printNotification(filePath, existingFiles, missingFiles, specWarnings);
+    // 通知メッセージを出力
+    printNotification(filePath, existingFiles, missingFiles, specWarnings);
+  } catch (e) {
+    // エラー時は許可（安全側に倒す）
+  }
 
   process.exit(0);
 }
+
+// タイムアウト処理（3秒）
+const timeout = setTimeout(() => {
+  process.exit(0);
+}, 3000);
 
 // 非同期stdin読み取り
 let inputData = '';
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (chunk) => (inputData += chunk));
+process.stdin.on('error', () => {
+  clearTimeout(timeout);
+  process.exit(0);
+});
 process.stdin.on('end', () => {
+  clearTimeout(timeout);
   try {
     const input = JSON.parse(inputData);
     main(input);

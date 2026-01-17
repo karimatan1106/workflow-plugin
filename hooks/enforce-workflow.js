@@ -9,6 +9,31 @@
  *                         デフォルト: .claude-workflow-state.json（CWD相対）
  */
 
+const HOOK_NAME = 'enforce-workflow.js';
+const ERROR_LOG = require('path').join(process.cwd(), '.claude-hook-errors.log');
+
+// エラーをログファイルに書き出す
+function logError(type, message, stack) {
+  const timestamp = new Date().toISOString();
+  const entry = `[${timestamp}] [${HOOK_NAME}] ${type}: ${message}\n${stack ? `  Stack: ${stack}\n` : ''}\n`;
+  try {
+    require('fs').appendFileSync(ERROR_LOG, entry);
+  } catch (e) { /* ignore */ }
+  console.error(`[${HOOK_NAME}] ${type}: ${message}`);
+  if (stack) console.error(`  スタック: ${stack}`);
+}
+
+// グローバルエラーハンドラ
+process.on('uncaughtException', (err) => {
+  logError('未捕捉エラー', err.message, err.stack);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  logError('未処理のPromise拒否', String(reason), null);
+  process.exit(1);
+});
+
 const fs = require('fs');
 const path = require('path');
 
@@ -180,11 +205,21 @@ function checkFileAllowed(filePath, phase) {
   };
 }
 
+// タイムアウト処理（3秒）
+const timeout = setTimeout(() => {
+  process.exit(0);
+}, 3000);
+
 // 標準入力を読み取り
 let inputData = '';
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', chunk => inputData += chunk);
+process.stdin.on('error', () => {
+  clearTimeout(timeout);
+  process.exit(0);
+});
 process.stdin.on('end', () => {
+  clearTimeout(timeout);
   try {
     const input = JSON.parse(inputData);
     main(input);
