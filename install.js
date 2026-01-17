@@ -6,7 +6,7 @@
  *   node workflow-plugin/install.js
  *
  * 機能:
- *   - workflow-phasesのジャンクション作成
+ *   - workflow-phasesのハードリンク作成
  *   - スキルのハードリンク作成
  *   - .claude/settings.json へのフックマージ
  *   - .mcp.json へのMCPサーバー設定追加
@@ -47,62 +47,66 @@ function log(message, type = 'info') {
 }
 
 /**
- * 1. workflow-phasesのジャンクション作成
+ * 1. workflow-phasesのハードリンク作成
  */
 function setupPhases() {
   log('workflow-phasesをセットアップ中...', 'info');
 
-  const srcPhases = path.join(PLUGIN_DIR, 'workflow-phases');
+  const srcDir = path.join(PLUGIN_DIR, 'workflow-phases');
+  const destDir = PHASES_LINK;
 
-  // .claudeディレクトリ作成
-  if (!fs.existsSync(CLAUDE_DIR)) {
-    fs.mkdirSync(CLAUDE_DIR, { recursive: true });
+  // ディレクトリ作成
+  if (!fs.existsSync(destDir)) {
+    fs.mkdirSync(destDir, { recursive: true });
   }
 
-  // 既存のリンク/ディレクトリを確認
-  if (fs.existsSync(PHASES_LINK)) {
-    const stat = fs.lstatSync(PHASES_LINK);
-
-    if (stat.isSymbolicLink() || stat.isDirectory()) {
-      // ジャンクションかシンボリックリンクの場合
-      try {
-        const target = fs.realpathSync(PHASES_LINK);
-        if (target === fs.realpathSync(srcPhases)) {
-          log('workflow-phases: 既にリンク済み', 'success');
-          return;
-        }
-      } catch (e) {
-        // リンクが壊れている場合は削除
-      }
-
-      // 削除（ジャンクションはrmdirで削除）
-      if (process.platform === 'win32') {
-        fs.rmdirSync(PHASES_LINK);
-      } else {
-        fs.unlinkSync(PHASES_LINK);
-      }
-      log('古いworkflow-phasesを削除', 'warn');
+  // 既存のジャンクション/シンボリックリンクを削除
+  try {
+    const stat = fs.lstatSync(destDir);
+    if (stat.isSymbolicLink()) {
+      fs.unlinkSync(destDir);
+      fs.mkdirSync(destDir, { recursive: true });
+      log('古いジャンクションを削除', 'warn');
     }
+  } catch (e) {
+    // 存在しない場合は無視
   }
 
-  // ジャンクション作成（Windows）またはシンボリックリンク（Unix）
-  if (process.platform === 'win32') {
-    // Windowsではmklinkコマンドでジャンクション作成
-    const relativeSrc = path.relative(CLAUDE_DIR, srcPhases);
-    try {
-      execSync(`mklink /J "${PHASES_LINK}" "${srcPhases}"`, {
-        stdio: 'pipe',
-        shell: true
-      });
-      log('workflow-phases: ジャンクション作成完了', 'success');
-    } catch (e) {
-      log(`ジャンクション作成失敗: ${e.message}`, 'error');
+  // ソースディレクトリ内の全ファイルをハードリンク
+  const files = fs.readdirSync(srcDir);
+  let created = 0;
+  let skipped = 0;
+
+  for (const file of files) {
+    const srcFile = path.join(srcDir, file);
+    const destFile = path.join(destDir, file);
+
+    // ディレクトリはスキップ
+    if (fs.statSync(srcFile).isDirectory()) continue;
+
+    if (fs.existsSync(destFile)) {
+      const srcStat = fs.statSync(srcFile);
+      const destStat = fs.statSync(destFile);
+
+      // 同じinode（ハードリンク）かチェック
+      if (srcStat.ino === destStat.ino) {
+        skipped++;
+        continue;
+      }
+
+      // 異なるファイルなら削除
+      fs.unlinkSync(destFile);
     }
-  } else {
-    // Unix系ではシンボリックリンク
-    const relativeSrc = path.relative(CLAUDE_DIR, srcPhases);
-    fs.symlinkSync(relativeSrc, PHASES_LINK);
-    log('workflow-phases: シンボリックリンク作成完了', 'success');
+
+    fs.linkSync(srcFile, destFile);
+    created++;
+  }
+
+  if (created > 0) {
+    log(`workflow-phases: ${created}ファイルをハードリンク作成`, 'success');
+  }
+  if (skipped > 0) {
+    log(`workflow-phases: ${skipped}ファイルは既にリンク済み`, 'success');
   }
 }
 
