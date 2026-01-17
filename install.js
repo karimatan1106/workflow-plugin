@@ -23,7 +23,8 @@ const __dirname = path.dirname(__filename);
 
 // パス定義
 const PLUGIN_DIR = __dirname;
-const PROJECT_ROOT = PLUGIN_DIR; // プラグインディレクトリ自体にインストール
+// 親ディレクトリにインストール（git clone後に実行される想定）
+const PROJECT_ROOT = path.dirname(PLUGIN_DIR);
 const CLAUDE_DIR = path.join(PROJECT_ROOT, '.claude');
 const SKILLS_DIR = path.join(CLAUDE_DIR, 'skills');
 const PHASES_LINK = path.join(CLAUDE_DIR, 'workflow-phases');
@@ -231,14 +232,14 @@ function setupMcpServer() {
     mcpConfig = JSON.parse(fs.readFileSync(mcpJsonPath, 'utf-8'));
   }
 
-  // .mcp.jsonがプラグインディレクトリ内にあるため、相対パスはプラグイン内部からの参照
-  const relativeServerPath = `mcp-server/dist/index.js`;
-  const relativeServerCwd = `mcp-server`;
+  // 絶対パスでMCPサーバーを参照
+  const absoluteServerPath = path.join(PLUGIN_DIR, 'mcp-server', 'dist', 'index.js');
+  const absoluteServerCwd = path.join(PLUGIN_DIR, 'mcp-server');
 
   mcpConfig.mcpServers.workflow = {
     command: 'node',
-    args: [relativeServerPath],
-    cwd: relativeServerCwd
+    args: [absoluteServerPath],
+    cwd: absoluteServerCwd
   };
 
   fs.writeFileSync(
