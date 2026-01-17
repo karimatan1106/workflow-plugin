@@ -46,7 +46,6 @@
   "license": "MIT",
   "files": [
     "install.js",
-    "commands/",
     "hooks/",
     "mcp-server/dist/",
     "mcp-server/package.json",

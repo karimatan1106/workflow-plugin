@@ -6,8 +6,8 @@
  *   node workflow-plugin/install.js
  *
  * 機能:
- *   - コマンドのハードリンク作成
  *   - workflow-phasesのジャンクション作成
+ *   - スキルのハードリンク作成
  *   - .claude/settings.json へのフックマージ
  *   - .mcp.json へのMCPサーバー設定追加
  *   - MCPサーバーのビルド（必要時）
@@ -25,7 +25,6 @@ const __dirname = path.dirname(__filename);
 const PLUGIN_DIR = __dirname;
 const PROJECT_ROOT = PLUGIN_DIR; // プラグインディレクトリ自体にインストール
 const CLAUDE_DIR = path.join(PROJECT_ROOT, '.claude');
-const COMMANDS_DIR = path.join(CLAUDE_DIR, 'commands');
 const SKILLS_DIR = path.join(CLAUDE_DIR, 'skills');
 const PHASES_LINK = path.join(CLAUDE_DIR, 'workflow-phases');
 
@@ -48,42 +47,7 @@ function log(message, type = 'info') {
 }
 
 /**
- * 1. コマンドのハードリンク作成
- */
-function setupCommands() {
-  log('コマンドをセットアップ中...', 'info');
-
-  const srcCommand = path.join(PLUGIN_DIR, 'commands', 'workflow.md');
-  const destCommand = path.join(COMMANDS_DIR, 'workflow.md');
-
-  // ディレクトリ作成
-  if (!fs.existsSync(COMMANDS_DIR)) {
-    fs.mkdirSync(COMMANDS_DIR, { recursive: true });
-  }
-
-  // 既存ファイルの確認
-  if (fs.existsSync(destCommand)) {
-    const srcStat = fs.statSync(srcCommand);
-    const destStat = fs.statSync(destCommand);
-
-    // 同じinode（ハードリンク）かチェック
-    if (srcStat.ino === destStat.ino) {
-      log('コマンド: 既にリンク済み', 'success');
-      return;
-    }
-
-    // 異なるファイルなら削除
-    fs.unlinkSync(destCommand);
-    log('古いworkflow.mdを削除', 'warn');
-  }
-
-  // ハードリンク作成
-  fs.linkSync(srcCommand, destCommand);
-  log('コマンド: ハードリンク作成完了', 'success');
-}
-
-/**
- * 2. workflow-phasesのジャンクション作成
+ * 1. workflow-phasesのジャンクション作成
  */
 function setupPhases() {
   log('workflow-phasesをセットアップ中...', 'info');
@@ -138,64 +102,43 @@ function setupPhases() {
 }
 
 /**
- * 3. スキルのジャンクション作成
+ * 2. スキルのハードリンク作成
  */
 function setupSkills() {
   log('スキルをセットアップ中...', 'info');
 
-  const srcSkills = path.join(PLUGIN_DIR, 'skills', 'workflow');
-  const destSkills = path.join(SKILLS_DIR, 'workflow');
+  const srcSkill = path.join(PLUGIN_DIR, 'skills', 'workflow', 'SKILL.md');
+  const destSkillDir = path.join(SKILLS_DIR, 'workflow');
+  const destSkill = path.join(destSkillDir, 'SKILL.md');
 
-  // skillsディレクトリ作成
-  if (!fs.existsSync(SKILLS_DIR)) {
-    fs.mkdirSync(SKILLS_DIR, { recursive: true });
+  // ディレクトリ作成
+  if (!fs.existsSync(destSkillDir)) {
+    fs.mkdirSync(destSkillDir, { recursive: true });
   }
 
-  // 既存のリンク/ディレクトリを確認
-  if (fs.existsSync(destSkills)) {
-    const stat = fs.lstatSync(destSkills);
+  // 既存ファイルの確認
+  if (fs.existsSync(destSkill)) {
+    const srcStat = fs.statSync(srcSkill);
+    const destStat = fs.statSync(destSkill);
 
-    if (stat.isSymbolicLink() || stat.isDirectory()) {
-      try {
-        const target = fs.realpathSync(destSkills);
-        if (target === fs.realpathSync(srcSkills)) {
-          log('スキル: 既にリンク済み', 'success');
-          return;
-        }
-      } catch (e) {
-        // リンクが壊れている場合は削除
-      }
-
-      // 削除（ジャンクションはrmdirで削除）
-      if (process.platform === 'win32') {
-        fs.rmdirSync(destSkills);
-      } else {
-        fs.unlinkSync(destSkills);
-      }
-      log('古いスキルリンクを削除', 'warn');
+    // 同じinode（ハードリンク）かチェック
+    if (srcStat.ino === destStat.ino) {
+      log('スキル: 既にリンク済み', 'success');
+      return;
     }
+
+    // 異なるファイルなら削除
+    fs.unlinkSync(destSkill);
+    log('古いSKILL.mdを削除', 'warn');
   }
 
-  // ジャンクション作成（Windows）またはシンボリックリンク（Unix）
-  if (process.platform === 'win32') {
-    try {
-      execSync(`mklink /J "${destSkills}" "${srcSkills}"`, {
-        stdio: 'pipe',
-        shell: true
-      });
-      log('スキル: ジャンクション作成完了', 'success');
-    } catch (e) {
-      log(`ジャンクション作成失敗: ${e.message}`, 'error');
-    }
-  } else {
-    const relativeSrc = path.relative(SKILLS_DIR, srcSkills);
-    fs.symlinkSync(relativeSrc, destSkills);
-    log('スキル: シンボリックリンク作成完了', 'success');
-  }
+  // ハードリンク作成
+  fs.linkSync(srcSkill, destSkill);
+  log('スキル: ハードリンク作成完了', 'success');
 }
 
 /**
- * 4. .claude/settings.json へのフックマージ
+ * 3. .claude/settings.json へのフックマージ
  */
 function mergeSettings() {
   log('settings.jsonをマージ中...', 'info');
@@ -267,7 +210,7 @@ function mergeHooks(target, source, hookType) {
 }
 
 /**
- * 5. .mcp.json へのMCPサーバー設定追加
+ * 4. .mcp.json へのMCPサーバー設定追加
  */
 function setupMcpServer() {
   log('MCPサーバー設定を更新中...', 'info');
@@ -301,7 +244,7 @@ function setupMcpServer() {
 }
 
 /**
- * 6. MCPサーバーのビルド
+ * 5. MCPサーバーのビルド
  */
 function buildMcpServer() {
   log('MCPサーバーをビルド中...', 'info');
@@ -367,7 +310,6 @@ async function main() {
   console.log(colors.cyan('═══════════════════════════════════════') + '\n');
 
   try {
-    // setupCommands(); // スキル版のみ使用するため無効化
     setupPhases();
     setupSkills();
     mergeSettings();
