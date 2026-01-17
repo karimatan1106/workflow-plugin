@@ -139,8 +139,10 @@ export interface TaskState {
   taskId: string;
   /** タスク名（日本語可） */
   taskName: string;
-  /** ワークフローディレクトリのパス */
+  /** ワークフローディレクトリのパス（内部状態用） */
   workflowDir: string;
+  /** ドキュメントディレクトリのパス（成果物配置用） */
+  docsDir?: string;
   /** タスク開始日時（ISO 8601形式） */
   startedAt: string;
   /** タスク完了日時（ISO 8601形式、完了時のみ） */
@@ -229,8 +231,10 @@ export interface StatusResult extends ToolResult {
   taskName?: string;
   /** 現在のフェーズ */
   phase?: PhaseName;
-  /** ワークフローディレクトリ */
+  /** ワークフローディレクトリ（内部状態用） */
   workflowDir?: string;
+  /** ドキュメントディレクトリ（成果物配置用） */
+  docsDir?: string;
   /** アクティブなタスク数 */
   activeTasks?: number;
   /** 全タスクの概要リスト */
@@ -284,8 +288,10 @@ export interface StartResult extends ToolResult {
   taskName?: string;
   /** 開始フェーズ */
   phase?: PhaseName;
-  /** ワークフローディレクトリ */
+  /** ワークフローディレクトリ（内部状態用） */
   workflowDir?: string;
+  /** ドキュメントディレクトリ（成果物配置用） */
+  docsDir?: string;
   /** タスクサイズ */
   taskSize?: TaskSize;
 }

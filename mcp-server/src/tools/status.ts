@@ -49,6 +49,7 @@ export function workflowStatus(): StatusResult {
     taskName: currentTask.taskName,
     phase,
     workflowDir: currentTask.workflowDir,
+    docsDir: taskState.docsDir,
     activeTasks: globalState.activeTasks.length,
     allTasks: globalState.activeTasks.map((t) => ({
       taskId: t.taskId,

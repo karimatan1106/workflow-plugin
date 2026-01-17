@@ -103,3 +103,47 @@ describe('start.ts - startToolDefinition テスト', () => {
     expect(required).toContain('taskName');
   });
 });
+
+describe('start.ts - docsDir テスト', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('返却値にdocsDirが含まれる', () => {
+    vi.mocked(stateManager.createTask).mockReturnValue({
+      phase: 'research',
+      taskId: '20260118_090000',
+      taskName: 'テストタスク',
+      workflowDir: '/path/to/workflow',
+      startedAt: new Date().toISOString(),
+      checklist: {},
+      history: [],
+      subPhases: {},
+      taskSize: 'large',
+      docsDir: 'docs/specs/domains/テストタスク',
+    });
+
+    const result = workflowStart('テストタスク') as StartResult & { docsDir?: string };
+
+    expect(result.docsDir).toBe('docs/specs/domains/テストタスク');
+  });
+
+  it('docsDirがdocs/specs/domains/で始まる', () => {
+    vi.mocked(stateManager.createTask).mockReturnValue({
+      phase: 'research',
+      taskId: '20260118_090000',
+      taskName: '機能名',
+      workflowDir: '/path/to/workflow',
+      startedAt: new Date().toISOString(),
+      checklist: {},
+      history: [],
+      subPhases: {},
+      taskSize: 'large',
+      docsDir: 'docs/specs/domains/機能名',
+    });
+
+    const result = workflowStart('機能名') as StartResult & { docsDir?: string };
+
+    expect(result.docsDir).toMatch(/^docs\/specs\/domains\//);
+  });
+});

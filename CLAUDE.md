@@ -266,21 +266,39 @@ parallel_verification のサブフェーズ。エンドツーエンドテスト�
 
 ## 成果物の配置先
 
+ワークフロー開始時に2つのディレクトリが作成されます:
+- `workflowDir`: `.claude/state/workflows/{taskId}_{taskName}/` - 内部状態管理用
+- `docsDir`: `docs/specs/domains/{taskName}/` - 成果物配置用（環境変数 `DOCS_DIR` でオーバーライド可能）
+
 | フェーズ | 成果物 | 配置先 |
 |---------|--------|--------|
-| research | 調査結果 | `{workflowDir}/research.md` |
-| requirements | 要件定義 | `{workflowDir}/requirements.md` |
-| planning | 仕様書 | `docs/specs/domains/{domain}/{name}.md` |
-| threat_modeling | 脅威モデル | `{workflowDir}/threat-model.md` |
-| state_machine | ステートマシン図 | `docs/specs/{domain}/{name}.state-machine.mmd` |
-| flowchart | フローチャート | `docs/specs/{domain}/{name}.flowchart.mmd` |
-| ui_design | UI設計 | `{workflowDir}/ui-design.md` |
-| test_design | テストケース | `{workflowDir}/test-cases.md` |
+| research | 調査結果 | `{docsDir}/research.md` |
+| requirements | 要件定義 | `{docsDir}/requirements.md` |
+| planning | 仕様書 | `{docsDir}/spec.md` |
+| threat_modeling | 脅威モデル | `{docsDir}/threat-model.md` |
+| state_machine | ステートマシン図 | `{docsDir}/state-machine.mmd` |
+| flowchart | フローチャート | `{docsDir}/flowchart.mmd` |
+| ui_design | UI設計 | `{docsDir}/ui-design.md` |
+| test_design | テストケース | `{docsDir}/test-design.md` |
 | code_review | レビュー結果 | `{workflowDir}/code-review.md` |
 | performance_test | パフォーマンス結果 | `{workflowDir}/performance-test.md` |
 | e2e_test | E2Eテスト結果 | `{workflowDir}/e2e-test.md` |
 | docs_update | ドキュメント更新 | `docs/specs/`, `README.md` |
 | ci_verification | CI結果記録 | `{workflowDir}/ci-result.md` |
+
+### ディレクトリ構造例
+
+```
+docs/specs/domains/
+└── テトリスWebゲーム/
+    ├── spec.md               # 仕様書（要件・計画統合）
+    ├── requirements.md       # 要件定義
+    ├── threat-model.md       # 脅威モデル
+    ├── test-design.md        # テスト設計
+    ├── state-machine.mmd     # ステートマシン図
+    ├── flowchart.mmd         # フローチャート
+    └── ui-design.md          # UI設計
+```
 
 ---
 

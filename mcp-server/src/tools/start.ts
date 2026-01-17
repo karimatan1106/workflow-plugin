@@ -37,6 +37,7 @@ export function workflowStart(taskName: string): StartResult {
       taskName: taskState.taskName,
       phase: taskState.phase,
       workflowDir: taskState.workflowDir,
+      docsDir: taskState.docsDir,
       taskSize: taskState.taskSize,
       message: `タスク「${taskState.taskName}」を開始しました。フェーズ: research、サイズ: large`,
     };

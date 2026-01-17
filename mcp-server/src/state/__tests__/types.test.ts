@@ -18,14 +18,10 @@ import { DEFAULT_TASK_SIZE } from '../types.js';
 
 describe('types.ts - タスクサイズ機能の型定義', () => {
   describe('TS-001: TaskSize型が正しい値を許容する', () => {
-    it('small, medium, large が有効な値として許容される', () => {
+    it('large が有効な値として許容される（small/mediumは廃止）', () => {
       // TaskSize型が定義されていることを確認
-      const smallSize: TaskSize = 'small';
-      const mediumSize: TaskSize = 'medium';
       const largeSize: TaskSize = 'large';
 
-      expect(smallSize).toBe('small');
-      expect(mediumSize).toBe('medium');
       expect(largeSize).toBe('large');
     });
   });
@@ -49,10 +45,10 @@ describe('types.ts - タスクサイズ機能の型定義', () => {
         history: [],
         subPhases: {},
         // taskSize が追加されているはず
-        taskSize: 'small',
+        taskSize: 'large',
       };
 
-      expect(taskState.taskSize).toBe('small');
+      expect(taskState.taskSize).toBe('large');
     });
 
     it('taskSizeはオプショナルである', () => {
@@ -80,10 +76,10 @@ describe('types.ts - タスクサイズ機能の型定義', () => {
         workflowDir: '/path/to/workflow',
         phase: 'research',
         // taskSize が追加されているはず
-        taskSize: 'medium',
+        taskSize: 'large',
       };
 
-      expect(activeTask.taskSize).toBe('medium');
+      expect(activeTask.taskSize).toBe('large');
     });
 
     it('taskSizeはオプショナルである', () => {
@@ -125,6 +121,57 @@ describe('types.ts - タスクサイズ機能の型定義', () => {
       };
 
       expect(startResultWithoutSize.taskSize).toBeUndefined();
+    });
+  });
+
+  describe('TS-006: TaskStateにdocsDirフィールドが存在する', () => {
+    it('TaskState型にdocsDir?プロパティがある', () => {
+      const taskState: TaskState = {
+        phase: 'research',
+        taskId: '20260118_090000',
+        taskName: 'テストタスク',
+        workflowDir: '/path/to/workflow',
+        startedAt: new Date().toISOString(),
+        checklist: {},
+        history: [],
+        subPhases: {},
+        taskSize: 'large',
+        docsDir: 'docs/specs/domains/テストタスク',
+      };
+
+      expect(taskState.docsDir).toBe('docs/specs/domains/テストタスク');
+    });
+
+    it('docsDirはオプショナルである（後方互換性）', () => {
+      const taskStateWithoutDocsDir: TaskState = {
+        phase: 'research',
+        taskId: '20260118_090000',
+        taskName: 'テストタスク',
+        workflowDir: '/path/to/workflow',
+        startedAt: new Date().toISOString(),
+        checklist: {},
+        history: [],
+        subPhases: {},
+      };
+
+      expect(taskStateWithoutDocsDir.docsDir).toBeUndefined();
+    });
+  });
+
+  describe('TS-007: StartResultにdocsDirフィールドが存在する', () => {
+    it('StartResult型にdocsDir?プロパティがある', () => {
+      const startResult: StartResult = {
+        success: true,
+        taskId: '20260118_090000',
+        taskName: 'テストタスク',
+        phase: 'research',
+        workflowDir: '/path/to/workflow',
+        message: 'タスク開始',
+        taskSize: 'large',
+        docsDir: 'docs/specs/domains/テストタスク',
+      };
+
+      expect(startResult.docsDir).toBe('docs/specs/domains/テストタスク');
     });
   });
 });

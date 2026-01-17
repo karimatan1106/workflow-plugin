@@ -33,6 +33,9 @@ const STATE_DIR = process.env.STATE_DIR || path.join(process.cwd(), '.claude', '
 /** ワークフローディレクトリのパス */
 const WORKFLOW_DIR = process.env.WORKFLOW_DIR || path.join(STATE_DIR, 'workflows');
 
+/** ドキュメントディレクトリのパス（成果物配置用） */
+const DOCS_DIR = process.env.DOCS_DIR || path.join(process.cwd(), 'docs', 'specs', 'domains');
+
 /** グローバル状態ファイルのパス */
 const GLOBAL_STATE_FILE = process.env.GLOBAL_STATE_FILE || path.join(STATE_DIR, 'workflow-state.json');
 
@@ -279,9 +282,11 @@ export class WorkflowStateManager {
     const taskId = generateTaskId();
     const safeName = sanitizeTaskName(taskName);
     const taskDir = path.join(this.workflowDir, `${taskId}_${safeName}`);
+    const docsDir = path.join(DOCS_DIR, safeName);
 
     // ディレクトリ作成
     fs.mkdirSync(taskDir, { recursive: true });
+    fs.mkdirSync(docsDir, { recursive: true });
 
     // タスク状態作成
     const taskState: TaskState = {
@@ -289,6 +294,7 @@ export class WorkflowStateManager {
       taskId,
       taskName,
       workflowDir: taskDir,
+      docsDir,
       startedAt: getCurrentISOTimestamp(),
       checklist: {},
       history: [],
@@ -300,7 +306,7 @@ export class WorkflowStateManager {
     this.writeTaskState(taskDir, taskState);
 
     // ログファイル作成
-    this.createTaskLogFile(taskDir, taskName, taskId, taskSize);
+    this.createTaskLogFile(taskDir, taskName, taskId, taskSize, docsDir);
 
     // グローバル状態更新
     this.addTaskToGlobalState(taskId, taskName, taskDir, taskSize);
@@ -315,12 +321,14 @@ export class WorkflowStateManager {
    * @param taskName タスク名
    * @param taskId タスクID
    * @param taskSize タスクサイズ
+   * @param docsDir ドキュメントディレクトリ
    */
   private createTaskLogFile(
     taskDir: string,
     taskName: string,
     taskId: string,
     taskSize: TaskSize,
+    docsDir: string,
   ): void {
     const logContent = `# ${taskName}
 
@@ -328,6 +336,7 @@ export class WorkflowStateManager {
 - **タスクID**: ${taskId}
 - **開始日時**: ${getCurrentLocalTimestamp()}
 - **タスクサイズ**: ${taskSize}
+- **ドキュメント配置先**: ${docsDir}
 - **ステータス**: 進行中
 
 ---
