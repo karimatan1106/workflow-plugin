@@ -27,11 +27,14 @@ import { taskNotFoundError } from '../utils/errors.js';
 // 設定（環境変数でオーバーライド可能）
 // ============================================================================
 
+/** 状態ディレクトリのパス */
+const STATE_DIR = process.env.STATE_DIR || path.join(process.cwd(), '.claude', 'state');
+
 /** ワークフローディレクトリのパス */
-const WORKFLOW_DIR = process.env.WORKFLOW_DIR || path.join(process.cwd(), 'docs/workflows');
+const WORKFLOW_DIR = process.env.WORKFLOW_DIR || path.join(STATE_DIR, 'workflows');
 
 /** グローバル状態ファイルのパス */
-const GLOBAL_STATE_FILE = process.env.GLOBAL_STATE_FILE || path.join(process.cwd(), '.claude-workflow-state.json');
+const GLOBAL_STATE_FILE = process.env.GLOBAL_STATE_FILE || path.join(STATE_DIR, 'workflow-state.json');
 
 /** 初期グローバル状態 */
 const INITIAL_GLOBAL_STATE: GlobalState = {
@@ -126,7 +129,7 @@ function readJsonFile<T>(filePath: string): T | null {
  * ワークフロー状態マネージャー
  *
  * ワークフローの状態管理を担当するクラス。
- * グローバル状態（.claude-workflow-state.json）と
+ * グローバル状態（.claude/state/workflow-state.json）と
  * 個別タスク状態（workflow-state.json）の両方を管理する。
  */
 export class WorkflowStateManager {
@@ -171,6 +174,11 @@ export class WorkflowStateManager {
    * @param state 保存するグローバル状態
    */
   writeGlobalState(state: GlobalState): void {
+    // 状態ディレクトリを確保
+    const dir = path.dirname(this.globalStatePath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
     writeJsonFile(this.globalStatePath, state);
   }
 
