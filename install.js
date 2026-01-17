@@ -367,7 +367,7 @@ async function main() {
   console.log(colors.cyan('═══════════════════════════════════════') + '\n');
 
   try {
-    setupCommands();
+    // setupCommands(); // スキル版のみ使用するため無効化
     setupPhases();
     setupSkills();
     mergeSettings();
