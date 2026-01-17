@@ -233,13 +233,13 @@ function setupMcpServer() {
   }
 
   // 絶対パスでMCPサーバーを参照
+  // cwdはプロジェクトルート（process.cwd()が正しいパスを返すように）
   const absoluteServerPath = path.join(PLUGIN_DIR, 'mcp-server', 'dist', 'index.js');
-  const absoluteServerCwd = path.join(PLUGIN_DIR, 'mcp-server');
 
   mcpConfig.mcpServers.workflow = {
     command: 'node',
     args: [absoluteServerPath],
-    cwd: absoluteServerCwd
+    cwd: PROJECT_ROOT
   };
 
   fs.writeFileSync(
