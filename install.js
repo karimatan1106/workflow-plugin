@@ -23,9 +23,10 @@ const __dirname = path.dirname(__filename);
 
 // パス定義
 const PLUGIN_DIR = __dirname;
-const PROJECT_ROOT = path.dirname(PLUGIN_DIR);
+const PROJECT_ROOT = PLUGIN_DIR; // プラグインディレクトリ自体にインストール
 const CLAUDE_DIR = path.join(PROJECT_ROOT, '.claude');
 const COMMANDS_DIR = path.join(CLAUDE_DIR, 'commands');
+const SKILLS_DIR = path.join(CLAUDE_DIR, 'skills');
 const PHASES_LINK = path.join(CLAUDE_DIR, 'workflow-phases');
 
 // 色付き出力
@@ -137,7 +138,64 @@ function setupPhases() {
 }
 
 /**
- * 3. .claude/settings.json へのフックマージ
+ * 3. スキルのジャンクション作成
+ */
+function setupSkills() {
+  log('スキルをセットアップ中...', 'info');
+
+  const srcSkills = path.join(PLUGIN_DIR, 'skills', 'workflow');
+  const destSkills = path.join(SKILLS_DIR, 'workflow');
+
+  // skillsディレクトリ作成
+  if (!fs.existsSync(SKILLS_DIR)) {
+    fs.mkdirSync(SKILLS_DIR, { recursive: true });
+  }
+
+  // 既存のリンク/ディレクトリを確認
+  if (fs.existsSync(destSkills)) {
+    const stat = fs.lstatSync(destSkills);
+
+    if (stat.isSymbolicLink() || stat.isDirectory()) {
+      try {
+        const target = fs.realpathSync(destSkills);
+        if (target === fs.realpathSync(srcSkills)) {
+          log('スキル: 既にリンク済み', 'success');
+          return;
+        }
+      } catch (e) {
+        // リンクが壊れている場合は削除
+      }
+
+      // 削除（ジャンクションはrmdirで削除）
+      if (process.platform === 'win32') {
+        fs.rmdirSync(destSkills);
+      } else {
+        fs.unlinkSync(destSkills);
+      }
+      log('古いスキルリンクを削除', 'warn');
+    }
+  }
+
+  // ジャンクション作成（Windows）またはシンボリックリンク（Unix）
+  if (process.platform === 'win32') {
+    try {
+      execSync(`mklink /J "${destSkills}" "${srcSkills}"`, {
+        stdio: 'pipe',
+        shell: true
+      });
+      log('スキル: ジャンクション作成完了', 'success');
+    } catch (e) {
+      log(`ジャンクション作成失敗: ${e.message}`, 'error');
+    }
+  } else {
+    const relativeSrc = path.relative(SKILLS_DIR, srcSkills);
+    fs.symlinkSync(relativeSrc, destSkills);
+    log('スキル: シンボリックリンク作成完了', 'success');
+  }
+}
+
+/**
+ * 4. .claude/settings.json へのフックマージ
  */
 function mergeSettings() {
   log('settings.jsonをマージ中...', 'info');
@@ -209,7 +267,7 @@ function mergeHooks(target, source, hookType) {
 }
 
 /**
- * 4. .mcp.json へのMCPサーバー設定追加
+ * 5. .mcp.json へのMCPサーバー設定追加
  */
 function setupMcpServer() {
   log('MCPサーバー設定を更新中...', 'info');
@@ -243,7 +301,7 @@ function setupMcpServer() {
 }
 
 /**
- * 5. MCPサーバーのビルド
+ * 6. MCPサーバーのビルド
  */
 function buildMcpServer() {
   log('MCPサーバーをビルド中...', 'info');
@@ -311,6 +369,7 @@ async function main() {
   try {
     setupCommands();
     setupPhases();
+    setupSkills();
     mergeSettings();
     setupMcpServer();
     buildMcpServer();
