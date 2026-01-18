@@ -1,0 +1,29 @@
+flowchart TD
+    A[ユーザーがワークフロー開始] --> B{プロジェクトタイプ判定}
+
+    B -->|大規模/長期| C[Clean Architecture推奨]
+    B -->|小規模/PoC| D[シンプル構造で可]
+
+    C --> E[requirementsフェーズ]
+    E --> E1[ドメイン境界特定]
+    E --> E2[ユビキタス言語定義]
+
+    E1 --> F[planningフェーズ]
+    E2 --> F
+    F --> F1[層構成決定]
+    F --> F2[モジュール分割]
+
+    F1 --> G[implementationフェーズ]
+    F2 --> G
+    G --> G1[Domain層実装]
+    G1 --> G2[Application層実装]
+    G2 --> G3[Infrastructure層実装]
+    G3 --> G4[Presentation層実装]
+
+    G4 --> H[テスト]
+    H --> H1[Domain: 単体テスト]
+    H --> H2[Application: 統合テスト]
+    H --> H3[Infrastructure: 統合テスト]
+    H --> H4[Presentation: E2Eテスト]
+
+    D --> I[標準ワークフロー継続]

@@ -1,6 +1,6 @@
 ---
 name: workflow
-description: 開発タスクを体系的に管理するワークフロースキル。タスクサイズに応じたフェーズ構成（Small/Medium/Large）を提供し、TDD方式での高品質な開発プロセスを支援します。フェーズスキップを防止し、設計レビューや承認プロセスを強制します。
+description: 開発タスクを体系的に管理するワークフロースキル。18フェーズの完全なワークフローを提供し、TDD方式での高品質な開発プロセスを支援します。フェーズスキップを防止し、設計レビューや承認プロセスを強制します。
 ---
 
 # Workflow Skill
@@ -21,7 +21,7 @@ description: 開発タスクを体系的に管理するワークフロースキ�
 ### タスク開始
 
 ```
-/workflow start <タスク名> [-s small|medium|large]
+/workflow start <タスク名>
 ```
 
 ### 次フェーズへ進む
@@ -60,31 +60,21 @@ description: 開発タスクを体系的に管理するワークフロースキ�
 /workflow switch <task-id>
 ```
 
-## タスクサイズ別フェーズ構成
+## フェーズ構成（18フェーズ）
 
-### Small（5フェーズ）- 単純なバグ修正・小さな変更
-
-```
-research → requirements → implementation → testing → commit
-```
-
-### Medium（12フェーズ）- 機能追加・中規模変更
-
-```
-research → requirements → planning → design_review【要承認】
-→ test_design → test_impl → implementation → refactoring
-→ build_check → testing → commit → completed
-```
-
-### Large（21フェーズ）- アーキテクチャ変更・大規模機能
+全てのタスクは以下の18フェーズで実行されます。
 
 ```
 research → requirements → parallel_analysis（threat_modeling + planning）
-→ architecture_review → parallel_design（state_machine + flowchart + ui_design）
-→ design_review【要承認】→ test_design → test_impl → implementation
-→ refactoring → build_check → code_review → testing → manual_test
-→ security_scan → docs_update → commit → completed
+→ parallel_design（state_machine + flowchart + ui_design）
+→ design_review【AIレビュー + ユーザー承認】
+→ test_design → test_impl → implementation → refactoring
+→ parallel_quality（build_check + code_review）→ testing
+→ parallel_verification（manual_test + security_scan + performance_test + e2e_test）
+→ docs_update → commit → push → ci_verification → deploy → completed
 ```
+
+注: small/mediumサイズは廃止されました。品質管理の一貫性を保つため、全てのタスクで完全なワークフローを実行します。
 
 ## ワークフローの原則
 
@@ -125,10 +115,12 @@ test_impl（Red）→ implementation（Green）→ refactoring（Refactor）
 
 ### 4. 並列フェーズ
 
-Large タスクでは、並列実行可能なフェーズがあります：
+並列実行可能なフェーズがあります：
 
 - `parallel_analysis`: threat_modeling + planning を同時実行
 - `parallel_design`: state_machine + flowchart + ui_design を同時実行
+- `parallel_quality`: build_check + code_review を同時実行
+- `parallel_verification`: manual_test + security_scan + performance_test + e2e_test を同時実行
 
 サブフェーズの完了：
 
@@ -136,6 +128,48 @@ Large タスクでは、並列実行可能なフェーズがあります：
 /workflow complete-sub threat_modeling
 /workflow complete-sub planning
 ```
+
+## プロジェクト構造ガイダンス
+
+新規プロジェクト作成時、Clean Architecture + DDDに基づく構造を推奨します。
+
+### 推奨ディレクトリ構成
+
+```
+src/
+├── domain/           # ビジネスロジック（依存なし）
+│   ├── entities/     # エンティティ
+│   ├── value-objects/# 値オブジェクト
+│   ├── aggregates/   # 集約
+│   └── repositories/ # リポジトリインターフェース
+│
+├── application/      # ユースケース
+│   ├── use-cases/    # ユースケース
+│   ├── commands/     # コマンド（CQRS）
+│   └── queries/      # クエリ（CQRS）
+│
+├── infrastructure/   # 外部依存の実装
+│   ├── database/     # DB実装
+│   └── external-apis/# 外部API
+│
+└── presentation/     # UI/API層
+    ├── controllers/  # コントローラー
+    └── dtos/         # DTO
+```
+
+### フェーズ別考慮事項
+
+| フェーズ | Clean Architecture観点 |
+|---------|----------------------|
+| requirements | ドメイン境界の特定、ユビキタス言語の定義 |
+| planning | 層構成の決定、モジュール分割、集約単位 |
+| test_design | 層ごとのテスト戦略（Domain:単体、App:統合、E2E） |
+
+### 適用判断
+
+**推奨:** 複数チーム開発、長期メンテナンス、複雑なビジネスロジック
+
+**不要:** プロトタイプ/PoC、単純なCRUD、スクリプト
 
 ## 成果物ルール
 
@@ -247,29 +281,26 @@ Large タスクでは、並列実行可能なフェーズがあります：
 
 ## 使用例
 
-### 新機能追加（Medium）
+### 新機能追加
 
 ```
-/workflow start ユーザー認証機能追加 -s medium
+/workflow start ユーザー認証機能追加
 # research: 既存の認証コードを調査
 /workflow next
 # requirements: 要件を定義
 /workflow next
-# planning: 実装計画を作成
+# parallel_analysis: 脅威モデリング + 設計計画
+/workflow complete-sub threat_modeling
+/workflow complete-sub planning
+/workflow next
+# parallel_design: 状態遷移図 + フローチャート + UI設計
+/workflow complete-sub state_machine
+/workflow complete-sub flowchart
+/workflow complete-sub ui_design
 /workflow next
 # design_review: 設計を確認
 /workflow approve design
 # 以降、TDD方式で実装...
-```
-
-### バグ修正（Small）
-
-```
-/workflow start ログインバグ修正 -s small
-/workflow next  # research → requirements
-/workflow next  # requirements → implementation
-/workflow next  # implementation → testing
-/workflow next  # testing → commit
 ```
 
 ## 参考資料

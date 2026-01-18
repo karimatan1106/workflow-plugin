@@ -1,0 +1,20 @@
+stateDiagram-v2
+    [*] --> NoGuidance: 現状
+    NoGuidance --> GuidanceAdded: CLAUDE.md/SKILL.md更新
+    GuidanceAdded --> [*]: 完了
+
+    state NoGuidance {
+        [*] --> WorkflowOnly
+        WorkflowOnly: ワークフロー管理のみ
+        WorkflowOnly: プロジェクト構造ガイダンスなし
+    }
+
+    state GuidanceAdded {
+        [*] --> CleanArchitecture
+        CleanArchitecture: Clean Architecture推奨構造
+        CleanArchitecture --> DDD: DDDパターン
+        DDD: エンティティ/値オブジェクト/集約
+        DDD --> LayerRules: 依存関係ルール
+        LayerRules: Domain←Application←Infrastructure
+        LayerRules: Presentation→Application
+    }
