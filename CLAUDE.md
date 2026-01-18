@@ -103,6 +103,108 @@ research → requirements → parallel_analysis（threat_modeling + planning）
 
 ---
 
+## subagentによるフェーズ実行
+
+各ワークフローフェーズはTask toolを使用してsubagentで実行する。これにより、コンテキストの肥大化を防ぎ、並列フェーズの同時実行を実現する。
+
+### Orchestratorパターン
+
+メインのClaudeはOrchestratorとして動作し、各フェーズをsubagentに委譲する：
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     Orchestrator (Main Claude)              │
+├─────────────────────────────────────────────────────────────┤
+│  1. workflow_startでタスク開始                              │
+│  2. フェーズごとにTask toolでsubagentを起動                │
+│  3. subagent完了を待機                                      │
+│  4. workflow_nextで次フェーズへ                             │
+│  5. 並列フェーズは複数Taskを同時起動                        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### フェーズ別subagent設定
+
+| フェーズ | subagent_type | model | 入力ファイル | 出力ファイル |
+|---------|---------------|-------|-------------|-------------|
+| research | Explore | haiku | - | research.md |
+| requirements | general-purpose | sonnet | research.md | requirements.md |
+| threat_modeling | general-purpose | sonnet | requirements.md | threat-model.md |
+| planning | Plan | sonnet | requirements.md | spec.md |
+| state_machine | general-purpose | haiku | spec.md | state-machine.mmd |
+| flowchart | general-purpose | haiku | spec.md | flowchart.mmd |
+| ui_design | general-purpose | sonnet | spec.md | ui-design.md |
+| test_design | Plan | sonnet | spec.md, *.mmd | test-design.md |
+| test_impl | general-purpose | sonnet | test-design.md | *.test.ts |
+| implementation | general-purpose | sonnet | *.test.ts | *.ts |
+| refactoring | general-purpose | haiku | *.ts | *.ts |
+| build_check | Bash | haiku | - | - |
+| code_review | general-purpose | sonnet | *.ts | code-review.md |
+| testing | Bash | haiku | - | - |
+| manual_test | general-purpose | haiku | - | manual-test.md |
+| security_scan | Bash | haiku | - | security-scan.md |
+| performance_test | Bash | haiku | - | performance-test.md |
+| e2e_test | Bash | haiku | - | e2e-test.md |
+| docs_update | general-purpose | haiku | 全成果物 | ドキュメント |
+| commit | Bash | haiku | - | - |
+| push | Bash | haiku | - | - |
+
+### subagent起動テンプレート
+
+各フェーズでsubagentを起動する際は以下の形式を使用：
+
+```
+Task({
+  prompt: `
+    # {フェーズ名}フェーズ
+
+    ## タスク情報
+    - タスク名: {taskName}
+    - 出力先: docs/workflows/{taskName}/
+
+    ## 入力
+    以下のファイルを読み込んでください:
+    - {入力ファイルパス}
+
+    ## 作業内容
+    {フェーズの作業内容}
+
+    ## 出力
+    以下のファイルに成果物を保存してください:
+    - {出力ファイルパス}
+  `,
+  subagent_type: '{subagent_type}',
+  model: '{model}',
+  description: '{フェーズ名}'
+})
+```
+
+### 並列フェーズの実行
+
+parallel_*フェーズでは複数のTask toolを**同時に起動**する：
+
+```javascript
+// parallel_analysisの例
+// 1つのメッセージで複数のTask呼び出しを行う
+Task({ prompt: '...threat_modeling...', subagent_type: 'general-purpose', model: 'sonnet', description: 'threat modeling' })
+Task({ prompt: '...planning...', subagent_type: 'Plan', model: 'sonnet', description: 'planning' })
+
+// 両方完了後
+workflow_complete_sub('threat_modeling')
+workflow_complete_sub('planning')
+workflow_next()
+```
+
+### コンテキスト引き継ぎ
+
+subagent間のコンテキスト引き継ぎはファイル経由で行う：
+
+1. 前フェーズの成果物: `docs/workflows/{taskName}/` に保存
+2. 次フェーズのsubagent: Readツールで前フェーズの成果物を読み込み
+3. MCPサーバー: 状態管理のみ担当（成果物は管理しない）
+
+---
+
 ## フェーズごとの編集可能ファイル
 
 | フェーズ | 編集可能 | 禁止 |

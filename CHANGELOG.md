@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-01-18
+
+### Added
+
+- **subagentによるフェーズ実行**: 各ワークフローフェーズをTask toolでsubagentとして実行する機能
+  - Orchestratorパターンでメインのクラウドがフェーズを統括
+  - フェーズ別のsubagent_type、model設定表を追加
+  - 並列フェーズ（parallel_*）での複数Task同時起動をサポート
+- **プロンプトテンプレート**: `skills/workflow/phases/` に各フェーズ用テンプレートを追加
+  - research.md, requirements.md, planning.md, threat-modeling.md
+  - test-design.md, implementation.md, index.md
+- **ワークフロー使用判断ガイドライン**: レビュー・分析タスクと実装タスクの判断基準を追加
+
+### Changed
+
+- **CLAUDE.md**: subagent実行ルールセクションを追加
+- **コンテキスト管理**: ファイル経由でのフェーズ間引き継ぎを明文化
+
+### Benefits
+
+- コンテキスト肥大化の防止（各フェーズが独立したコンテキスト）
+- parallel_*フェーズでの実際の並列実行が可能に
+- フェーズごとのモデル最適化（haiku/sonnet選択）でコスト削減
+
+---
+
 ## [1.3.0] - 2026-01-17
 
 ### Changed
