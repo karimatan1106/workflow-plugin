@@ -251,6 +251,57 @@ pytest --screenshot-dir=tests/screenshots/
 
 ---
 
+## パッケージインストールルール
+
+依存パッケージはプロジェクトルートではなく、適切なサブディレクトリにインストールすること。
+
+### インストール先ルール
+
+| パッケージ種別 | インストール先 | コマンド例 |
+|---------------|---------------|-----------|
+| フロントエンド依存 | `src/frontend/` | `cd src/frontend && npm install xxx` |
+| バックエンド依存 | `src/backend/` | `cd src/backend && pip install xxx` |
+| E2Eテスト | `e2e/` | `cd e2e && npm install playwright` |
+| 共通ツール | 各サブプロジェクト | ルートは避ける |
+
+### 禁止事項
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  プロジェクトルートでの以下のコマンドは禁止                  │
+├─────────────────────────────────────────────────────────────┤
+│  - npm install <package>                                    │
+│  - npm init                                                 │
+│  - pip install <package>（venv外）                         │
+│  - yarn add <package>                                       │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 正しいインストール手順
+
+```bash
+# ❌ 悪い例（ルートにインストール）
+npm install playwright
+pip install requests
+
+# ✅ 良い例（適切なディレクトリにインストール）
+cd src/frontend && npm install axios
+cd src/backend && pip install -r requirements.txt
+cd e2e && npm install playwright
+```
+
+### package.json / requirements.txt の配置
+
+| ファイル | 配置先 |
+|---------|--------|
+| `package.json` | `src/frontend/`, `e2e/` |
+| `requirements.txt` | `src/backend/` |
+| `pyproject.toml` | `src/backend/` |
+
+**ルートディレクトリに package.json や node_modules を作成しないこと。**
+
+---
+
 ## 完了宣言ルール
 
 ### 使用禁止フレーズ（completedフェーズ以外）
