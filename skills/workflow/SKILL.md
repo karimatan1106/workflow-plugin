@@ -137,13 +137,12 @@ test_impl（Red）→ implementation（Green）→ refactoring（Refactor）
 
 ```
 project/
-├── frontend/          # フロントエンド（React/Next.js + Storybook）
-│   └── src/
-│       ├── features/  # 機能モジュール（Feature-First）
-│       └── components/# 共通UIコンポーネント（CDD対応）
-│
-├── backend/           # バックエンド（NestJS - Clean Architecture）
-│   └── src/
+├── src/
+│   ├── frontend/      # フロントエンド（React/Next.js + Storybook）
+│   │   ├── features/  # 機能モジュール（Feature-First）
+│   │   └── components/# 共通UIコンポーネント（CDD対応）
+│   │
+│   └── backend/       # バックエンド（Python/FastAPI - Clean Architecture）
 │       ├── domain/    # ドメイン層
 │       ├── application/# アプリケーション層
 │       ├── infrastructure/# インフラ層
@@ -166,9 +165,9 @@ ui_design(ストーリー定義) → test_impl(Red) → implementation(Green) �
 
 | ドキュメント | フロントエンド | バックエンド |
 |-------------|---------------|-------------|
-| `docs/product/features/` | `src/features/` | `src/application/use-cases/` |
-| `docs/product/components/` | `src/components/ui/` | - |
-| `docs/product/api/` | `src/features/{機能}/api/` | `src/presentation/controllers/` |
+| `docs/product/features/` | `src/frontend/features/` | `src/backend/application/use_cases/` |
+| `docs/product/components/` | `src/frontend/components/ui/` | - |
+| `docs/product/api/` | `src/frontend/features/{機能}/api/` | `src/backend/presentation/routers/` |
 
 詳細な対応表は **CLAUDE.md** を参照。
 
@@ -207,6 +206,24 @@ ui_design(ストーリー定義) → test_impl(Red) → implementation(Green) �
 4. **承認なしでdesign_reviewを通過する**
 5. **サブフェーズ未完了で並列フェーズを終了する**
 6. **subagentがワークフロー制御ツールを呼び出す**
+7. **completedフェーズ以外で「実装完了」「できました」と宣言する**
+8. **testing/parallel_verification以前に「実行してみてください」と促す**
+
+## 完了宣言ルール
+
+**重要**: `implementation`フェーズ終了 ≠ タスク完了
+
+| フェーズ | OK | NG |
+|---------|-----|-----|
+| implementation | 「コード作成完了。次はrefactoring」 | 「実装できました」「実行してください」 |
+| testing | 「テスト通過」 | 「完了しました」 |
+| completed | 「タスク完了。実行できます」 | - |
+
+### フェーズ完了報告
+
+```
+【{フェーズ名}完了】次: {次フェーズ} / 残り{数}フェーズ
+```
 
 ## 【最重要】ワークフロー制御権限
 

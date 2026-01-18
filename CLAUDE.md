@@ -189,6 +189,44 @@ parallel_verification のサブフェーズ。エンドツーエンドテスト�
 6. **脅威モデリングを省略してはいけない（Largeタスク時）**
 7. **design_reviewフェーズでは必ずユーザー承認を待つ**
 8. **同一ファイルを繰り返し編集する場合は立ち止まって原因を分析**
+9. **「実装完了」と「タスク完了」を混同してはいけない**
+   - `implementation`フェーズ終了 = 「コード作成完了」（品質確認フェーズが残っている）
+   - `completed`フェーズ到達 = 「タスク完了」
+   - 「できました」「完了しました」は`completed`フェーズでのみ使用可能
+10. **「実行してみてください」は testing または parallel_verification フェーズ以降でのみ使用**
+    - implementation 後に動作確認を促してはいけない
+    - 必ず refactoring → parallel_quality を経てから
+11. **各フェーズ完了時は残りのフェーズ数と次のフェーズを報告すること**
+    - 例: 「implementationフェーズが完了しました。次は refactoring → 残り9フェーズ」
+
+---
+
+## 完了宣言ルール
+
+### 使用禁止フレーズ（completedフェーズ以外）
+
+| フェーズ | 許可される表現 | 禁止される表現 |
+|---------|---------------|---------------|
+| implementation | 「コード作成が完了」「implementationフェーズ終了」 | 「実装できました」「動作確認してください」「実行してみてください」 |
+| refactoring | 「リファクタリング完了」 | 「完了しました」 |
+| testing | 「テストが通りました」「テスト完了」 | 「完了しました」 |
+| parallel_verification | 「検証フェーズ完了」 | 「全て完了」 |
+
+### completedフェーズでのみ使用可能な表現
+
+- 「タスクが完了しました」
+- 「実装が完了しました」
+- 「実行してみてください」
+- 「動作確認できます」
+
+### フェーズ完了報告テンプレート
+
+```
+【{フェーズ名}フェーズ完了】
+- 完了した作業: {作業内容}
+- 次のフェーズ: {次フェーズ名}
+- 残りフェーズ数: {数}フェーズ
+```
 
 ---
 
@@ -235,8 +273,8 @@ parallel_verification のサブフェーズ。エンドツーエンドテスト�
 ## 関連ファイル
 
 <!-- @related-files -->
-- `src/services/example.ts`
-- `src/pages/ExamplePage.tsx`
+- `src/backend/application/use_cases/example/`
+- `src/frontend/features/example/`
 <!-- @end-related-files -->
 ```
 
@@ -272,9 +310,11 @@ parallel_verification のサブフェーズ。エンドツーエンドテスト�
 
 ```
 project/
-├── frontend/             # フロントエンド（React/Next.js + Storybook）
-├── backend/              # バックエンド（NestJS - Clean Architecture）
+├── src/
+│   ├── frontend/         # フロントエンド（React/Next.js + Storybook）
+│   └── backend/          # バックエンド（Python/FastAPI - Clean Architecture）
 ├── docs/                 # ドキュメント
+├── e2e/                  # E2Eテスト
 ├── docker-compose.yml    # ローカル開発環境
 └── README.md
 ```
@@ -284,70 +324,69 @@ project/
 ### フロントエンド構成（Feature-First + CDD）
 
 ```
-frontend/
+src/frontend/
 ├── .storybook/                   # Storybook設定
 │
-├── src/
-│   ├── app/                      # Next.js App Router
-│   │   ├── (routes)/             # ルーティング
-│   │   │   ├── (auth)/           # 認証が必要なページ
-│   │   │   └── (public)/         # 公開ページ
-│   │   ├── layout.tsx
-│   │   └── providers.tsx
-│   │
-│   ├── features/                 # 機能モジュール（★メイン）
-│   │   └── {feature}/            # 例: checkout, auth, dashboard
-│   │       ├── components/       # 機能固有コンポーネント
-│   │       │   └── {Component}/
-│   │       │       ├── index.ts
-│   │       │       ├── {Component}.tsx
-│   │       │       ├── {Component}.stories.tsx  # CDD
-│   │       │       ├── {Component}.test.tsx     # TDD
-│   │       │       └── {Component}.module.css
-│   │       ├── hooks/            # 機能固有フック
-│   │       │   └── use{Feature}.ts
-│   │       ├── api/              # API呼び出し
-│   │       │   └── {feature}.api.ts
-│   │       ├── stores/           # 状態管理
-│   │       │   └── {feature}.store.ts
-│   │       ├── types/            # 型定義
-│   │       │   └── {feature}.types.ts
-│   │       └── index.ts          # barrel export
-│   │
-│   ├── components/               # 共通UIコンポーネント
-│   │   ├── ui/                   # デザインシステム実装
-│   │   │   ├── Button/
-│   │   │   │   ├── index.ts
-│   │   │   │   ├── Button.tsx
-│   │   │   │   ├── Button.stories.tsx
-│   │   │   │   ├── Button.test.tsx
-│   │   │   │   └── Button.module.css
-│   │   │   ├── Input/
-│   │   │   ├── Modal/
-│   │   │   └── index.ts
-│   │   └── layouts/              # レイアウト
-│   │       ├── Header/
-│   │       ├── Sidebar/
-│   │       └── Footer/
-│   │
-│   ├── hooks/                    # 共通フック
-│   │   ├── useMediaQuery.ts
-│   │   └── useDebounce.ts
-│   │
-│   ├── lib/                      # ユーティリティ
-│   │   ├── api-client.ts         # APIクライアント
-│   │   ├── utils/
-│   │   └── validations/
-│   │
-│   ├── styles/                   # グローバルスタイル
-│   │   ├── globals.css
-│   │   ├── tokens.css            # デザイントークン
-│   │   └── reset.css
-│   │
-│   └── types/                    # グローバル型定義
-│       └── global.d.ts
+├── app/                          # Next.js App Router
+│   ├── (routes)/                 # ルーティング
+│   │   ├── (auth)/               # 認証が必要なページ
+│   │   └── (public)/             # 公開ページ
+│   ├── layout.tsx
+│   └── providers.tsx
 │
-├── e2e/                          # E2Eテスト
+├── features/                     # 機能モジュール（★メイン）
+│   └── {feature}/                # 例: checkout, auth, dashboard
+│       ├── components/           # 機能固有コンポーネント
+│       │   └── {Component}/
+│       │       ├── index.ts
+│       │       ├── {Component}.tsx
+│       │       ├── {Component}.stories.tsx  # CDD
+│       │       ├── {Component}.test.tsx     # TDD
+│       │       └── {Component}.module.css
+│       ├── hooks/                # 機能固有フック
+│       │   └── use{Feature}.ts
+│       ├── api/                  # API呼び出し
+│       │   └── {feature}.api.ts
+│       ├── stores/               # 状態管理
+│       │   └── {feature}.store.ts
+│       ├── types/                # 型定義
+│       │   └── {feature}.types.ts
+│       └── index.ts              # barrel export
+│
+├── components/                   # 共通UIコンポーネント
+│   ├── ui/                       # デザインシステム実装
+│   │   ├── Button/
+│   │   │   ├── index.ts
+│   │   │   ├── Button.tsx
+│   │   │   ├── Button.stories.tsx
+│   │   │   ├── Button.test.tsx
+│   │   │   └── Button.module.css
+│   │   ├── Input/
+│   │   ├── Modal/
+│   │   └── index.ts
+│   └── layouts/                  # レイアウト
+│       ├── Header/
+│       ├── Sidebar/
+│       └── Footer/
+│
+├── hooks/                        # 共通フック
+│   ├── useMediaQuery.ts
+│   └── useDebounce.ts
+│
+├── lib/                          # ユーティリティ
+│   ├── api-client.ts             # APIクライアント
+│   ├── utils/
+│   └── validations/
+│
+├── styles/                       # グローバルスタイル
+│   ├── globals.css
+│   ├── tokens.css                # デザイントークン
+│   └── reset.css
+│
+├── types/                        # グローバル型定義
+│   └── global.d.ts
+│
+├── test/                         # フロントエンドテスト
 │   └── {feature}.spec.ts
 │
 └── package.json
@@ -360,94 +399,87 @@ frontend/
 ### バックエンド構成（Clean Architecture + DDD）
 
 ```
-backend/
-├── src/
-│   ├── main.ts                   # エントリーポイント
-│   │
-│   ├── domain/                   # ドメイン層（★ビジネスの核心）
-│   │   ├── entities/             # エンティティ
-│   │   │   └── {entity}/
-│   │   │       ├── {entity}.entity.ts
-│   │   │       ├── {entity}.entity.test.ts
-│   │   │       └── index.ts
-│   │   ├── value-objects/        # 値オブジェクト
-│   │   │   └── {vo}.vo.ts
-│   │   ├── aggregates/           # 集約
-│   │   │   └── {aggregate}/
-│   │   ├── events/               # ドメインイベント
-│   │   │   └── {event}.event.ts
-│   │   ├── repositories/         # リポジトリIF（Ports）
-│   │   │   └── {entity}.repository.ts
-│   │   └── services/             # ドメインサービス
-│   │       └── {domain}.service.ts
-│   │
-│   ├── application/              # アプリケーション層
-│   │   ├── use-cases/            # ユースケース
-│   │   │   └── {feature}/
-│   │   │       ├── {action}.use-case.ts
-│   │   │       ├── {action}.use-case.test.ts
-│   │   │       └── index.ts
-│   │   ├── commands/             # CQRS Write
-│   │   │   └── {command}.command.ts
-│   │   ├── queries/              # CQRS Read
-│   │   │   └── {query}.query.ts
-│   │   ├── dtos/                 # DTO
-│   │   │   ├── request/
-│   │   │   └── response/
-│   │   └── ports/                # ポート定義
-│   │       ├── inbound/
-│   │       └── outbound/
-│   │
-│   ├── infrastructure/           # インフラ層
-│   │   ├── database/
-│   │   │   ├── prisma/           # Prisma
-│   │   │   │   ├── schema.prisma
-│   │   │   │   └── migrations/
-│   │   │   └── repositories/     # リポジトリ実装（Adapters）
-│   │   │       └── {entity}.repository.impl.ts
-│   │   ├── external/             # 外部API連携
-│   │   │   └── {service}/
-│   │   │       ├── {service}.client.ts
-│   │   │       └── {service}.adapter.ts
-│   │   ├── messaging/            # メッセージング
-│   │   │   └── {queue}.producer.ts
-│   │   ├── cache/                # キャッシュ
-│   │   │   └── redis.service.ts
-│   │   └── config/               # 設定
-│   │       └── {config}.config.ts
-│   │
-│   ├── presentation/             # プレゼンテーション層（API）
-│   │   ├── controllers/
-│   │   │   └── {feature}/
-│   │   │       ├── {feature}.controller.ts
-│   │   │       ├── {feature}.controller.test.ts
-│   │   │       └── index.ts
-│   │   ├── middleware/
-│   │   │   ├── auth.middleware.ts
-│   │   │   └── logging.middleware.ts
-│   │   ├── guards/
-│   │   │   └── roles.guard.ts
-│   │   ├── interceptors/
-│   │   │   └── transform.interceptor.ts
-│   │   └── filters/
-│   │       └── http-exception.filter.ts
-│   │
-│   ├── batch/                    # バッチ処理
-│   │   └── {batch}/
-│   │       ├── {batch}.job.ts
-│   │       └── {batch}.job.test.ts
-│   │
-│   └── shared/                   # 共通
-│       ├── constants/
-│       ├── utils/
-│       ├── exceptions/
-│       └── decorators/
+src/backend/
+├── main.py                       # エントリーポイント
 │
-├── test/                         # 統合テスト
-│   ├── e2e/
-│   └── fixtures/
+├── domain/                       # ドメイン層（★ビジネスの核心）
+│   ├── entities/                 # エンティティ
+│   │   └── {entity}/
+│   │       ├── {entity}.py
+│   │       ├── {entity}_test.py
+│   │       └── __init__.py
+│   ├── value_objects/            # 値オブジェクト
+│   │   └── {vo}.py
+│   ├── aggregates/               # 集約
+│   │   └── {aggregate}/
+│   ├── events/                   # ドメインイベント
+│   │   └── {event}.py
+│   ├── repositories/             # リポジトリIF（Ports）
+│   │   └── {entity}_repository.py
+│   └── services/                 # ドメインサービス
+│       └── {domain}_service.py
 │
-└── package.json
+├── application/                  # アプリケーション層
+│   ├── use_cases/                # ユースケース
+│   │   └── {feature}/
+│   │       ├── {action}_use_case.py
+│   │       ├── {action}_use_case_test.py
+│   │       └── __init__.py
+│   ├── commands/                 # CQRS Write
+│   │   └── {command}_command.py
+│   ├── queries/                  # CQRS Read
+│   │   └── {query}_query.py
+│   ├── dtos/                     # DTO
+│   │   ├── request/
+│   │   └── response/
+│   └── ports/                    # ポート定義
+│       ├── inbound/
+│       └── outbound/
+│
+├── infrastructure/               # インフラ層
+│   ├── database/
+│   │   ├── models/               # SQLAlchemy Models
+│   │   ├── migrations/           # Alembic migrations
+│   │   └── repositories/         # リポジトリ実装（Adapters）
+│   │       └── {entity}_repository_impl.py
+│   ├── external/                 # 外部API連携
+│   │   └── {service}/
+│   │       ├── {service}_client.py
+│   │       └── {service}_adapter.py
+│   ├── messaging/                # メッセージング
+│   │   └── {queue}_producer.py
+│   ├── cache/                    # キャッシュ
+│   │   └── redis_service.py
+│   └── config/                   # 設定
+│       └── {config}_config.py
+│
+├── presentation/                 # プレゼンテーション層（API）
+│   ├── routers/                  # FastAPI routers
+│   │   └── {feature}/
+│   │       ├── {feature}_router.py
+│   │       ├── {feature}_router_test.py
+│   │       └── __init__.py
+│   ├── middleware/
+│   │   ├── auth_middleware.py
+│   │   └── logging_middleware.py
+│   ├── dependencies/             # FastAPI dependencies
+│   │   └── auth.py
+│   └── schemas/                  # Pydantic schemas
+│       └── {feature}_schema.py
+│
+├── batch/                        # バッチ処理
+│   └── {batch}/
+│       ├── {batch}_job.py
+│       └── {batch}_job_test.py
+│
+├── shared/                       # 共通
+│   ├── constants/
+│   ├── utils/
+│   └── exceptions/
+│
+└── tests/                        # 統合テスト
+    ├── e2e/
+    └── fixtures/
 ```
 
 ---
@@ -470,17 +502,19 @@ backend/
 
 ### ドキュメントとソースコードの対応表
 
+**重要**: ソースコードは必ず `src/frontend/` または `src/backend/` 以下に配置すること。
+
 | ドキュメント | フロントエンド | バックエンド |
 |-------------|---------------|-------------|
-| `docs/product/features/{機能}.md` | `src/features/{機能}/` | `src/application/use-cases/{機能}/` |
-| `docs/product/components/{コンポーネント}.md` | `src/components/ui/{コンポーネント}/` | - |
-| `docs/product/screens/{画面}.md` | `src/app/(routes)/{画面}/` | - |
-| `docs/product/api/{API}.md` | `src/features/{機能}/api/` | `src/presentation/controllers/{機能}/` |
-| `docs/product/events/{イベント}.md` | - | `src/domain/events/` |
-| `docs/product/database/{テーブル}.md` | - | `src/infrastructure/database/` |
-| `docs/architecture/modules/{モジュール}.md` | `src/features/{モジュール}/` | `src/domain/` + `src/application/` |
-| `docs/architecture/batch/{バッチ}.md` | - | `src/batch/{バッチ}/` |
-| `docs/architecture/integrations/{外部}.md` | - | `src/infrastructure/external/{外部}/` |
+| `docs/product/features/{機能}.md` | `src/frontend/features/{機能}/` | `src/backend/application/use-cases/{機能}/` |
+| `docs/product/components/{コンポーネント}.md` | `src/frontend/components/ui/{コンポーネント}/` | - |
+| `docs/product/screens/{画面}.md` | `src/frontend/app/(routes)/{画面}/` | - |
+| `docs/product/api/{API}.md` | `src/frontend/features/{機能}/api/` | `src/backend/presentation/controllers/{機能}/` |
+| `docs/product/events/{イベント}.md` | - | `src/backend/domain/events/` |
+| `docs/product/database/{テーブル}.md` | - | `src/backend/infrastructure/database/` |
+| `docs/architecture/modules/{モジュール}.md` | `src/frontend/features/{モジュール}/` | `src/backend/domain/` + `src/backend/application/` |
+| `docs/architecture/batch/{バッチ}.md` | - | `src/backend/batch/{バッチ}/` |
+| `docs/architecture/integrations/{外部}.md` | - | `src/backend/infrastructure/external/{外部}/` |
 
 ---
 

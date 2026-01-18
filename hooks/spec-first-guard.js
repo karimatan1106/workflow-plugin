@@ -42,7 +42,13 @@ const path = require('path');
 // 設定
 const SPEC_DIR = process.env.SPEC_DIR || 'docs/specs';
 const CODE_DIRS = (process.env.CODE_DIRS || 'src').split(',').map((d) => d.trim());
-const STATE_FILE = path.join(process.cwd(), '.claude-spec-guard-state.json');
+const STATE_DIR = process.env.STATE_DIR || path.join(process.cwd(), '.claude', 'state');
+const STATE_FILE = path.join(STATE_DIR, 'spec-guard-state.json');
+
+// 状態ディレクトリを作成
+if (!fs.existsSync(STATE_DIR)) {
+  fs.mkdirSync(STATE_DIR, { recursive: true });
+}
 
 /**
  * 状態を読み込む

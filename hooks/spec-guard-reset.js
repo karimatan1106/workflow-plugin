@@ -35,7 +35,13 @@ const fs = require('fs');
 const path = require('path');
 
 // 状態ファイルのパス
-const STATE_FILE = path.join(process.cwd(), '.claude-spec-guard-state.json');
+const STATE_DIR = process.env.STATE_DIR || path.join(process.cwd(), '.claude', 'state');
+const STATE_FILE = path.join(STATE_DIR, 'spec-guard-state.json');
+
+// 状態ディレクトリを作成
+if (!fs.existsSync(STATE_DIR)) {
+  fs.mkdirSync(STATE_DIR, { recursive: true });
+}
 
 /**
  * 状態をリセット
