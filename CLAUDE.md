@@ -198,6 +198,56 @@ parallel_verification のサブフェーズ。エンドツーエンドテスト�
     - 必ず refactoring → parallel_quality を経てから
 11. **各フェーズ完了時は残りのフェーズ数と次のフェーズを報告すること**
     - 例: 「implementationフェーズが完了しました。次は refactoring → 残り9フェーズ」
+12. **テスト実行時は出力先を必ず指定すること**
+    - ルートディレクトリに一時ファイルを散らかさない
+    - 下記「テスト出力・一時ファイルの配置ルール」に従う
+
+---
+
+## テスト出力・一時ファイルの配置ルール
+
+テスト実行時に生成されるファイルは、ルートディレクトリに散らかさないこと。
+
+### 配置先ルール
+
+| ファイル種別 | 配置先 | 例 |
+|-------------|--------|-----|
+| テスト用入力ファイル | `tests/fixtures/input/` | `tests/fixtures/input/sample.pdf` |
+| テスト生成物（出力） | `tests/fixtures/output/` | `tests/fixtures/output/result.pptx` |
+| スクリーンショット | `tests/screenshots/` | `tests/screenshots/home-page.png` |
+| 一時ファイル | `.tmp/` または システムの `/tmp/` | `.tmp/processing_12345.tmp` |
+| テストスクリプト | `tests/` または `src/**/tests/` | `tests/integration/test_api.py` |
+
+### 禁止事項
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  ルートディレクトリへの以下のファイル配置は禁止             │
+├─────────────────────────────────────────────────────────────┤
+│  - test_*.py, test_*.js（テストスクリプト）                │
+│  - *.pptx, *.pdf, *.png（テスト生成物）                    │
+│  - screenshot*.png                                          │
+│  - *_output.*, *_result.*（出力ファイル）                  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Bashコマンド実行時の注意
+
+```bash
+# ❌ 悪い例（ルートに出力）
+python test_conversion.py
+pytest --screenshot-dir=./
+
+# ✅ 良い例（適切なディレクトリに出力）
+python tests/integration/test_conversion.py
+pytest --screenshot-dir=tests/screenshots/
+```
+
+### クリーンアップ
+
+テスト完了後、不要な一時ファイルは削除すること：
+- `.tmp/` ディレクトリの内容
+- `tests/fixtures/output/` の不要な生成物
 
 ---
 
