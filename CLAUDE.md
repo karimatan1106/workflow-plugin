@@ -1206,7 +1206,7 @@ commit → push → ci_verification → deploy → completed
 
 ```
 docs/workflows/
-└── テトリスWebゲーム/
+└── {タスク名}/
     ├── research.md           # 調査結果
     ├── requirements.md       # 要件定義
     ├── spec.md               # 仕様書
@@ -1217,25 +1217,33 @@ docs/workflows/
     └── test-design.md        # テスト設計
 ```
 
+**例**: `docs/workflows/ユーザー認証機能/`, `docs/workflows/決済処理改善/`
+
 ### エンタープライズ配置の例
 
 ```
 docs/
 ├── product/
 │   ├── features/
-│   │   └── tetris-game.md           # ← requirements で作成
+│   │   └── {機能名}.md              # ← requirements で作成
 │   ├── screens/
-│   │   └── game-screen.md           # ← ui_design で作成
+│   │   └── {画面名}.md              # ← ui_design で作成
 │   └── diagrams/
-│       ├── tetris.state-machine.mmd # ← state_machine で作成
-│       └── tetris.flowchart.mmd     # ← flowchart で作成
+│       ├── {対象}.state-machine.mmd # ← state_machine で作成
+│       └── {対象}.flowchart.mmd     # ← flowchart で作成
 ├── security/
 │   └── threat-models/
-│       └── tetris-game.md           # ← threat_modeling で作成
+│       └── {機能名}.md              # ← threat_modeling で作成
 └── testing/
     └── plans/
-        └── tetris-game.md           # ← test_design で作成
+        └── {機能名}.md              # ← test_design で作成
 ```
+
+**具体例**:
+- `docs/product/features/user-authentication.md`
+- `docs/product/screens/login-screen.md`
+- `docs/product/diagrams/order.state-machine.mmd`
+- `docs/security/threat-models/payment-system.md`
 
 ---
 
