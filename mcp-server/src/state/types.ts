@@ -263,6 +263,23 @@ export interface ListResult extends ToolResult {
 }
 
 /**
+ * ワークフローコンテキスト
+ *
+ * PostToolUseフックに渡されるコンテキスト情報。
+ * 成果物チェックなどで使用される。
+ */
+export interface WorkflowContext {
+  /** ワークフローディレクトリパス */
+  workflowDir: string;
+  /** 遷移先フェーズ（nextの場合）または現在フェーズ（complete_subの場合） */
+  phase: PhaseName;
+  /** 遷移前フェーズ */
+  currentPhase: PhaseName;
+  /** 完了したサブフェーズ名（complete_subの場合のみ） */
+  subPhase?: SubPhaseName;
+}
+
+/**
  * 次フェーズコマンドの結果
  *
  * workflow_next ツールの戻り値。
@@ -274,6 +291,8 @@ export interface NextResult extends ToolResult {
   to?: PhaseName;
   /** 遷移先フェーズの説明 */
   description?: string;
+  /** フック用コンテキスト */
+  workflow_context?: WorkflowContext;
 }
 
 /**
@@ -322,6 +341,8 @@ export interface CompleteSubResult extends ToolResult {
   remaining?: SubPhaseName[];
   /** 全サブフェーズが完了したかどうか */
   allCompleted?: boolean;
+  /** フック用コンテキスト */
+  workflow_context?: WorkflowContext;
 }
 
 /**

@@ -83,6 +83,11 @@ export function workflowNext(): NextResult {
       to: nextPhase,
       description: PHASE_DESCRIPTIONS[nextPhase],
       message: `${currentPhase} → ${nextPhase} に遷移しました`,
+      workflow_context: {
+        workflowDir: taskState.workflowDir,
+        phase: nextPhase,
+        currentPhase: currentPhase,
+      },
     };
   }) as NextResult;
 }

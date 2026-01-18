@@ -172,8 +172,8 @@ const TOOL_HANDLERS: Record<ToolName, ToolHandler> = {
   workflow_status: () => workflowStatus(),
 
   workflow_start: (args) => {
-    const { taskName, size } = args as ToolArguments['workflow_start'];
-    return workflowStart(taskName, size);
+    const { taskName } = args as ToolArguments['workflow_start'];
+    return workflowStart(taskName);
   },
 
   workflow_next: () => workflowNext(),

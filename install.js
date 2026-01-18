@@ -112,39 +112,92 @@ function setupPhases() {
 }
 
 /**
- * 2. スキルのハードリンク作成
+ * 2. スキルのハードリンク作成（全スキル対応）
  */
 function setupSkills() {
   log('スキルをセットアップ中...', 'info');
 
-  const srcSkill = path.join(PLUGIN_DIR, 'skills', 'workflow', 'SKILL.md');
-  const destSkillDir = path.join(SKILLS_DIR, 'workflow');
-  const destSkill = path.join(destSkillDir, 'SKILL.md');
+  const srcSkillsDir = path.join(PLUGIN_DIR, 'skills');
 
-  // ディレクトリ作成
-  if (!fs.existsSync(destSkillDir)) {
-    fs.mkdirSync(destSkillDir, { recursive: true });
+  // skillsディレクトリ内の全スキルを処理
+  const skillDirs = fs.readdirSync(srcSkillsDir, { withFileTypes: true })
+    .filter(d => d.isDirectory())
+    .map(d => d.name);
+
+  let created = 0;
+  let skipped = 0;
+
+  for (const skillName of skillDirs) {
+    const srcSkill = path.join(srcSkillsDir, skillName, 'SKILL.md');
+    const destSkillDir = path.join(SKILLS_DIR, skillName);
+    const destSkill = path.join(destSkillDir, 'SKILL.md');
+
+    // SKILL.mdが存在しない場合はスキップ
+    if (!fs.existsSync(srcSkill)) continue;
+
+    // ディレクトリ作成
+    if (!fs.existsSync(destSkillDir)) {
+      fs.mkdirSync(destSkillDir, { recursive: true });
+    }
+
+    // 既存ファイルの確認
+    if (fs.existsSync(destSkill)) {
+      const srcStat = fs.statSync(srcSkill);
+      const destStat = fs.statSync(destSkill);
+
+      // 同じinode（ハードリンク）かチェック
+      if (srcStat.ino === destStat.ino) {
+        skipped++;
+        continue;
+      }
+
+      // 異なるファイルなら削除
+      fs.unlinkSync(destSkill);
+    }
+
+    // ハードリンク作成
+    fs.linkSync(srcSkill, destSkill);
+    created++;
   }
 
+  if (created > 0) {
+    log(`スキル: ${created}個をハードリンク作成`, 'success');
+  }
+  if (skipped > 0) {
+    log(`スキル: ${skipped}個は既にリンク済み`, 'success');
+  }
+}
+
+/**
+ * 2.5. CLAUDE.mdのハードリンク作成
+ */
+function setupClaudeMd() {
+  log('CLAUDE.mdをセットアップ中...', 'info');
+
+  const srcFile = path.join(PLUGIN_DIR, 'CLAUDE.md');
+  const destFile = path.join(PROJECT_ROOT, 'CLAUDE.md');
+
   // 既存ファイルの確認
-  if (fs.existsSync(destSkill)) {
-    const srcStat = fs.statSync(srcSkill);
-    const destStat = fs.statSync(destSkill);
+  if (fs.existsSync(destFile)) {
+    const srcStat = fs.statSync(srcFile);
+    const destStat = fs.statSync(destFile);
 
     // 同じinode（ハードリンク）かチェック
     if (srcStat.ino === destStat.ino) {
-      log('スキル: 既にリンク済み', 'success');
+      log('CLAUDE.md: 既にリンク済み', 'success');
       return;
     }
 
-    // 異なるファイルなら削除
-    fs.unlinkSync(destSkill);
-    log('古いSKILL.mdを削除', 'warn');
+    // 異なるファイルならバックアップして削除
+    const backupPath = path.join(PROJECT_ROOT, 'CLAUDE.md.backup');
+    fs.copyFileSync(destFile, backupPath);
+    fs.unlinkSync(destFile);
+    log('既存CLAUDE.mdをバックアップ', 'warn');
   }
 
   // ハードリンク作成
-  fs.linkSync(srcSkill, destSkill);
-  log('スキル: ハードリンク作成完了', 'success');
+  fs.linkSync(srcFile, destFile);
+  log('CLAUDE.md: ハードリンク作成完了', 'success');
 }
 
 /**
@@ -319,6 +372,7 @@ async function main() {
   try {
     setupPhases();
     setupSkills();
+    setupClaudeMd();
     mergeSettings();
     setupMcpServer();
     buildMcpServer();
@@ -327,9 +381,11 @@ async function main() {
     console.log(colors.green('  インストール完了！'));
     console.log(colors.green('═══════════════════════════════════════'));
     console.log('\n使用方法:');
-    console.log('  /workflow start <タスク名>  - タスク開始');
-    console.log('  /workflow status           - 状態確認');
-    console.log('  /workflow next             - 次フェーズへ\n');
+    console.log('  /project init <プロジェクト名>  - プロジェクト構造を生成');
+    console.log('  /workflow start <タスク名>      - タスク開始');
+    console.log('  /workflow status               - 状態確認');
+    console.log('  /workflow next                 - 次フェーズへ');
+    console.log('\n詳細は CLAUDE.md を参照してください。\n');
 
   } catch (e) {
     log(`インストール失敗: ${e.message}`, 'error');

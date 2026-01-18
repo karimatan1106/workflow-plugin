@@ -131,45 +131,46 @@ test_impl（Red）→ implementation（Green）→ refactoring（Refactor）
 
 ## プロジェクト構造ガイダンス
 
-新規プロジェクト作成時、Clean Architecture + DDDに基づく構造を推奨します。
+詳細は **CLAUDE.md「推奨プロジェクト構造」** を参照。
 
-### 推奨ディレクトリ構成
+### 概要
 
 ```
-src/
-├── domain/           # ビジネスロジック（依存なし）
-│   ├── entities/     # エンティティ
-│   ├── value-objects/# 値オブジェクト
-│   ├── aggregates/   # 集約
-│   └── repositories/ # リポジトリインターフェース
+project/
+├── frontend/          # フロントエンド（React/Next.js + Storybook）
+│   └── src/
+│       ├── features/  # 機能モジュール（Feature-First）
+│       └── components/# 共通UIコンポーネント（CDD対応）
 │
-├── application/      # ユースケース
-│   ├── use-cases/    # ユースケース
-│   ├── commands/     # コマンド（CQRS）
-│   └── queries/      # クエリ（CQRS）
+├── backend/           # バックエンド（NestJS - Clean Architecture）
+│   └── src/
+│       ├── domain/    # ドメイン層
+│       ├── application/# アプリケーション層
+│       ├── infrastructure/# インフラ層
+│       └── presentation/# プレゼンテーション層
 │
-├── infrastructure/   # 外部依存の実装
-│   ├── database/     # DB実装
-│   └── external-apis/# 外部API
-│
-└── presentation/     # UI/API層
-    ├── controllers/  # コントローラー
-    └── dtos/         # DTO
+└── docs/              # ドキュメント
 ```
 
-### フェーズ別考慮事項
+### CDD + TDD サイクル
 
-| フェーズ | Clean Architecture観点 |
-|---------|----------------------|
-| requirements | ドメイン境界の特定、ユビキタス言語の定義 |
-| planning | 層構成の決定、モジュール分割、集約単位 |
-| test_design | 層ごとのテスト戦略（Domain:単体、App:統合、E2E） |
+```
+ui_design(ストーリー定義) → test_impl(Red) → implementation(Green) → refactoring
+```
 
-### 適用判断
+- **ui_design**: コンポーネント仕様にStorybookストーリー定義を含める
+- **test_impl**: ストーリー実装（.stories.tsx）+ テスト実装 = Red Phase
+- **implementation**: コンポーネント実装してストーリー・テストを通す = Green Phase
 
-**推奨:** 複数チーム開発、長期メンテナンス、複雑なビジネスロジック
+### ドキュメントとソースコードの対応
 
-**不要:** プロトタイプ/PoC、単純なCRUD、スクリプト
+| ドキュメント | フロントエンド | バックエンド |
+|-------------|---------------|-------------|
+| `docs/product/features/` | `src/features/` | `src/application/use-cases/` |
+| `docs/product/components/` | `src/components/ui/` | - |
+| `docs/product/api/` | `src/features/{機能}/api/` | `src/presentation/controllers/` |
+
+詳細な対応表は **CLAUDE.md** を参照。
 
 ## 成果物ルール
 

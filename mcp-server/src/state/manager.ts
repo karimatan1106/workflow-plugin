@@ -33,8 +33,11 @@ const STATE_DIR = process.env.STATE_DIR || path.join(process.cwd(), '.claude', '
 /** ワークフローディレクトリのパス */
 const WORKFLOW_DIR = process.env.WORKFLOW_DIR || path.join(STATE_DIR, 'workflows');
 
-/** ドキュメントディレクトリのパス（成果物配置用） */
-const DOCS_DIR = process.env.DOCS_DIR || path.join(process.cwd(), 'docs', 'specs', 'domains');
+/** ドキュメントディレクトリのパス（ワークフロー内部用） */
+const DOCS_DIR = process.env.DOCS_DIR || path.join(process.cwd(), 'docs', 'workflows');
+
+/** ドキュメントベースディレクトリのパス（エンタープライズ構成用） */
+const DOCS_BASE = process.env.DOCS_BASE || path.join(process.cwd(), 'docs');
 
 /** グローバル状態ファイルのパス */
 const GLOBAL_STATE_FILE = process.env.GLOBAL_STATE_FILE || path.join(STATE_DIR, 'workflow-state.json');
@@ -307,6 +310,9 @@ export class WorkflowStateManager {
 
     // ログファイル作成
     this.createTaskLogFile(taskDir, taskName, taskId, taskSize, docsDir);
+
+    // 成果物テンプレート作成
+    this.createArtifactTemplates(docsDir, taskName);
 
     // グローバル状態更新
     this.addTaskToGlobalState(taskId, taskName, taskDir, taskSize);
@@ -602,6 +608,24 @@ export class WorkflowStateManager {
     task.phase = 'research';
     this.writeGlobalState(globalState);
   }
+
+  /**
+   * ワークフロー成果物ディレクトリを作成
+   *
+   * タスク開始時に docs/workflows/{taskName}/ ディレクトリのみを作成する。
+   * プロダクト仕様（docs/product/）への配置は手動で行う。
+   *
+   * @param docsDir ドキュメントディレクトリ（ワークフロー成果物用）
+   * @param _taskName タスク名（未使用、後方互換性のため残す）
+   */
+  private createArtifactTemplates(docsDir: string, _taskName: string): void {
+    // ワークフロー成果物ディレクトリのみを作成
+    // プロダクト仕様（docs/product/）へのテンプレート生成は行わない
+    if (!fs.existsSync(docsDir)) {
+      fs.mkdirSync(docsDir, { recursive: true });
+    }
+  }
+
 }
 
 // ============================================================================

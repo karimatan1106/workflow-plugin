@@ -75,6 +75,12 @@ export function workflowCompleteSub(subPhase: string): CompleteSubResult {
       remaining,
       allCompleted,
       message,
+      workflow_context: {
+        workflowDir: taskState.workflowDir,
+        phase: currentPhase,
+        currentPhase: currentPhase,
+        subPhase: subPhaseName,
+      },
     };
   }) as CompleteSubResult;
 }

@@ -3,6 +3,9 @@
  * @spec docs/workflows/20260117_150655_ワ-クフロ-スキル未実装機能の追加/test-design.md
  *
  * テスト設計書のテストID: WN-001 〜 WN-007
+ *
+ * 注: small/mediumサイズは廃止されました。全てのタスクはlarge（18フェーズ）で実行されます。
+ * 2026-01-18 更新: テストをlarge（18フェーズ）の順序に合わせて修正
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -34,7 +37,7 @@ import { stateManager } from '../../state/manager.js';
 /**
  * テスト用のモックタスク状態を生成
  */
-function createMockTaskState(phase: PhaseName, taskSize?: 'small' | 'medium' | 'large') {
+function createMockTaskState(phase: PhaseName, taskSize?: 'large') {
   return {
     phase,
     taskId: '20260117_150000',
@@ -51,7 +54,7 @@ function createMockTaskState(phase: PhaseName, taskSize?: 'small' | 'medium' | '
 /**
  * テスト用のモックアクティブタスクを生成
  */
-function createMockActiveTask(phase: PhaseName, taskSize?: 'small' | 'medium' | 'large') {
+function createMockActiveTask(phase: PhaseName, taskSize?: 'large') {
   return {
     taskId: '20260117_150000',
     taskName: 'テストタスク',
@@ -61,7 +64,7 @@ function createMockActiveTask(phase: PhaseName, taskSize?: 'small' | 'medium' | 
   };
 }
 
-describe('next.ts - workflow_next ツールテスト (Smallタスク)', () => {
+describe('next.ts - workflow_next ツールテスト (基本遷移)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -70,14 +73,13 @@ describe('next.ts - workflow_next ツールテスト (Smallタスク)', () => {
     vi.resetAllMocks();
   });
 
-  describe('WN-001: Smallタスク: research → requirements へ遷移', () => {
+  describe('WN-001: research → requirements へ遷移', () => {
     it('from: "research", to: "requirements" が返る', () => {
-      // Smallタスクのモック設定
       vi.mocked(stateManager.getCurrentTask).mockReturnValue(
-        createMockActiveTask('research', 'small')
+        createMockActiveTask('research', 'large')
       );
       vi.mocked(stateManager.readTaskState).mockReturnValue(
-        createMockTaskState('research', 'small')
+        createMockTaskState('research', 'large')
       );
 
       const result = workflowNext() as NextResult;
@@ -88,45 +90,39 @@ describe('next.ts - workflow_next ツールテスト (Smallタスク)', () => {
     });
   });
 
-  describe('WN-002: Smallタスク: requirements → implementation へ遷移', () => {
-    it('from: "requirements", to: "implementation" が返る', () => {
+  describe('WN-002: requirements → parallel_analysis へ遷移', () => {
+    it('from: "requirements", to: "parallel_analysis" が返る', () => {
       vi.mocked(stateManager.getCurrentTask).mockReturnValue(
-        createMockActiveTask('requirements', 'small')
+        createMockActiveTask('requirements', 'large')
       );
       vi.mocked(stateManager.readTaskState).mockReturnValue(
-        createMockTaskState('requirements', 'small')
+        createMockTaskState('requirements', 'large')
       );
 
       const result = workflowNext() as NextResult;
 
       expect(result.success).toBe(true);
       expect(result.from).toBe('requirements');
-      // Smallでは design 関連フェーズをスキップして implementation へ
-      expect(result.to).toBe('implementation');
+      // large（18フェーズ）では requirements → parallel_analysis
+      expect(result.to).toBe('parallel_analysis');
     });
   });
 
-  describe('WN-003: Smallタスク: 全6フェーズ正常遷移', () => {
-    it('research → requirements → implementation → testing → commit → completed', () => {
-      const smallPhases: PhaseName[] = [
-        'research',
-        'requirements',
-        'implementation',
-        'testing',
-        'commit',
-        'completed',
+  describe('WN-003: 基本フェーズ遷移（非並列・非承認フェーズ）', () => {
+    it('test_design → test_impl → implementation → refactoring', () => {
+      // 並列フェーズと承認フェーズを除いた基本遷移をテスト
+      const basicTransitions: Array<[PhaseName, PhaseName]> = [
+        ['test_design', 'test_impl'],
+        ['test_impl', 'implementation'],
+        ['implementation', 'refactoring'],
       ];
 
-      // 各フェーズ遷移をテスト
-      for (let i = 0; i < smallPhases.length - 1; i++) {
-        const currentPhase = smallPhases[i];
-        const nextPhase = smallPhases[i + 1];
-
+      for (const [currentPhase, nextPhase] of basicTransitions) {
         vi.mocked(stateManager.getCurrentTask).mockReturnValue(
-          createMockActiveTask(currentPhase, 'small')
+          createMockActiveTask(currentPhase, 'large')
         );
         vi.mocked(stateManager.readTaskState).mockReturnValue(
-          createMockTaskState(currentPhase, 'small')
+          createMockTaskState(currentPhase, 'large')
         );
 
         const result = workflowNext() as NextResult;
@@ -141,7 +137,7 @@ describe('next.ts - workflow_next ツールテスト (Smallタスク)', () => {
   });
 });
 
-describe('next.ts - workflow_next ツールテスト (Mediumタスク)', () => {
+describe('next.ts - workflow_next ツールテスト (18フェーズ遷移)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -150,52 +146,40 @@ describe('next.ts - workflow_next ツールテスト (Mediumタスク)', () => {
     vi.resetAllMocks();
   });
 
-  describe('WN-004: Mediumタスク: 全12フェーズ正常遷移', () => {
-    it('Mediumの全フェーズを順番に遷移できる', () => {
-      // Mediumフェーズの期待される順序
-      const mediumPhases: PhaseName[] = [
-        'research',
-        'requirements',
-        'parallel_design',
-        'design_review',
-        'test_design',
-        'test_impl',
-        'implementation',
-        'refactoring',
-        'parallel_quality',
-        'testing',
-        'commit',
-        'completed',
-      ];
-
-      // design_review は承認が必要なので、その前後をスキップしてテスト
-      // design_review以外のフェーズ遷移をテスト
+  describe('WN-004: 18フェーズ: 基本フェーズ遷移', () => {
+    it('承認・並列以外のフェーズを順番に遷移できる', () => {
+      // 承認・並列フェーズを除いた基本遷移をテスト
       const testableTransitions: Array<[PhaseName, PhaseName]> = [
         ['research', 'requirements'],
-        ['requirements', 'parallel_design'],
-        // parallel_design → design_review は承認が必要なのでスキップ
-        // design_review → test_design は承認後なのでスキップ
+        ['requirements', 'parallel_analysis'],
+        // parallel_analysis → parallel_design は並列完了後
+        // parallel_design → design_review は並列完了後
+        // design_review → test_design は承認後
         ['test_design', 'test_impl'],
         ['test_impl', 'implementation'],
         ['implementation', 'refactoring'],
         ['refactoring', 'parallel_quality'],
         // parallel_quality → testing は並列完了後
-        ['testing', 'commit'],
-        ['commit', 'completed'],
+        ['testing', 'parallel_verification'],
+        // parallel_verification → docs_update は並列完了後
+        ['docs_update', 'commit'],
+        ['commit', 'push'],
+        ['push', 'ci_verification'],
+        ['ci_verification', 'deploy'],
+        ['deploy', 'completed'],
       ];
 
       for (const [currentPhase, expectedNextPhase] of testableTransitions) {
         vi.mocked(stateManager.getCurrentTask).mockReturnValue(
-          createMockActiveTask(currentPhase, 'medium')
+          createMockActiveTask(currentPhase, 'large')
         );
         vi.mocked(stateManager.readTaskState).mockReturnValue(
-          createMockTaskState(currentPhase, 'medium')
+          createMockTaskState(currentPhase, 'large')
         );
         vi.mocked(stateManager.getIncompleteSubPhases).mockReturnValue([]);
 
         const result = workflowNext() as NextResult;
 
-        // 並列フェーズや承認フェーズは別途処理が必要なので、基本遷移のみ確認
         if (result.success) {
           expect(result.from).toBe(currentPhase);
           expect(result.to).toBe(expectedNextPhase);
@@ -265,6 +249,77 @@ describe('next.ts - workflow_next ツールテスト (Largeタスク)', () => {
   });
 });
 
+describe('next.ts - workflow_next workflow_context テスト', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
+
+  describe('WC-001: workflow_next が workflow_context を返す', () => {
+    it('返却値に workflow_context オブジェクトが含まれる', () => {
+      vi.mocked(stateManager.getCurrentTask).mockReturnValue(
+        createMockActiveTask('research', 'large')
+      );
+      vi.mocked(stateManager.readTaskState).mockReturnValue(
+        createMockTaskState('research', 'large')
+      );
+
+      const result = workflowNext() as NextResult;
+
+      expect(result.success).toBe(true);
+      expect(result.workflow_context).toBeDefined();
+    });
+  });
+
+  describe('WC-002: workflow_context に workflowDir が含まれる', () => {
+    it('workflow_context.workflowDir がタスクのworkflowDir', () => {
+      vi.mocked(stateManager.getCurrentTask).mockReturnValue(
+        createMockActiveTask('research', 'large')
+      );
+      vi.mocked(stateManager.readTaskState).mockReturnValue(
+        createMockTaskState('research', 'large')
+      );
+
+      const result = workflowNext() as NextResult;
+
+      expect(result.workflow_context?.workflowDir).toBe('/path/to/workflow');
+    });
+  });
+
+  describe('WC-003: workflow_context に phase が含まれる', () => {
+    it('workflow_context.phase が遷移先フェーズ', () => {
+      vi.mocked(stateManager.getCurrentTask).mockReturnValue(
+        createMockActiveTask('research', 'large')
+      );
+      vi.mocked(stateManager.readTaskState).mockReturnValue(
+        createMockTaskState('research', 'large')
+      );
+
+      const result = workflowNext() as NextResult;
+
+      expect(result.workflow_context?.phase).toBe('requirements');
+    });
+  });
+
+  describe('WC-004: workflow_context に currentPhase が含まれる', () => {
+    it('workflow_context.currentPhase が遷移前フェーズ', () => {
+      vi.mocked(stateManager.getCurrentTask).mockReturnValue(
+        createMockActiveTask('research', 'large')
+      );
+      vi.mocked(stateManager.readTaskState).mockReturnValue(
+        createMockTaskState('research', 'large')
+      );
+
+      const result = workflowNext() as NextResult;
+
+      expect(result.workflow_context?.currentPhase).toBe('research');
+    });
+  });
+});
+
 describe('next.ts - workflow_next エラーケース', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -277,10 +332,10 @@ describe('next.ts - workflow_next エラーケース', () => {
   describe('WN-007: completedからは遷移不可', () => {
     it('success: false, message に "既に完了" が含まれる', () => {
       vi.mocked(stateManager.getCurrentTask).mockReturnValue(
-        createMockActiveTask('completed', 'small')
+        createMockActiveTask('completed', 'large')
       );
       vi.mocked(stateManager.readTaskState).mockReturnValue(
-        createMockTaskState('completed', 'small')
+        createMockTaskState('completed', 'large')
       );
 
       const result = workflowNext() as NextResult;
