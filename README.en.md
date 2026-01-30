@@ -234,7 +234,7 @@ research → requirements → parallel_analysis (threat_modeling + planning)
 |----------|---------------|-------------|
 | `WORKFLOW_STATE_FILE` | `.claude-workflow-state.json` | Path to global state file |
 | `WORKFLOW_DIR` | `docs/workflows` | Workflow directory |
-| `SPEC_DIR` | `docs/specs` | Specifications directory |
+| `SPEC_DIR` | `docs/spec/features` | Specifications directory |
 | `CODE_DIRS` | `src` | Code directories (comma-separated) |
 | `SKIP_PHASE_GUARD` | - | Set to `true` to disable phase edit restrictions |
 | `SKIP_SPEC_GUARD` | - | Set to `true` to disable spec-first check |
@@ -322,16 +322,16 @@ workflow-plugin/
 |-------|----------|----------|
 | research | Research results | `{workflowDir}/research.md` |
 | requirements | Requirements definition | `{workflowDir}/requirements.md` |
-| planning | Implementation plan/Spec | `docs/specs/domains/{domain}/{name}.md` |
+| planning | Implementation plan/Spec | `docs/spec/features/{name}.md` |
 | threat_modeling | Threat model | `{workflowDir}/threat-model.md` |
-| state_machine | State machine diagram | `docs/specs/{domain}/{name}.state-machine.mmd` |
-| flowchart | Flowchart | `docs/specs/{domain}/{name}.flowchart.mmd` |
+| state_machine | State machine diagram | `docs/spec/diagrams/{name}.state-machine.mmd` |
+| flowchart | Flowchart | `docs/spec/diagrams/{name}.flowchart.mmd` |
 | ui_design | UI design | `{workflowDir}/ui-design.md` |
 | test_design | Test cases | `{workflowDir}/test-cases.md` |
 | code_review | Review results | `{workflowDir}/code-review.md` |
 | performance_test | Performance test results | `{workflowDir}/performance-test.md` |
 | e2e_test | E2E test results | `{workflowDir}/e2e-test.md` |
-| docs_update | Documentation updates | `docs/specs/`, `README.md` |
+| docs_update | Documentation updates | `docs/spec/`, `README.md` |
 | ci_verification | CI result record | `{workflowDir}/ci-result.md` |
 
 ## TDD Cycle
@@ -396,7 +396,7 @@ A phase to update documentation after implementation and testing are complete.
 - Update API documentation
 
 **Artifacts:**
-- Updated specifications (`docs/specs/`)
+- Updated specifications (`docs/spec/features/`)
 - Updated README (if necessary)
 - Changelog (CHANGELOG.md, etc.)
 
@@ -464,7 +464,7 @@ A subphase of parallel_verification. Executes end-to-end tests.
 
 ### Spec-First Violation Occurred
 
-1. First update the relevant spec in `docs/specs/`
+1. First update the relevant spec in `docs/spec/features/`
 2. Then edit the code
 3. Skip with `SKIP_SPEC_GUARD=true` for emergencies
 

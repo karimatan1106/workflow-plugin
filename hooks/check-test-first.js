@@ -10,7 +10,7 @@
  * - SKIP_TEST_FIRST_CHECK: "true" でチェックを無効化
  * - DEBUG_TEST_FIRST: "true" でデバッグログ出力
  *
- * @spec docs/specs/infrastructure/test-first-check.md
+ * @spec docs/spec/features/test-first-check.md
  */
 
 const HOOK_NAME = 'check-test-first.js';

@@ -1,9 +1,9 @@
 /**
  * workflow_list ツール - タスク一覧
  *
- * アクティブなタスクの一覧を取得する。
+ * ディレクトリスキャンでアクティブなタスクの一覧を取得する。
  *
- * @spec docs/specs/domains/workflow/mcp-server.md
+ * @spec docs/workflows/ワ-クフロ-並列タスク対応/spec.md
  */
 
 import { stateManager } from '../state/manager.js';
@@ -12,24 +12,21 @@ import type { ListResult } from '../state/types.js';
 /**
  * アクティブなタスク一覧を取得
  *
+ * ディレクトリスキャンでアクティブタスクを発見し、一覧を返す。
+ *
  * @returns タスク一覧結果
  */
 export function workflowList(): ListResult {
-  const globalState = stateManager.readGlobalState();
+  // ディレクトリスキャンでアクティブタスクを取得
+  const activeTasks = stateManager.discoverTasks();
 
-  // 各タスクの最新フェーズを取得
-  const tasks = globalState.activeTasks.map((task) => {
-    const taskState = stateManager.readTaskState(task.workflowDir);
-    // タスク状態が取得できない場合はグローバル状態のフェーズを使用
-    const phase = taskState?.phase || task.phase;
-
-    return {
-      taskId: task.taskId,
-      taskName: task.taskName,
-      phase,
-      workflowDir: task.workflowDir,
-    };
-  });
+  const tasks = activeTasks.map((taskState) => ({
+    taskId: taskState.taskId,
+    taskName: taskState.taskName,
+    phase: taskState.phase,
+    workflowDir: taskState.workflowDir,
+    docsDir: taskState.docsDir,
+  }));
 
   // 結果メッセージを生成
   const message = tasks.length > 0

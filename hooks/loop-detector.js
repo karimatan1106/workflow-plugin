@@ -8,7 +8,7 @@
  * 設定可能な環境変数:
  * - SKIP_LOOP_DETECTION: "true" で無効化
  *
- * @spec docs/specs/infrastructure/loop-detector.md
+ * @spec docs/spec/features/loop-detector.md
  */
 
 const HOOK_NAME = 'loop-detector.js';

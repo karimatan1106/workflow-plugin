@@ -1,6 +1,6 @@
 /**
  * @jest-environment node
- * @spec docs/specs/infrastructure/loop-detector.md
+ * @spec docs/spec/features/loop-detector.md
  *
  * テスト実行: vitest run
  * または node --test で実行

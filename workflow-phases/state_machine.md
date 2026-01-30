@@ -35,11 +35,11 @@
 
 4. **Mermaid図の作成**
    - `stateDiagram-v2` 記法で記述
-   - `docs/specs/domains/{domain}/` に保存
+   - `docs/spec/diagrams/` に保存
 
 ## 出力ファイル
 
-### `docs/specs/domains/{domain}/{name}.state-machine.mmd`
+### `docs/spec/diagrams/{name}.state-machine.mmd`
 
 ```mermaid
 stateDiagram-v2
@@ -121,4 +121,4 @@ stateDiagram-v2
 - [ ] 全ての状態を特定した
 - [ ] 全てのイベント/トリガーを定義した
 - [ ] エラー状態を網羅した
-- [ ] Mermaid図を docs/specs/ に作成した
+- [ ] Mermaid図を docs/spec/diagrams/ に作成した

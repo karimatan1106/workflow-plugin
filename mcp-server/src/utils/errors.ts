@@ -2,7 +2,7 @@
  * エラーハンドリング共通関数
  *
  * ワークフローツール全体で統一されたエラーメッセージ形式を提供する。
- * @spec docs/specs/domains/workflow/mcp-server.md
+ * @spec docs/spec/features/workflow-mcp-server.md
  */
 
 /**

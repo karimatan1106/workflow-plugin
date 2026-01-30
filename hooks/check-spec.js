@@ -8,8 +8,8 @@
  *                        例: "src,lib,packages"
  *                        デフォルト: "src"
  *   WORKFLOW_SPEC_DIR  - 仕様書ディレクトリのパス（プロジェクトルートからの相対パス）
- *                        例: "docs/specs/features"
- *                        デフォルト: "docs/specs/features"
+ *                        例: "docs/spec/features"
+ *                        デフォルト: "docs/spec/features"
  */
 
 const HOOK_NAME = 'check-spec.js';
@@ -42,7 +42,7 @@ const path = require('path');
 
 // 環境変数からの設定（デフォルト値付き）
 const CODE_DIRS = (process.env.WORKFLOW_CODE_DIRS || 'src').split(',').map(d => d.trim());
-const SPEC_DIR = process.env.WORKFLOW_SPEC_DIR || 'docs/specs/features';
+const SPEC_DIR = process.env.WORKFLOW_SPEC_DIR || 'docs/spec/features';
 
 // タイムアウト処理（3秒）
 const timeout = setTimeout(() => {

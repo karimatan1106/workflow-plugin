@@ -14,7 +14,7 @@
 ## 入力
 
 - タスクディレクトリ: `{workflowDir}`
-- 仕様書: `docs/specs/domains/{domain}/{name}.md`
+- 仕様書: `docs/spec/features/{name}.md`
 - テストケース: `test-cases.md`
 
 ## E2Eテスト項目

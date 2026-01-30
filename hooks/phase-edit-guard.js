@@ -9,7 +9,7 @@
  * - SKIP_PHASE_GUARD: "true" でチェックを無効化
  * - DEBUG_PHASE_GUARD: "true" でデバッグログ出力
  *
- * @spec docs/specs/infrastructure/phase-edit-guard.md
+ * @spec docs/spec/features/phase-edit-guard.md
  */
 
 const HOOK_NAME = 'phase-edit-guard.js';
@@ -44,8 +44,12 @@ const path = require('path');
 // 定数定義
 // =============================================================================
 
-/** 状態ファイルのパス */
-const GLOBAL_STATE_FILE = path.join(process.cwd(), '.claude-workflow-state.json');
+/** ワークフローディレクトリのパス */
+const STATE_DIR = process.env.STATE_DIR || path.join(process.cwd(), '.claude', 'state');
+const WORKFLOW_DIR = process.env.WORKFLOW_DIR || path.join(STATE_DIR, 'workflows');
+
+/** ドキュメントディレクトリのパス */
+const DOCS_DIR = process.env.DOCS_DIR || path.join(process.cwd(), 'docs', 'workflows');
 
 /** ログファイルのパス */
 const LOG_FILE = path.join(process.cwd(), '.claude-phase-guard-log.json');
@@ -485,36 +489,120 @@ function safeReadJsonFile(filePath, logLabel) {
 }
 
 /**
- * グローバルワークフロー状態を読み込む
+ * ディレクトリスキャンでアクティブタスクを発見
  *
- * .claude-workflow-state.json からワークフロー全体の状態を取得する
+ * .claude/state/workflows/ 配下のディレクトリをスキャンし、
+ * 完了していないタスクの配列を返す。
  *
- * @returns {object|null} グローバル状態オブジェクト、または null
+ * @returns {Array<{taskId: string, taskName: string, workflowDir: string, phase: string, docsDir?: string}>}
  */
-function loadGlobalState() {
-  return safeReadJsonFile(GLOBAL_STATE_FILE, 'グローバル状態ファイル');
+/**
+ * ディレクトリスキャンでアクティブタスクを発見
+ *
+ * 注意: このロジックは mcp-server/src/state/manager.ts の
+ * WorkflowStateManager.discoverTasks() と同期を保つ必要がある。
+ */
+function discoverTasks() {
+  if (!fs.existsSync(WORKFLOW_DIR)) {
+    return [];
+  }
+
+  try {
+    const entries = fs.readdirSync(WORKFLOW_DIR);
+    const tasks = [];
+
+    for (const entry of entries) {
+      const entryPath = path.join(WORKFLOW_DIR, entry);
+      try {
+        const stat = fs.statSync(entryPath);
+        if (!stat.isDirectory()) {
+          continue;
+        }
+
+        const stateFile = path.join(entryPath, 'workflow-state.json');
+        const taskState = safeReadJsonFile(stateFile, `タスク状態(${entry})`);
+        if (taskState && taskState.phase !== 'completed') {
+          tasks.push(taskState);
+        }
+      } catch {
+        // 個別のエントリでエラーが発生した場合はスキップ
+        continue;
+      }
+    }
+
+    return tasks;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * ファイルパスからタスクを推論
+ *
+ * 指定されたファイルパスがどのタスクに属するかを推論する。
+ *
+ * 注意: このロジックは mcp-server/src/state/manager.ts の
+ * WorkflowStateManager.findTaskByFilePath() と同期を保つ必要がある。
+ * docsDirまたはworkflowDirのプレフィックスマッチで判定し、
+ * 複数マッチする場合は最長一致のタスクを返す。
+ *
+ * @param {string} filePath 推論対象のファイルパス
+ * @returns {{taskId: string, taskName: string, workflowDir: string, phase: string}|null}
+ */
+function findTaskByFilePath(filePath) {
+  const tasks = discoverTasks();
+  let bestMatch = null;
+  let bestMatchLength = 0;
+
+  // パスを正規化（バックスラッシュをスラッシュに統一）
+  const normalizedFilePath = filePath.replace(/\\/g, '/');
+
+  for (const task of tasks) {
+    // docsDirチェック（最長一致）
+    if (task.docsDir) {
+      const normalizedDocsDir = task.docsDir.replace(/\\/g, '/');
+      if (normalizedFilePath.startsWith(normalizedDocsDir)) {
+        if (normalizedDocsDir.length > bestMatchLength) {
+          bestMatch = task;
+          bestMatchLength = normalizedDocsDir.length;
+        }
+      }
+    }
+
+    // workflowDirチェック（最長一致）
+    const normalizedWorkflowDir = task.workflowDir.replace(/\\/g, '/');
+    if (normalizedFilePath.startsWith(normalizedWorkflowDir)) {
+      if (normalizedWorkflowDir.length > bestMatchLength) {
+        bestMatch = task;
+        bestMatchLength = normalizedWorkflowDir.length;
+      }
+    }
+  }
+
+  return bestMatch;
 }
 
 /**
  * アクティブなワークフロータスクを取得
  *
- * 複数のタスクがある場合、完了していない最新のタスクを返す
+ * ファイルパスが指定されている場合は、そのファイルに関連するタスクを返す。
+ * ファイルパスがタスクに関連付けられていない場合は、最初のアクティブタスクを返す。
  *
+ * @param {string} [filePath] チェック対象のファイルパス（オプション）
  * @returns {{taskId: string, taskName: string, workflowDir: string, phase: string}|null}
  */
-function findActiveWorkflowTask() {
-  const globalState = loadGlobalState();
-
-  // 状態ファイルが存在しない、またはタスクがない場合
-  if (!globalState?.activeTasks?.length) {
-    return null;
+function findActiveWorkflowTask(filePath) {
+  // ファイルパスが指定されている場合は、そのファイルに関連するタスクを推論
+  if (filePath) {
+    const matchedTask = findTaskByFilePath(filePath);
+    if (matchedTask) {
+      return matchedTask;
+    }
   }
 
-  // 完了していないタスクをフィルタリング
-  const activeTasks = globalState.activeTasks.filter((t) => t.phase !== 'completed');
-
-  // 最新のアクティブタスクを返す（配列の先頭が最新）
-  return activeTasks[0] || null;
+  // ファイルパスからタスクを特定できない場合は、最初のアクティブタスクを返す
+  const tasks = discoverTasks();
+  return tasks[0] || null;
 }
 
 /**
@@ -533,12 +621,16 @@ function loadTaskWorkflowState(workflowDir) {
 /**
  * アクティブなワークフロー状態を取得
  *
- * 現在進行中のタスクのフェーズとワークフロー状態をまとめて返す
+ * 現在進行中のタスクのフェーズとワークフロー状態をまとめて返す。
+ *
+ * ファイルパスが指定されている場合は、そのファイルに関連するタスクを優先する。
+ *
+ * @param {string} [filePath] チェック対象のファイルパス（オプション）
  *
  * @returns {{phase: string, workflowState: object, taskInfo: object}|null}
  */
-function findActiveWorkflowState() {
-  const taskInfo = findActiveWorkflowTask();
+function findActiveWorkflowState(filePath) {
+  const taskInfo = findActiveWorkflowTask(filePath);
 
   if (!taskInfo) {
     return null;
@@ -1013,7 +1105,7 @@ function main(input) {
   }
 
   // 5. ワークフロー状態を取得
-  const workflowState = findActiveWorkflowState();
+  const workflowState = findActiveWorkflowState(filePath);
 
   // ワークフロー未開始の場合は許可
   if (!workflowState) {
@@ -1104,6 +1196,9 @@ if (require.main === module) {
 } else {
   // テストから使用される場合
   module.exports = {
+    discoverTasks,
+    findTaskByFilePath,
+    findActiveWorkflowTask,
     getFileType,
     isConfigFile,
     isAlwaysAllowed,

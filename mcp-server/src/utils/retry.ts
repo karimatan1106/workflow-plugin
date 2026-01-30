@@ -4,7 +4,7 @@
  * ファイルシステム操作などで発生する一時的なエラー（EBUSY, EAGAIN等）に対して
  * 指数バックオフでリトライを行う。
  *
- * @spec docs/specs/domains/workflow/mcp-server.md
+ * @spec docs/spec/features/workflow-mcp-server.md
  */
 
 // ============================================================================

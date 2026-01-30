@@ -1,10 +1,10 @@
 /**
  * workflow_next ツール - 次フェーズへ遷移
  *
- * 現在のフェーズから次のフェーズへ遷移する。
+ * 指定されたタスクを次のフェーズへ遷移する。
  * レビューフェーズでは承認が、並列フェーズでは全サブフェーズの完了が必要。
  *
- * @spec docs/specs/domains/workflow/mcp-server.md
+ * @spec docs/workflows/ワ-クフロ-並列タスク対応/spec.md
  */
 
 import { stateManager } from '../state/manager.js';
@@ -16,22 +16,23 @@ import {
   getNextPhase,
   PHASE_DESCRIPTIONS,
 } from '../phases/definitions.js';
-import { getTaskStateOrError, safeExecute } from './helpers.js';
+import { getTaskByIdOrError, safeExecute } from './helpers.js';
 import { STATE_ERRORS } from '../utils/errors.js';
 
 /**
  * 次のフェーズへ遷移
  *
+ * @param taskId タスクID（必須）
  * @returns 遷移結果
  */
-export function workflowNext(): NextResult {
-  // タスクと状態を取得
-  const result = getTaskStateOrError();
+export function workflowNext(taskId?: string): NextResult {
+  // タスク状態を取得
+  const result = getTaskByIdOrError(taskId);
   if ('error' in result) {
     return result.error as NextResult;
   }
 
-  const { task, taskState } = result;
+  const { taskState } = result;
   const currentPhase = taskState.phase;
 
   // 完了済みチェック
@@ -52,7 +53,7 @@ export function workflowNext(): NextResult {
 
   // 並列フェーズの場合、全サブフェーズが完了しているかチェック
   if (isParallelPhase(currentPhase)) {
-    const incompleteSubPhases = stateManager.getIncompleteSubPhases(task.taskId);
+    const incompleteSubPhases = stateManager.getIncompleteSubPhases(taskState.taskId);
     if (incompleteSubPhases.length > 0) {
       return {
         success: false,
@@ -75,10 +76,11 @@ export function workflowNext(): NextResult {
 
   // フェーズ遷移を実行
   return safeExecute('フェーズ遷移', () => {
-    stateManager.updateTaskPhase(task.taskId, nextPhase);
+    stateManager.updateTaskPhase(taskState.taskId, nextPhase);
 
     return {
       success: true,
+      taskId: taskState.taskId,
       from: currentPhase,
       to: nextPhase,
       description: PHASE_DESCRIPTIONS[nextPhase],
@@ -99,10 +101,15 @@ export function workflowNext(): NextResult {
  */
 export const nextToolDefinition = {
   name: 'workflow_next',
-  description: '次のフェーズへ遷移します。レビューフェーズでは承認が必要です。並列フェーズでは全サブフェーズの完了が必要です。',
+  description: '指定されたタスクを次のフェーズへ遷移します。レビューフェーズでは承認が必要です。並列フェーズでは全サブフェーズの完了が必要です。',
   inputSchema: {
     type: 'object',
-    properties: {},
+    properties: {
+      taskId: {
+        type: 'string',
+        description: 'タスクID（必須）',
+      },
+    },
     required: [],
   },
 };

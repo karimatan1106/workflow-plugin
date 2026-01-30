@@ -15,7 +15,7 @@
 ## 入力
 
 - タスクディレクトリ: `{workflowDir}`
-- 仕様書: `docs/specs/domains/{domain}/{name}.md`
+- 仕様書: `docs/spec/features/{name}.md`
 - ステートマシン図: `state-machine.mmd`
 - フローチャート: `flowchart.mmd`
 - テストケース: `test-cases.md`
@@ -65,7 +65,7 @@
    ```typescript
    /**
     * コンポーネント/サービス名
-    * @spec docs/specs/domains/{domain}/{name}.md
+    * @spec docs/spec/features/{name}.md
     */
    ```
 

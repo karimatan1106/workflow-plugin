@@ -29,12 +29,12 @@
    - 依存関係を整理
    - 作業項目をリストアップ
 
-3. **docs/specs/ への反映**
-   - 仕様書を `docs/specs/domains/{domain}/` に作成
+3. **docs/spec/ への反映**
+   - 仕様書を `docs/spec/features/` に作成
 
 ## 出力ファイル
 
-### `docs/specs/domains/{domain}/{name}.md`
+### `docs/spec/features/{name}.md`
 
 ````markdown
 # [機能名] 仕様書
@@ -120,7 +120,7 @@ interface ExampleData {
 ```markdown
 ### PLANNING（設計）
 
-- 仕様書: `docs/specs/domains/{domain}/{name}.md`
+- 仕様書: `docs/spec/features/{name}.md`
 - 実装対象ファイル:
   - `path/to/file1.ts`
   - `path/to/file2.ts`
@@ -133,7 +133,7 @@ interface ExampleData {
 
 ## 完了条件
 
-- [ ] 仕様書を docs/specs/ に作成した
+- [ ] 仕様書を docs/spec/features/ に作成した
 - [ ] インターフェースを定義した
 - [ ] データ構造を設計した
 - [ ] エラーハンドリングを定義した

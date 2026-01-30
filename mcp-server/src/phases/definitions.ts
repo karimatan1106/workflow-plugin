@@ -4,7 +4,7 @@
  * ワークフローのフェーズ順序、並列グループ、説明、
  * 許可拡張子などを定義する。
  *
- * @spec docs/specs/domains/workflow/mcp-server.md
+ * @spec docs/spec/features/workflow-mcp-server.md
  */
 
 import type { PhaseName, SubPhaseName, TaskSize } from '../state/types.js';
@@ -15,10 +15,10 @@ import { DEFAULT_TASK_SIZE } from '../state/types.js';
 // ============================================================================
 
 /**
- * Large: 18フェーズ（全ワークフロー）
+ * Large: 19フェーズ（全ワークフロー）
  *
  * TDD方式を採用した完全なワークフロー。
- * 調査 → 要件定義 → 設計 → テスト → 実装 → 品質チェック → デプロイ
+ * 調査 → 要件定義 → 設計 → テスト → 実装 → 品質チェック → リグレッションテスト → デプロイ
  */
 export const PHASES_LARGE: PhaseName[] = [
   'research',              // 調査
@@ -32,6 +32,7 @@ export const PHASES_LARGE: PhaseName[] = [
   'refactoring',           // リファクタリング（TDD Refactor）
   'parallel_quality',      // 並列品質チェック
   'testing',               // テスト実行
+  'regression_test',       // リグレッションテスト
   'parallel_verification', // 並列検証
   'docs_update',           // ドキュメント更新
   'commit',                // コミット
@@ -121,6 +122,7 @@ export const PHASE_DESCRIPTIONS: Record<PhaseName, string> = {
   refactoring: 'リファクタリングフェーズ（TDD Refactor） - コード品質改善',
   parallel_quality: '並列品質チェックフェーズ - ビルド確認 + コードレビューを並列実行',
   testing: 'テスト実行フェーズ',
+  regression_test: 'リグレッションテストフェーズ - 既存機能の回帰テストを実行',
   parallel_verification: '並列検証フェーズ - 手動テスト + セキュリティスキャン + パフォーマンステスト + E2Eテストを並列実行',
   docs_update: 'ドキュメント更新フェーズ - 仕様書・READMEの更新',
   commit: 'コミットフェーズ',
@@ -172,6 +174,7 @@ export const PHASE_EXTENSIONS: Record<PhaseName, string> = {
   refactoring: '*',
   parallel_quality: '*',
   testing: '.md .test.ts .test.tsx .spec.ts .spec.tsx',
+  regression_test: '.md .test.ts .test.tsx .spec.ts .spec.tsx',
   parallel_verification: '.md',
   docs_update: '.md .mdx .txt',
   commit: '',

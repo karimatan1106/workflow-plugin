@@ -16,7 +16,7 @@ AIによるコードレビューを実施する。
 - タスクディレクトリ: `{workflowDir}`
 - 実装コード
 - テストコード
-- 仕様書: `docs/specs/domains/{domain}/{name}.md`
+- 仕様書: `docs/spec/features/{name}.md`
 
 ## レビュー観点
 

@@ -68,9 +68,9 @@
 
 ## フェーズ順序
 
-### フェーズ構成（18フェーズ）
+### フェーズ構成（19フェーズ）
 
-全てのタスクは以下の18フェーズで実行されます。
+全てのタスクは以下の19フェーズで実行されます。
 
 ```
 research → requirements → parallel_analysis（threat_modeling + planning）
@@ -78,6 +78,7 @@ research → requirements → parallel_analysis（threat_modeling + planning）
 → design_review【AIレビュー + ユーザー承認】
 → test_design → test_impl → implementation → refactoring
 → parallel_quality（build_check + code_review）→ testing
+→ regression_test【リグレッションテスト】
 → parallel_verification（manual_test + security_scan + performance_test + e2e_test）
 → docs_update → commit → push → ci_verification → deploy → completed
 ```
@@ -221,6 +222,7 @@ subagent間のコンテキスト引き継ぎはファイル経由で行う：
 | refactoring | コード全般 | - |
 | parallel_quality | コード全般 | - |
 | testing | .md, テストファイル | ソースコード |
+| regression_test | .md, テストファイル | ソースコード |
 | parallel_verification | .md | コード |
 | docs_update | .md, .mdx | コード |
 | commit | なし | 全て |
@@ -259,7 +261,7 @@ subagent間のコンテキスト引き継ぎはファイル経由で行う：
 - API ドキュメントの更新
 
 **成果物:**
-- 更新された仕様書（`docs/product/`）
+- 更新された仕様書（`docs/spec/`）
 - 更新されたREADME（必要に応じて）
 - 変更履歴（CHANGELOG.md など）
 
@@ -347,6 +349,14 @@ parallel_verification のサブフェーズ。エンドツーエンドテスト�
 12. **テスト実行時は出力先を必ず指定すること**
     - ルートディレクトリに一時ファイルを散らかさない
     - 下記「テスト出力・一時ファイルの配置ルール」に従う
+13. **リグレッションテストをスキップしてはいけない**
+    - `testing` フェーズの後は必ず `regression_test` フェーズを実行
+    - リグレッションテストが失敗したら修正を行う
+    - 「今回のタスクとは関係ない」という理由でスキップ禁止
+14. **リグレッションテストは適切なディレクトリに配置**
+    - バックエンド: `src/backend/tests/regression/`
+    - フロントエンド: `src/frontend/test/regression/`
+    - タスクごとにサブディレクトリを作成
 
 ---
 
@@ -365,6 +375,7 @@ parallel_verification のサブフェーズ。エンドツーエンドテスト�
 | スクリーンショット | `src/backend/tests/screenshots/` | `src/frontend/test/screenshots/` |
 | ユニットテスト | `src/backend/tests/unit/` | `src/frontend/**/*.test.tsx` |
 | 統合テスト | `src/backend/tests/integration/` | `src/frontend/test/integration/` |
+| リグレッションテスト | `src/backend/tests/regression/` | `src/frontend/test/regression/` |
 | E2Eテスト | `e2e/` | `e2e/` |
 | 一時ファイル | `.tmp/` | `.tmp/` |
 
@@ -496,9 +507,9 @@ cd e2e && npm install playwright
 
 ### 実装前の必須事項
 
-1. **新機能**: `docs/product/features/` に仕様書を作成してから実装
-2. **API変更**: `docs/product/api/` にAPI仕様を記述してから実装
-3. **UI変更**: `docs/product/screens/` に画面仕様を記述してから実装
+1. **新機能**: `docs/spec/features/` に仕様書を作成してから実装
+2. **API変更**: `docs/spec/api/` にAPI仕様を記述してから実装
+3. **UI変更**: `docs/spec/screens/` に画面仕様を記述してから実装
 4. **重要な設計判断**: `docs/architecture/decisions/` にADRを作成
 
 ### 禁止事項
@@ -516,8 +527,8 @@ cd e2e && npm install playwright
 /**
  * コンポーネント/サービス名
  * @spec docs/workflows/xxx.md       // ワークフロー成果物
- * @spec docs/product/api/xxx.md     // API仕様書（APIの場合）
- * @spec docs/product/screens/xxx.md // 画面仕様書（画面の場合）
+ * @spec docs/spec/api/xxx.md     // API仕様書（APIの場合）
+ * @spec docs/spec/screens/xxx.md // 画面仕様書（画面の場合）
  */
 ```
 
@@ -760,12 +771,12 @@ src/backend/
 
 | ドキュメント | フロントエンド | バックエンド |
 |-------------|---------------|-------------|
-| `docs/product/features/{機能}.md` | `src/frontend/features/{機能}/` | `src/backend/application/use-cases/{機能}/` |
-| `docs/product/components/{コンポーネント}.md` | `src/frontend/components/ui/{コンポーネント}/` | - |
-| `docs/product/screens/{画面}.md` | `src/frontend/app/(routes)/{画面}/` | - |
-| `docs/product/api/{API}.md` | `src/frontend/features/{機能}/api/` | `src/backend/presentation/controllers/{機能}/` |
-| `docs/product/events/{イベント}.md` | - | `src/backend/domain/events/` |
-| `docs/product/database/{テーブル}.md` | - | `src/backend/infrastructure/database/` |
+| `docs/spec/features/{機能}.md` | `src/frontend/features/{機能}/` | `src/backend/application/use-cases/{機能}/` |
+| `docs/spec/components/{コンポーネント}.md` | `src/frontend/components/ui/{コンポーネント}/` | - |
+| `docs/spec/screens/{画面}.md` | `src/frontend/app/(routes)/{画面}/` | - |
+| `docs/spec/api/{API}.md` | `src/frontend/features/{機能}/api/` | `src/backend/presentation/controllers/{機能}/` |
+| `docs/spec/events/{イベント}.md` | - | `src/backend/domain/events/` |
+| `docs/spec/database/{テーブル}.md` | - | `src/backend/infrastructure/database/` |
 | `docs/architecture/modules/{モジュール}.md` | `src/frontend/features/{モジュール}/` | `src/backend/domain/` + `src/backend/application/` |
 | `docs/architecture/batch/{バッチ}.md` | - | `src/backend/batch/{バッチ}/` |
 | `docs/architecture/integrations/{外部}.md` | - | `src/backend/infrastructure/external/{外部}/` |
@@ -807,7 +818,7 @@ src/backend/
 
 | ディレクトリ | 役割 | 例 |
 |-------------|------|-----|
-| `docs/product/` | プロダクト仕様（永続的） | 機能仕様、画面仕様、API仕様 |
+| `docs/spec/` | プロダクト仕様（永続的） | 機能仕様、画面仕様、API仕様 |
 | `docs/workflows/` | ワークフロー成果物（作業記録） | 調査結果、設計検討、テスト設計 |
 | `docs/architecture/` | システム設計 | ADR、概要、設計図 |
 | `docs/security/` | セキュリティ関連 | 脅威モデル |
@@ -908,7 +919,7 @@ docs/
         └── test-design.md           # テスト設計
 ```
 
-### docs/product/features/ の重要性
+### docs/spec/features/ の重要性
 
 **機能仕様書（features/）はシステムの中核ドキュメントです。**
 
@@ -921,11 +932,11 @@ docs/
 
 ### プロダクト仕様への反映
 
-ワークフローで作成した成果物をプロダクト仕様に反映する場合は、手動で `docs/product/` 以下に配置します。
-- 機能仕様 → `docs/product/features/{機能名}.md`
-- 画面仕様 → `docs/product/screens/{画面名}.md`
-- API仕様 → `docs/product/api/{API名}.md`
-- 設計図 → `docs/product/diagrams/{名称}.mmd`
+ワークフローで作成した成果物をプロダクト仕様に反映する場合は、手動で `docs/spec/` 以下に配置します。
+- 機能仕様 → `docs/spec/features/{機能名}.md`
+- 画面仕様 → `docs/spec/screens/{画面名}.md`
+- API仕様 → `docs/spec/api/{API名}.md`
+- 設計図 → `docs/spec/diagrams/{名称}.mmd`
 
 ---
 
@@ -953,8 +964,8 @@ docs/
 | ドキュメント | 説明 |
 |-------------|------|
 | `docs/glossary.md` | 用語集（ドメイン辞書） |
-| `docs/product/design-system/overview.md` | デザインシステム（カラー、タイポ、スペーシング） |
-| `docs/product/personas/{ペルソナ名}.md` | ペルソナ定義 |
+| `docs/spec/design-system/overview.md` | デザインシステム（カラー、タイポ、スペーシング） |
+| `docs/spec/personas/{ペルソナ名}.md` | ペルソナ定義 |
 | `docs/architecture/overview.md` | 基本設計書（システム全体構成） |
 | `docs/architecture/auth.md` | 認証・認可設計 |
 | `docs/architecture/performance.md` | パフォーマンス要件 |
@@ -980,9 +991,9 @@ docs/
 | 順序 | ドキュメント | 必須 | 説明 |
 |:---:|-------------|:---:|------|
 | 1 | `docs/glossary.md` | - | 用語集（新規用語があれば追記） |
-| 2 | `docs/product/user-stories/{機能名}.md` | - | ユーザーストーリー（〜として〜したい） |
-| 3 | `docs/product/journeys/{ペルソナ}-{ジャーニー}.md` | - | ユーザージャーニーマップ |
-| 4 | `docs/product/features/{機能名}.md` | ✅ | 機能仕様書 |
+| 2 | `docs/spec/user-stories/{機能名}.md` | - | ユーザーストーリー（〜として〜したい） |
+| 3 | `docs/spec/journeys/{ペルソナ}-{ジャーニー}.md` | - | ユーザージャーニーマップ |
+| 4 | `docs/spec/features/{機能名}.md` | ✅ | 機能仕様書 |
 | 5 | `{docsDir}/requirements.md` | ✅ | 要件定義（ワークフロー成果物） |
 
 ---
@@ -1001,9 +1012,9 @@ docs/
 | 順序 | ドキュメント | 必須 | 説明 |
 |:---:|-------------|:---:|------|
 | 1 | `docs/architecture/overview.md` | - | 基本設計書（更新があれば） |
-| 2 | `docs/product/database/{テーブル名}.md` | ✅ | DB設計（ER図、テーブル定義） |
-| 3 | `docs/product/api/{API名}.md` | ✅ | API仕様書（エンドポイント設計） |
-| 4 | `docs/product/events/{イベント名}.md` | - | イベント定義（ドメインイベント） |
+| 2 | `docs/spec/database/{テーブル名}.md` | ✅ | DB設計（ER図、テーブル定義） |
+| 3 | `docs/spec/api/{API名}.md` | ✅ | API仕様書（エンドポイント設計） |
+| 4 | `docs/spec/events/{イベント名}.md` | - | イベント定義（ドメインイベント） |
 | 5 | `docs/architecture/integrations/{システム名}.md` | - | 外部システム連携設計 |
 | 6 | `docs/architecture/batch/{バッチ名}.md` | - | バッチ処理設計 |
 | 7 | `docs/architecture/modules/{モジュール名}.md` | ✅ | モジュール詳細設計 |
@@ -1020,29 +1031,29 @@ docs/
 | 順序 | ドキュメント | 必須 | 説明 |
 |:---:|-------------|:---:|------|
 | 1 | `{docsDir}/state-machine.mmd` | ✅ | ステートマシン図（ワークフロー） |
-| 2 | `docs/product/diagrams/{対象}.state-machine.mmd` | ✅ | ステートマシン図（エンタープライズ） |
+| 2 | `docs/spec/diagrams/{対象}.state-machine.mmd` | ✅ | ステートマシン図（エンタープライズ） |
 
 ##### 4b. flowchart
 
 | 順序 | ドキュメント | 必須 | 説明 |
 |:---:|-------------|:---:|------|
 | 1 | `{docsDir}/flowchart.mmd` | ✅ | フローチャート（ワークフロー） |
-| 2 | `docs/product/diagrams/{対象}.flowchart.mmd` | ✅ | フローチャート（エンタープライズ） |
+| 2 | `docs/spec/diagrams/{対象}.flowchart.mmd` | ✅ | フローチャート（エンタープライズ） |
 
 ##### 4c. ui_design
 
 | 順序 | ドキュメント | 必須 | 説明 |
 |:---:|-------------|:---:|------|
-| 1 | `docs/product/sitemap.md` | ✅ | サイトマップ・画面遷移図（更新） |
-| 2 | `docs/product/wireframes/{画面名}.png` | - | ワイヤーフレーム/モックアップ |
-| 3 | `docs/product/screens/{画面名}.md` | ✅ | 画面設計書 |
-| 4 | `docs/product/components/{コンポーネント名}.md` | ✅ | コンポーネント仕様 + **Storybookストーリー定義**（実装の仕様） |
-| 5 | `docs/product/interactions/{画面名}.md` | - | インタラクション・アニメーション設計 |
-| 6 | `docs/product/responsive/{画面名}.md` | - | レスポンシブ設計（ブレークポイント別） |
-| 7 | `docs/product/accessibility/{画面名}.md` | - | アクセシビリティ要件（WCAG対応） |
-| 8 | `docs/product/seo/{画面名}.md` | - | SEO要件（メタ、OGP、構造化データ） |
-| 9 | `docs/product/i18n/{機能名}.md` | - | 国際化要件（多言語対応） |
-| 10 | `docs/product/messages/{機能名}.md` | - | メッセージ設計（エラー、通知） |
+| 1 | `docs/spec/sitemap.md` | ✅ | サイトマップ・画面遷移図（更新） |
+| 2 | `docs/spec/wireframes/{画面名}.png` | - | ワイヤーフレーム/モックアップ |
+| 3 | `docs/spec/screens/{画面名}.md` | ✅ | 画面設計書 |
+| 4 | `docs/spec/components/{コンポーネント名}.md` | ✅ | コンポーネント仕様 + **Storybookストーリー定義**（実装の仕様） |
+| 5 | `docs/spec/interactions/{画面名}.md` | - | インタラクション・アニメーション設計 |
+| 6 | `docs/spec/responsive/{画面名}.md` | - | レスポンシブ設計（ブレークポイント別） |
+| 7 | `docs/spec/accessibility/{画面名}.md` | - | アクセシビリティ要件（WCAG対応） |
+| 8 | `docs/spec/seo/{画面名}.md` | - | SEO要件（メタ、OGP、構造化データ） |
+| 9 | `docs/spec/i18n/{機能名}.md` | - | 国際化要件（多言語対応） |
+| 10 | `docs/spec/messages/{機能名}.md` | - | メッセージ設計（エラー、通知） |
 | 11 | `{docsDir}/ui-design.md` | ✅ | UI設計（ワークフロー成果物） |
 
 **CDD: コンポーネント仕様にStorybookストーリー定義を含める**
@@ -1302,7 +1313,7 @@ commit → push → ci_verification → deploy → completed
 | ディレクトリ | 用途 | 例 |
 |-------------|------|-----|
 | `docs/architecture/diagrams/` | システム全体の構成図 | インフラ構成、デプロイ構成、サービス間連携 |
-| `docs/product/diagrams/` | プロダクト機能の設計図 | 機能のステートマシン、処理フロー、画面遷移 |
+| `docs/spec/diagrams/` | プロダクト機能の設計図 | 機能のステートマシン、処理フロー、画面遷移 |
 
 ### ワークフロー成果物の例
 
@@ -1342,9 +1353,9 @@ docs/
 ```
 
 **具体例**:
-- `docs/product/features/user-authentication.md`
-- `docs/product/screens/login-screen.md`
-- `docs/product/diagrams/order.state-machine.mmd`
+- `docs/spec/features/user-authentication.md`
+- `docs/spec/screens/login-screen.md`
+- `docs/spec/diagrams/order.state-machine.mmd`
 - `docs/security/threat-models/payment-system.md`
 
 ---

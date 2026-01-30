@@ -35,11 +35,11 @@
 
 4. **Mermaid図の作成**
    - `flowchart TD` 記法で記述
-   - `docs/specs/domains/{domain}/` に保存
+   - `docs/spec/diagrams/` に保存
 
 ## 出力ファイル
 
-### `docs/specs/domains/{domain}/{name}.flowchart.mmd`
+### `docs/spec/diagrams/{name}.flowchart.mmd`
 
 ```mermaid
 flowchart TD
@@ -117,4 +117,4 @@ flowchart RL   %% 右から左
 - [ ] 開始・終了を明確化した
 - [ ] 全ての分岐条件を網羅した
 - [ ] エラーフローを記述した
-- [ ] Mermaid図を docs/specs/ に作成した
+- [ ] Mermaid図を docs/spec/diagrams/ に作成した

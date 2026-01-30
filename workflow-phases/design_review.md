@@ -19,9 +19,9 @@
 ## 入力
 
 - タスクディレクトリ: `{workflowDir}`
-- 仕様書: `docs/specs/domains/{domain}/{name}.md`
-- ステートマシン図: `docs/specs/domains/{domain}/{name}.state-machine.mmd`
-- フローチャート: `docs/specs/domains/{domain}/{name}.flowchart.mmd`
+- 仕様書: `docs/spec/features/{name}.md`
+- ステートマシン図: `docs/spec/diagrams/{name}.state-machine.mmd`
+- フローチャート: `docs/spec/diagrams/{name}.flowchart.mmd`
 - UI設計: `ui-design.md`
 - 脅威モデル: `threat-model.md`
 
@@ -81,9 +81,9 @@
 
 ### 成果物確認
 
-- [ ] 仕様書が docs/specs/ にある
-- [ ] ステートマシン図が docs/specs/ にある
-- [ ] フローチャートが docs/specs/ にある
+- [ ] 仕様書が docs/spec/features/ にある
+- [ ] ステートマシン図が docs/spec/diagrams/ にある
+- [ ] フローチャートが docs/spec/diagrams/ にある
 - [ ] UI設計が完了している（UI変更がある場合）
 - [ ] 脅威モデルが作成されている
 
@@ -104,9 +104,9 @@
 
 | 成果物         | パス                                                   | 状態   |
 | -------------- | ------------------------------------------------------ | ------ |
-| 仕様書         | `docs/specs/domains/{domain}/{name}.md`                | OK     |
-| ステートマシン | `docs/specs/domains/{domain}/{name}.state-machine.mmd` | OK     |
-| フローチャート | `docs/specs/domains/{domain}/{name}.flowchart.mmd`     | OK     |
+| 仕様書         | `docs/spec/features/{name}.md`                | OK     |
+| ステートマシン | `docs/spec/diagrams/{name}.state-machine.mmd` | OK     |
+| フローチャート | `docs/spec/diagrams/{name}.flowchart.mmd`     | OK     |
 | UI設計         | `ui-design.md`                                         | OK/N/A |
 | 脅威モデル     | `threat-model.md`                                      | OK     |
 

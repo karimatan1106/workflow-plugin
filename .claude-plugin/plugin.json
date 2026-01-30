@@ -32,7 +32,7 @@
     "postToolUse": [
       {
         "path": "hooks/check-workflow-artifact.js",
-        "description": "成果物反映チェック - 必須成果物がdocs/specs/に反映されているか確認"
+        "description": "成果物反映チェック - 必須成果物がdocs/spec/に反映されているか確認"
       },
       {
         "path": "hooks/spec-guard-reset.js",
@@ -77,7 +77,7 @@
     },
     "specDir": {
       "type": "string",
-      "default": "docs/specs",
+      "default": "docs/spec/features",
       "description": "仕様書を保存するディレクトリ"
     },
     "defaultSize": {

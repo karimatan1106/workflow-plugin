@@ -1,24 +1,31 @@
 /**
  * workflow_approve ツール - レビュー承認
  *
- * レビューフェーズでユーザー承認を行い、次のフェーズへ遷移する。
+ * 指定されたタスクのレビューフェーズでユーザー承認を行い、次のフェーズへ遷移する。
  *
- * @spec docs/specs/domains/workflow/mcp-server.md
+ * @spec docs/workflows/ワ-クフロ-並列タスク対応/spec.md
  */
 
 import { stateManager } from '../state/manager.js';
 import type { ApproveResult } from '../state/types.js';
 import { APPROVE_TYPE_MAPPING } from '../phases/definitions.js';
-import { getTaskStateOrError, validateRequiredString, safeExecute } from './helpers.js';
+import { getTaskByIdOrError, validateRequiredString, safeExecute } from './helpers.js';
 import { MISSING_PARAM_ERRORS, phaseNotMatchError } from '../utils/errors.js';
 
 /**
  * レビューを承認
  *
+ * @param taskId タスクID（必須）
  * @param type 承認タイプ（'design'など）
  * @returns 承認結果
  */
-export function workflowApprove(type: string): ApproveResult {
+export function workflowApprove(taskId?: string, type?: string): ApproveResult {
+  // タスク状態を取得
+  const taskResult = getTaskByIdOrError(taskId);
+  if ('error' in taskResult) {
+    return taskResult.error as ApproveResult;
+  }
+
   // 承認タイプの検証
   const typeValidation = validateRequiredString(type, MISSING_PARAM_ERRORS.APPROVE_TYPE);
   if ('error' in typeValidation) {
@@ -35,13 +42,7 @@ export function workflowApprove(type: string): ApproveResult {
     };
   }
 
-  // タスクと状態を取得
-  const result = getTaskStateOrError();
-  if ('error' in result) {
-    return result.error as ApproveResult;
-  }
-
-  const { task, taskState } = result;
+  const { taskState } = taskResult;
   const currentPhase = taskState.phase;
   const { expectedPhase, nextPhase } = approveMapping;
 
@@ -55,10 +56,11 @@ export function workflowApprove(type: string): ApproveResult {
 
   // 承認処理を実行
   return safeExecute('承認処理', () => {
-    stateManager.updateTaskPhase(task.taskId, nextPhase);
+    stateManager.updateTaskPhase(taskState.taskId, nextPhase);
 
     return {
       success: true,
+      taskId: taskState.taskId,
       approved: typeValidation.value,
       nextPhase,
       message: `${typeValidation.value}レビューを承認しました。次のフェーズ: ${nextPhase}`,
@@ -73,10 +75,14 @@ export function workflowApprove(type: string): ApproveResult {
  */
 export const approveToolDefinition = {
   name: 'workflow_approve',
-  description: 'レビューフェーズを承認します。design_reviewフェーズでは "design" を指定します。',
+  description: '指定されたタスクのレビューフェーズを承認します。design_reviewフェーズでは "design" を指定します。',
   inputSchema: {
     type: 'object',
     properties: {
+      taskId: {
+        type: 'string',
+        description: 'タスクID（必須）',
+      },
       type: {
         type: 'string',
         description: '承認タイプ（design）',

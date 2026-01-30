@@ -3,7 +3,7 @@
  *
  * 全てのワークフローツールを一箇所からエクスポートする。
  *
- * @spec docs/specs/domains/workflow/mcp-server.md
+ * @spec docs/spec/features/workflow-mcp-server.md
  */
 
 // ============================================================================
@@ -28,9 +28,6 @@ export { workflowReset, resetToolDefinition } from './reset.js';
 /** タスク一覧ツール */
 export { workflowList, listToolDefinition } from './list.js';
 
-/** タスク切り替えツール */
-export { workflowSwitch, switchToolDefinition } from './switch.js';
-
 /** サブフェーズ完了ツール */
 export { workflowCompleteSub, completeSubToolDefinition } from './complete-sub.js';
 
@@ -51,6 +48,5 @@ export const allToolDefinitions = [
   { name: 'workflow_approve', module: 'approve' },
   { name: 'workflow_reset', module: 'reset' },
   { name: 'workflow_list', module: 'list' },
-  { name: 'workflow_switch', module: 'switch' },
   { name: 'workflow_complete_sub', module: 'complete-sub' },
 ] as const;

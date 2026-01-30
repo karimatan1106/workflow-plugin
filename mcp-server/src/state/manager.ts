@@ -1,18 +1,18 @@
 /**
  * 状態管理クラス
  *
- * ワークフローのグローバル状態とタスク状態を管理する。
+ * ワークフローのタスク状態を管理する。
  * ファイルシステムを使用して状態を永続化する。
  *
- * @spec docs/specs/domains/workflow/mcp-server.md
+ * 並列タスク対応: GlobalStateは廃止され、ディレクトリスキャンベースの管理に移行。
+ *
+ * @spec docs/workflows/ワ-クフロ-並列タスク対応/spec.md
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import type {
-  GlobalState,
   TaskState,
-  ActiveTask,
   PhaseName,
   SubPhaseName,
   SubPhaseStatus,
@@ -39,16 +39,9 @@ const DOCS_DIR = process.env.DOCS_DIR || path.join(process.cwd(), 'docs', 'workf
 /** ドキュメントベースディレクトリのパス（エンタープライズ構成用） */
 const DOCS_BASE = process.env.DOCS_BASE || path.join(process.cwd(), 'docs');
 
-/** グローバル状態ファイルのパス */
-const GLOBAL_STATE_FILE = process.env.GLOBAL_STATE_FILE || path.join(STATE_DIR, 'workflow-state.json');
-
-/** 初期グローバル状態 */
-const INITIAL_GLOBAL_STATE: GlobalState = {
-  phase: 'idle',
-  activeTasks: [],
-  history: [],
-  checklist: {},
-};
+// 注: GlobalState と GLOBAL_STATE_FILE は廃止されました。
+// 並列タスク対応により、ディレクトリスキャンベースの管理に移行しました。
+// @see docs/workflows/ワ-クフロ-並列タスク対応/spec.md
 
 // ============================================================================
 // ユーティリティ関数
@@ -135,57 +128,23 @@ function readJsonFile<T>(filePath: string): T | null {
  * ワークフロー状態マネージャー
  *
  * ワークフローの状態管理を担当するクラス。
- * グローバル状態（.claude/state/workflow-state.json）と
- * 個別タスク状態（workflow-state.json）の両方を管理する。
+ * 個別タスク状態（workflow-state.json）をディレクトリスキャンで管理する。
+ *
+ * 注: GlobalStateは廃止されました。並列タスク対応により、
+ * activeTasks[0]を「現在のタスク」として使う設計から、
+ * 明示的なtaskId指定ベースの設計に移行しました。
  */
 export class WorkflowStateManager {
-  /** グローバル状態ファイルのパス */
-  private globalStatePath: string;
   /** ワークフローディレクトリのパス */
   private workflowDir: string;
 
   /**
    * コンストラクタ
    *
-   * @param globalStatePath グローバル状態ファイルのパス（省略時はデフォルト）
    * @param workflowDir ワークフローディレクトリのパス（省略時はデフォルト）
    */
-  constructor(
-    globalStatePath: string = GLOBAL_STATE_FILE,
-    workflowDir: string = WORKFLOW_DIR,
-  ) {
-    this.globalStatePath = globalStatePath;
+  constructor(workflowDir: string = WORKFLOW_DIR) {
     this.workflowDir = workflowDir;
-  }
-
-  // ==========================================================================
-  // グローバル状態の読み書き
-  // ==========================================================================
-
-  /**
-   * グローバル状態を読み込む
-   *
-   * ファイルが存在しない場合は初期状態を返す。
-   *
-   * @returns グローバル状態
-   */
-  readGlobalState(): GlobalState {
-    const state = readJsonFile<GlobalState>(this.globalStatePath);
-    return state ?? { ...INITIAL_GLOBAL_STATE };
-  }
-
-  /**
-   * グローバル状態を保存する
-   *
-   * @param state 保存するグローバル状態
-   */
-  writeGlobalState(state: GlobalState): void {
-    // 状態ディレクトリを確保
-    const dir = path.dirname(this.globalStatePath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    writeJsonFile(this.globalStatePath, state);
   }
 
   // ==========================================================================
@@ -215,37 +174,105 @@ export class WorkflowStateManager {
   }
 
   // ==========================================================================
-  // タスク取得
+  // タスク発見（並列タスク対応）
   // ==========================================================================
 
   /**
-   * 現在のアクティブタスクを取得
+   * ディレクトリスキャンでアクティブタスクを発見
    *
-   * アクティブタスクリストの先頭のタスクを返す。
+   * .claude/state/workflows/ 配下のディレクトリをスキャンし、
+   * 完了していないタスクの配列を返す。
    *
-   * @returns 現在のアクティブタスク、またはnull
+   * @returns 完了していないタスクの配列
    */
-  getCurrentTask(): ActiveTask | null {
-    const globalState = this.readGlobalState();
-    if (globalState.activeTasks.length === 0) {
-      return null;
+  discoverTasks(): TaskState[] {
+    if (!fs.existsSync(this.workflowDir)) {
+      return [];
     }
-    return globalState.activeTasks[0];
+
+    try {
+      const entries = fs.readdirSync(this.workflowDir);
+      const tasks: TaskState[] = [];
+
+      for (const entry of entries) {
+        const entryPath = path.join(this.workflowDir, entry);
+        try {
+          const stat = fs.statSync(entryPath);
+          if (!stat.isDirectory()) {
+            continue;
+          }
+
+          const taskState = this.readTaskState(entryPath);
+          if (taskState && taskState.phase !== 'completed') {
+            tasks.push(taskState);
+          }
+        } catch {
+          // 個別のエントリでエラーが発生した場合はスキップ
+          continue;
+        }
+      }
+
+      return tasks;
+    } catch {
+      return [];
+    }
   }
 
   /**
-   * タスクIDからアクティブタスクを検索
+   * taskIdでタスクを取得
    *
-   * @param taskId 検索するタスクID
-   * @returns 見つかったアクティブタスクとそのインデックス、またはnull
+   * ディレクトリスキャンで発見されたアクティブタスクから、
+   * 指定されたtaskIdに一致するタスクを返す。
+   *
+   * @param taskId タスクID
+   * @returns タスク状態、または存在しない場合はnull
    */
-  private findActiveTaskById(taskId: string): { task: ActiveTask; index: number; globalState: GlobalState } | null {
-    const globalState = this.readGlobalState();
-    const index = globalState.activeTasks.findIndex((t) => t.taskId === taskId);
-    if (index === -1) {
-      return null;
+  getTaskById(taskId: string): TaskState | null {
+    const tasks = this.discoverTasks();
+    return tasks.find(t => t.taskId === taskId) ?? null;
+  }
+
+  /**
+   * ファイルパスからタスクを推論
+   *
+   * 指定されたファイルパスがどのタスクに属するかを推論する。
+   * docsDirまたはworkflowDirのプレフィックスマッチで判定し、
+   * 複数マッチする場合は最長一致のタスクを返す。
+   *
+   * @param filePath 推論対象のファイルパス
+   * @returns マッチしたタスク、またはnull
+   */
+  findTaskByFilePath(filePath: string): TaskState | null {
+    const tasks = this.discoverTasks();
+    let bestMatch: TaskState | null = null;
+    let bestMatchLength = 0;
+
+    // パスを正規化（バックスラッシュをスラッシュに統一）
+    const normalizedFilePath = filePath.replace(/\\/g, '/');
+
+    for (const task of tasks) {
+      // docsDirチェック（最長一致）
+      if (task.docsDir) {
+        const normalizedDocsDir = task.docsDir.replace(/\\/g, '/');
+        if (normalizedFilePath.startsWith(normalizedDocsDir)) {
+          if (normalizedDocsDir.length > bestMatchLength) {
+            bestMatch = task;
+            bestMatchLength = normalizedDocsDir.length;
+          }
+        }
+      }
+
+      // workflowDirチェック（最長一致）
+      const normalizedWorkflowDir = task.workflowDir.replace(/\\/g, '/');
+      if (normalizedFilePath.startsWith(normalizedWorkflowDir)) {
+        if (normalizedWorkflowDir.length > bestMatchLength) {
+          bestMatch = task;
+          bestMatchLength = normalizedWorkflowDir.length;
+        }
+      }
     }
-    return { task: globalState.activeTasks[index], index, globalState };
+
+    return bestMatch;
   }
 
   // ==========================================================================
@@ -312,10 +339,11 @@ export class WorkflowStateManager {
     this.createTaskLogFile(taskDir, taskName, taskId, taskSize, docsDir);
 
     // 成果物テンプレート作成
-    this.createArtifactTemplates(docsDir, taskName);
+    this.createArtifactTemplates(docsDir);
 
-    // グローバル状態更新
-    this.addTaskToGlobalState(taskId, taskName, taskDir, taskSize);
+    // 注: GlobalStateへの登録は廃止されました。
+    // タスクはディレクトリスキャンで発見されるため、
+    // グローバル状態ファイルへの登録は不要です。
 
     return taskState;
   }
@@ -353,31 +381,6 @@ export class WorkflowStateManager {
     fs.writeFileSync(path.join(taskDir, 'log.md'), logContent, 'utf-8');
   }
 
-  /**
-   * タスクをグローバル状態に追加
-   *
-   * @param taskId タスクID
-   * @param taskName タスク名
-   * @param taskDir タスクディレクトリ
-   * @param taskSize タスクサイズ
-   */
-  private addTaskToGlobalState(
-    taskId: string,
-    taskName: string,
-    taskDir: string,
-    taskSize: TaskSize,
-  ): void {
-    const globalState = this.readGlobalState();
-    globalState.activeTasks.unshift({
-      taskId,
-      taskName,
-      workflowDir: taskDir,
-      phase: 'research',
-      taskSize,
-    });
-    this.writeGlobalState(globalState);
-  }
-
   // ==========================================================================
   // フェーズ更新
   // ==========================================================================
@@ -392,25 +395,16 @@ export class WorkflowStateManager {
    * @throws タスクが見つからない場合
    */
   updateTaskPhase(taskId: string, phase: PhaseName): void {
-    const found = this.findActiveTaskById(taskId);
-    if (!found) {
+    const taskState = this.getTaskById(taskId);
+    if (!taskState) {
       throw new Error(taskNotFoundError(taskId));
     }
 
-    const { task, globalState } = found;
-
-    // グローバル状態更新
-    task.phase = phase;
-    this.writeGlobalState(globalState);
-
-    // タスク状態更新
-    const taskState = this.readTaskState(task.workflowDir);
-    if (taskState) {
-      taskState.phase = phase;
-      // 並列フェーズの場合、サブフェーズを初期化
-      taskState.subPhases = this.initializeSubPhases(phase);
-      this.writeTaskState(task.workflowDir, taskState);
-    }
+    // タスク状態を更新
+    taskState.phase = phase;
+    // 並列フェーズの場合、サブフェーズを初期化
+    taskState.subPhases = this.initializeSubPhases(phase);
+    this.writeTaskState(taskState.workflowDir, taskState);
   }
 
   /**
@@ -447,14 +441,9 @@ export class WorkflowStateManager {
    * @throws タスクが見つからない場合、または無効なサブフェーズの場合
    */
   updateSubPhaseStatus(taskId: string, subPhase: SubPhaseName, status: SubPhaseStatus): void {
-    const found = this.findActiveTaskById(taskId);
-    if (!found) {
-      throw new Error(taskNotFoundError(taskId));
-    }
-
-    const taskState = this.readTaskState(found.task.workflowDir);
+    const taskState = this.getTaskById(taskId);
     if (!taskState) {
-      throw new Error(`タスク状態が見つかりません: ${taskId}`);
+      throw new Error(taskNotFoundError(taskId));
     }
 
     // サブフェーズの妥当性をチェック
@@ -473,7 +462,7 @@ export class WorkflowStateManager {
 
     // 状態を更新
     taskState.subPhases[subPhase] = status;
-    this.writeTaskState(found.task.workflowDir, taskState);
+    this.writeTaskState(taskState.workflowDir, taskState);
   }
 
   /**
@@ -483,12 +472,7 @@ export class WorkflowStateManager {
    * @returns 未完了サブフェーズの配列
    */
   getIncompleteSubPhases(taskId: string): SubPhaseName[] {
-    const found = this.findActiveTaskById(taskId);
-    if (!found) {
-      return [];
-    }
-
-    const taskState = this.readTaskState(found.task.workflowDir);
+    const taskState = this.getTaskById(taskId);
     if (!taskState) {
       return [];
     }
@@ -503,66 +487,28 @@ export class WorkflowStateManager {
   // タスク操作
   // ==========================================================================
 
-  /**
-   * タスクを切り替え
-   *
-   * 指定されたタスクをアクティブタスクリストの先頭に移動する。
-   *
-   * @param taskId 切り替え先のタスクID
-   * @returns 切り替えたタスク、または見つからない場合はnull
-   */
-  switchTask(taskId: string): ActiveTask | null {
-    const globalState = this.readGlobalState();
-    const taskIndex = globalState.activeTasks.findIndex((t) => t.taskId === taskId);
-    if (taskIndex === -1) {
-      return null;
-    }
-
-    // タスクを配列から取り出し、先頭に追加
-    const [task] = globalState.activeTasks.splice(taskIndex, 1);
-    globalState.activeTasks.unshift(task);
-    this.writeGlobalState(globalState);
-
-    return task;
-  }
+  // 注: switchTask は廃止されました。
+  // 並列タスク対応により、明示的なtaskId指定ベースの設計に移行したため、
+  // 「現在のタスク」を切り替える概念は不要になりました。
 
   /**
    * タスクを完了
    *
-   * タスクを完了状態にし、グローバル状態から削除する。
+   * タスクを完了状態にする。
    *
    * @param taskId 完了するタスクID
    * @throws タスクが見つからない場合
    */
   completeTask(taskId: string): void {
-    const found = this.findActiveTaskById(taskId);
-    if (!found) {
+    const taskState = this.getTaskById(taskId);
+    if (!taskState) {
       throw new Error(taskNotFoundError(taskId));
     }
 
-    const { task, index, globalState } = found;
-
     // タスク状態を更新
-    const taskState = this.readTaskState(task.workflowDir);
-    if (taskState) {
-      taskState.phase = 'completed';
-      taskState.completedAt = getCurrentISOTimestamp();
-      taskState.history = globalState.history;
-      taskState.checklist = globalState.checklist;
-      this.writeTaskState(task.workflowDir, taskState);
-    }
-
-    // グローバル状態からタスクを削除
-    globalState.activeTasks.splice(index, 1);
-
-    // アクティブタスクがなくなった場合はクリーンアップ
-    if (globalState.activeTasks.length === 0) {
-      globalState.history = [];
-      globalState.checklist = {};
-      globalState.phase = 'idle';
-    }
-
-    this.writeGlobalState(globalState);
+    taskState.phase = 'completed';
+    taskState.completedAt = getCurrentISOTimestamp();
+    this.writeTaskState(taskState.workflowDir, taskState);
   }
 
   /**
@@ -575,16 +521,9 @@ export class WorkflowStateManager {
    * @throws タスクが見つからない場合
    */
   resetTask(taskId: string, reason?: string): void {
-    const found = this.findActiveTaskById(taskId);
-    if (!found) {
-      throw new Error(taskNotFoundError(taskId));
-    }
-
-    const { task, globalState } = found;
-
-    const taskState = this.readTaskState(task.workflowDir);
+    const taskState = this.getTaskById(taskId);
     if (!taskState) {
-      throw new Error(`タスク状態が見つかりません: ${taskId}`);
+      throw new Error(taskNotFoundError(taskId));
     }
 
     const fromPhase = taskState.phase;
@@ -602,25 +541,21 @@ export class WorkflowStateManager {
     // フェーズをリセット
     taskState.phase = 'research';
     taskState.subPhases = {};
-    this.writeTaskState(task.workflowDir, taskState);
-
-    // グローバル状態も更新
-    task.phase = 'research';
-    this.writeGlobalState(globalState);
+    this.writeTaskState(taskState.workflowDir, taskState);
   }
 
   /**
    * ワークフロー成果物ディレクトリを作成
    *
    * タスク開始時に docs/workflows/{taskName}/ ディレクトリのみを作成する。
-   * プロダクト仕様（docs/product/）への配置は手動で行う。
+   * プロダクト仕様（docs/spec/）への配置は手動で行う。
    *
    * @param docsDir ドキュメントディレクトリ（ワークフロー成果物用）
-   * @param _taskName タスク名（未使用、後方互換性のため残す）
+   * 
    */
-  private createArtifactTemplates(docsDir: string, _taskName: string): void {
+  private createArtifactTemplates(docsDir: string): void {
     // ワークフロー成果物ディレクトリのみを作成
-    // プロダクト仕様（docs/product/）へのテンプレート生成は行わない
+    // プロダクト仕様（docs/spec/）へのテンプレート生成は行わない
     if (!fs.existsSync(docsDir)) {
       fs.mkdirSync(docsDir, { recursive: true });
     }

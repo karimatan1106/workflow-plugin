@@ -4,35 +4,36 @@
  * 並列フェーズのサブフェーズを完了としてマークする。
  * 全サブフェーズが完了すると次のフェーズに進める。
  *
- * @spec docs/specs/domains/workflow/mcp-server.md
+ * @spec docs/workflows/ワ-クフロ-並列タスク対応/spec.md
  */
 
 import { stateManager } from '../state/manager.js';
 import type { CompleteSubResult, SubPhaseName } from '../state/types.js';
 import { isParallelPhase, PARALLEL_GROUPS } from '../phases/definitions.js';
-import { getTaskStateOrError, validateRequiredString, safeExecute } from './helpers.js';
+import { getTaskByIdOrError, validateRequiredString, safeExecute } from './helpers.js';
 import { MISSING_PARAM_ERRORS, invalidValueError } from '../utils/errors.js';
 
 /**
  * サブフェーズを完了としてマーク
  *
+ * @param taskId タスクID（必須）
  * @param subPhase サブフェーズ名
  * @returns 完了結果
  */
-export function workflowCompleteSub(subPhase: string): CompleteSubResult {
+export function workflowCompleteSub(taskId?: string, subPhase?: string): CompleteSubResult {
+  // タスク状態を取得
+  const result = getTaskByIdOrError(taskId);
+  if ('error' in result) {
+    return result.error as CompleteSubResult;
+  }
+
   // サブフェーズ名の検証
   const validation = validateRequiredString(subPhase, MISSING_PARAM_ERRORS.SUB_PHASE);
   if ('error' in validation) {
     return validation.error as CompleteSubResult;
   }
 
-  // タスクと状態を取得
-  const result = getTaskStateOrError();
-  if ('error' in result) {
-    return result.error as CompleteSubResult;
-  }
-
-  const { task, taskState } = result;
+  const { taskState } = result;
   const currentPhase = taskState.phase;
 
   // 並列フェーズでない場合はエラー
@@ -57,10 +58,10 @@ export function workflowCompleteSub(subPhase: string): CompleteSubResult {
     const subPhaseName = validation.value as SubPhaseName;
 
     // サブフェーズを完了としてマーク
-    stateManager.updateSubPhaseStatus(task.taskId, subPhaseName, 'completed');
+    stateManager.updateSubPhaseStatus(taskState.taskId, subPhaseName, 'completed');
 
     // 残りの未完了サブフェーズを取得
-    const remaining = stateManager.getIncompleteSubPhases(task.taskId);
+    const remaining = stateManager.getIncompleteSubPhases(taskState.taskId);
     const allCompleted = remaining.length === 0;
 
     // 結果メッセージを生成
@@ -92,13 +93,17 @@ export function workflowCompleteSub(subPhase: string): CompleteSubResult {
  */
 export const completeSubToolDefinition = {
   name: 'workflow_complete_sub',
-  description: '並列フェーズのサブフェーズを完了としてマークします。全サブフェーズが完了すると次のフェーズに進めます。',
+  description: '指定されたタスクの並列フェーズのサブフェーズを完了としてマークします。全サブフェーズが完了すると次のフェーズに進めます。',
   inputSchema: {
     type: 'object',
     properties: {
+      taskId: {
+        type: 'string',
+        description: 'タスクID（必須）',
+      },
       subPhase: {
         type: 'string',
-        description: 'サブフェーズ名（例: threat_modeling, planning, state_machine, flowchart, ui_design, build_check, code_review, manual_test, security_scan）',
+        description: 'サブフェーズ名（例: threat_modeling, planning, state_machine, flowchart, ui_design, build_check, code_review, manual_test, security_scan, performance_test, e2e_test）',
       },
     },
     required: ['subPhase'],

@@ -6,7 +6,7 @@
  * 仕様書更新前にコードを編集しようとするとブロックする。
  *
  * 設定可能な環境変数:
- * - SPEC_DIR: 仕様書ディレクトリ（デフォルト: docs/specs）
+ * - SPEC_DIR: 仕様書ディレクトリ（デフォルト: docs/spec/features）
  * - CODE_DIRS: コードディレクトリのカンマ区切りリスト（デフォルト: src）
  * - SKIP_SPEC_GUARD: "true" で一時的にスキップ
  */
@@ -40,7 +40,7 @@ const fs = require('fs');
 const path = require('path');
 
 // 設定
-const SPEC_DIR = process.env.SPEC_DIR || 'docs/specs';
+const SPEC_DIR = process.env.SPEC_DIR || 'docs/spec/features';
 const CODE_DIRS = (process.env.CODE_DIRS || 'src').split(',').map((d) => d.trim());
 const STATE_DIR = process.env.STATE_DIR || path.join(process.cwd(), '.claude', 'state');
 const STATE_FILE = path.join(STATE_DIR, 'spec-guard-state.json');

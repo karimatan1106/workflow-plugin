@@ -82,6 +82,6 @@
   "environment": {
     "WORKFLOW_STRICT_MODE": "true",
     "WORKFLOW_DIR": "docs/workflows",
-    "SPEC_DIR": "docs/specs"
+    "SPEC_DIR": "docs/spec/features"
   }
 }

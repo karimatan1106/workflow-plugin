@@ -3,60 +3,50 @@
  *
  * 各ツールで共通して使用される検証・取得ロジックを提供する。
  *
- * @spec docs/specs/domains/workflow/mcp-server.md
+ * @spec docs/workflows/ワ-クフロ-並列タスク対応/spec.md
  */
 
 import { stateManager } from '../state/manager.js';
-import type { ActiveTask, TaskState, ToolResult } from '../state/types.js';
-import {
-  STATE_ERRORS,
-  formatOperationError,
-} from '../utils/errors.js';
+import type { TaskState, ToolResult } from '../state/types.js';
+import { formatOperationError } from '../utils/errors.js';
+
+// 注: getCurrentTaskOrError と getTaskStateOrError は削除されました。
+// 並列タスク対応により、明示的なtaskId指定ベースの getTaskByIdOrError を使用してください。
+// @see docs/workflows/ワ-クフロ-並列タスク対応/spec.md
 
 /**
- * 現在のタスクを取得
+ * taskIdでタスクを取得
  *
- * アクティブなタスクがない場合はエラー結果を返す。
+ * taskIdが指定されていない場合やタスクが見つからない場合はエラー結果を返す。
  *
- * @returns タスクまたはエラー結果
+ * @param taskId タスクID
+ * @returns タスク状態、またはエラー結果
  */
-export function getCurrentTaskOrError(): { task: ActiveTask } | { error: ToolResult } {
-  const currentTask = stateManager.getCurrentTask();
-  if (!currentTask) {
+export function getTaskByIdOrError(taskId: string | undefined): { taskState: TaskState } | { error: ToolResult } {
+  // taskId必須チェック
+  if (!taskId || taskId.trim() === '') {
     return {
       error: {
         success: false,
-        message: STATE_ERRORS.NO_ACTIVE_TASK,
+        error: 'TASK_ID_REQUIRED',
+        message: 'taskIdは必須です',
       },
     };
   }
-  return { task: currentTask };
-}
 
-/**
- * 現在のタスク状態を取得
- *
- * タスクまたはタスク状態が取得できない場合はエラー結果を返す。
- *
- * @returns タスクと状態、またはエラー結果
- */
-export function getTaskStateOrError(): { task: ActiveTask; taskState: TaskState } | { error: ToolResult } {
-  const taskResult = getCurrentTaskOrError();
-  if ('error' in taskResult) {
-    return taskResult;
-  }
-
-  const taskState = stateManager.readTaskState(taskResult.task.workflowDir);
+  // タスク検索
+  const taskState = stateManager.getTaskById(taskId.trim());
   if (!taskState) {
     return {
       error: {
         success: false,
-        message: STATE_ERRORS.TASK_STATE_NOT_FOUND,
+        error: 'TASK_NOT_FOUND',
+        message: `指定されたタスクが見つかりません: ${taskId}`,
       },
     };
   }
 
-  return { task: taskResult.task, taskState };
+  return { taskState };
 }
 
 /**

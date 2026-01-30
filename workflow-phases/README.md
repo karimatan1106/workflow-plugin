@@ -19,12 +19,12 @@
 <td rowspan="3">parallel_design</td>
 <td>state_machine</td>
 <td><code>research.md</code>, <code>requirements.md</code></td>
-<td><code>docs/specs/{domain}/{name}.state-machine.mmd</code></td>
+<td><code>docs/spec/diagrams/{name}.state-machine.mmd</code></td>
 </tr>
 <tr>
 <td>flowchart</td>
 <td><code>research.md</code>, <code>requirements.md</code>, <code>state-machine.mmd</code></td>
-<td><code>docs/specs/{domain}/{name}.flowchart.mmd</code></td>
+<td><code>docs/spec/diagrams/{name}.flowchart.mmd</code></td>
 </tr>
 <tr>
 <td>ui_design</td>
@@ -35,7 +35,7 @@
 <td rowspan="2">parallel_analysis</td>
 <td>planning</td>
 <td><code>research.md</code>, <code>requirements.md</code>, <code>state-machine.mmd</code>, <code>flowchart.mmd</code></td>
-<td><code>docs/specs/domains/{domain}/{name}.md</code>, <code>log.md</code>追記</td>
+<td><code>docs/spec/features/{name}.md</code>, <code>log.md</code>追記</td>
 </tr>
 <tr>
 <td>threat_modeling</td>
@@ -162,14 +162,14 @@ research → parallel_design → parallel_analysis → design_review → archite
 └── workflow-state.json       # ワークフロー状態
 ```
 
-**注意**: `.mmd` ファイル（Mermaid形式）は `docs/specs/` に直接作成する。
+**注意**: `.mmd` ファイル（Mermaid形式）は `docs/spec/diagrams/` に直接作成する。
 
 ---
 
-## 永続ドキュメント（docs/specs/）
+## 永続ドキュメント（docs/spec/）
 
 | パス                           | 用途                              |
 | ------------------------------ | --------------------------------- |
-| `docs/specs/domains/{domain}/` | ドメイン別仕様書                  |
-| `docs/specs/CODE_MAPPING.md`   | コード↔仕様書マッピング（人間用） |
-| `docs/specs/INDEX.json`        | コード↔仕様書マッピング（機械用） |
+| `docs/spec/features/`       | 機能仕様書                        |
+| `docs/spec/diagrams/`       | 設計図（Mermaid形式）             |
+| `docs/spec/api/`            | API仕様書                         |

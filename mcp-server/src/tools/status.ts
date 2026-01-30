@@ -1,9 +1,10 @@
 /**
  * workflow_status ツール - 現在の状態を取得
  *
- * 現在のワークフロー状態（アクティブタスク、フェーズ、サブフェーズ状態など）を返す。
+ * taskIdが指定されていない場合: 全アクティブタスクの一覧を返す
+ * taskIdが指定されている場合: 指定タスクの詳細を返す
  *
- * @spec docs/specs/domains/workflow/mcp-server.md
+ * @spec docs/workflows/ワ-クフロ-並列タスク対応/spec.md
  */
 
 import { stateManager } from '../state/manager.js';
@@ -13,13 +14,15 @@ import { PHASE_DESCRIPTIONS, isParallelPhase } from '../phases/definitions.js';
 /**
  * 現在のワークフロー状態を取得
  *
+ * @param taskId タスクID（オプション）
  * @returns ステータス結果
  */
-export function workflowStatus(): StatusResult {
-  const globalState = stateManager.readGlobalState();
+export function workflowStatus(taskId?: string): StatusResult {
+  // ディレクトリスキャンでアクティブタスクを取得
+  const activeTasks = stateManager.discoverTasks();
 
   // アクティブなタスクがない場合
-  if (globalState.activeTasks.length === 0) {
+  if (activeTasks.length === 0) {
     return {
       success: true,
       status: 'idle',
@@ -27,15 +30,30 @@ export function workflowStatus(): StatusResult {
     };
   }
 
-  const currentTask = globalState.activeTasks[0];
-  const taskState = stateManager.readTaskState(currentTask.workflowDir);
+  // taskIdが指定されていない場合: 全タスク一覧を返す
+  if (!taskId) {
+    return {
+      success: true,
+      status: 'active',
+      tasks: activeTasks.map((t) => ({
+        taskId: t.taskId,
+        taskName: t.taskName,
+        phase: t.phase,
+        docsDir: t.docsDir,
+      })),
+      message: `${activeTasks.length}件のアクティブタスクがあります`,
+    };
+  }
 
-  // タスク状態ファイルが見つからない場合
+  // taskIdが指定されている場合: 指定タスクの詳細を返す
+  const taskState = activeTasks.find((t) => t.taskId === taskId);
+
   if (!taskState) {
     return {
       success: false,
       status: 'error',
-      message: 'タスク状態ファイルが見つかりません',
+      error: 'TASK_NOT_FOUND',
+      message: `指定されたタスクが見つかりません: ${taskId}`,
     };
   }
 
@@ -45,13 +63,13 @@ export function workflowStatus(): StatusResult {
   const result: StatusResult = {
     success: true,
     status: 'active',
-    taskId: currentTask.taskId,
-    taskName: currentTask.taskName,
+    taskId: taskState.taskId,
+    taskName: taskState.taskName,
     phase,
-    workflowDir: currentTask.workflowDir,
+    workflowDir: taskState.workflowDir,
     docsDir: taskState.docsDir,
-    activeTasks: globalState.activeTasks.length,
-    allTasks: globalState.activeTasks.map((t) => ({
+    activeTasks: activeTasks.length,
+    allTasks: activeTasks.map((t) => ({
       taskId: t.taskId,
       taskName: t.taskName,
       phase: t.phase,
@@ -81,10 +99,15 @@ export function workflowStatus(): StatusResult {
  */
 export const statusToolDefinition = {
   name: 'workflow_status',
-  description: '現在のワークフロー状態を取得します。アクティブなタスク、フェーズ、並列フェーズのサブフェーズ状態などを返します。',
+  description: '現在のワークフロー状態を取得します。taskIdを省略すると全アクティブタスクの一覧を返し、taskIdを指定すると指定タスクの詳細を返します。',
   inputSchema: {
     type: 'object',
-    properties: {},
+    properties: {
+      taskId: {
+        type: 'string',
+        description: 'タスクID（省略時は全タスク一覧）',
+      },
+    },
     required: [],
   },
 };

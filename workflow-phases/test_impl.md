@@ -16,7 +16,7 @@
 
 - タスクディレクトリ: `{workflowDir}`
 - テスト設計: `test-cases.md`
-- 仕様書: `docs/specs/domains/{domain}/{name}.md`
+- 仕様書: `docs/spec/features/{name}.md`
 
 ## 実行手順
 

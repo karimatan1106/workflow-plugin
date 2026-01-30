@@ -4,7 +4,7 @@
  * このモジュールでは、ワークフローシステム全体で使用される
  * 型定義とインターフェースを提供する。
  *
- * @spec docs/specs/domains/workflow/mcp-server.md
+ * @spec docs/spec/features/workflow-mcp-server.md
  */
 
 // ============================================================================
@@ -15,7 +15,7 @@
  * タスクサイズ
  *
  * ワークフローのフェーズ数を決定する:
- * - large: 18フェーズ（全ワークフロー）
+ * - large: 19フェーズ（全ワークフロー）
  *
  * 注: small/mediumは廃止されました。全てのタスクはlargeサイズで実行されます。
  */
@@ -53,6 +53,7 @@ export type PhaseName =
   | 'refactoring'         // リファクタリングフェーズ（TDD Refactor）
   | 'parallel_quality'    // 並列品質チェックフェーズ
   | 'testing'             // テスト実行フェーズ
+  | 'regression_test'     // リグレッションテストフェーズ
   | 'parallel_verification' // 並列検証フェーズ
   | 'docs_update'         // ドキュメント更新フェーズ
   | 'commit'              // コミットフェーズ
@@ -159,49 +160,13 @@ export interface TaskState {
   taskSize?: TaskSize;
 }
 
-/**
- * アクティブタスクエントリ
- *
- * グローバル状態内で管理されるアクティブタスクの情報。
- * TaskStateの軽量版として使用される。
- */
-export interface ActiveTask {
-  /** タスクID */
-  taskId: string;
-  /** タスク名 */
-  taskName: string;
-  /** ワークフローディレクトリのパス */
-  workflowDir: string;
-  /** 現在のフェーズ */
-  phase: PhaseName;
-  /** タスクサイズ */
-  taskSize?: TaskSize;
-}
-
-// ============================================================================
-// グローバル状態
-// ============================================================================
-
-/**
- * グローバル状態
- *
- * プロジェクトルートの .claude-workflow-state.json に保存される。
- * 複数タスクの管理と全体の履歴を保持する。
- */
-export interface GlobalState {
-  /** 現在のフェーズ（アクティブタスクがない場合は 'idle'） */
-  phase: PhaseName;
-  /** アクティブなタスクのリスト（先頭が現在のタスク） */
-  activeTasks: ActiveTask[];
-  /** 全体の履歴 */
-  history: HistoryEntry[];
-  /** 全体のチェックリスト状態 */
-  checklist: Record<string, boolean>;
-}
-
 // ============================================================================
 // ツール結果型
 // ============================================================================
+
+// 注: ActiveTask と GlobalState は削除されました。
+// 並列タスク対応により、ディレクトリスキャンベースの管理に移行しました。
+// @see docs/workflows/ワ-クフロ-並列タスク対応/spec.md
 
 /**
  * ツールの基本戻り値型
@@ -345,17 +310,9 @@ export interface CompleteSubResult extends ToolResult {
   workflow_context?: WorkflowContext;
 }
 
-/**
- * スイッチコマンドの結果
- *
- * workflow_switch ツールの戻り値。
- */
-export interface SwitchResult extends ToolResult {
-  /** 切り替え先のタスクID */
-  taskId?: string;
-  /** 切り替え先のタスク名 */
-  taskName?: string;
-}
+// 注: SwitchResult は削除されました。
+// 並列タスク対応により、workflow_switch ツールは廃止されました。
+// @see docs/workflows/ワ-クフロ-並列タスク対応/spec.md
 
 /**
  * リセットコマンドの結果

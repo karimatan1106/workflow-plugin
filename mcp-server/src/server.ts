@@ -4,7 +4,7 @@
  * ワークフロー管理用のMCPサーバーを定義する。
  * MCPプロトコルを通じてワークフローツールを公開する。
  *
- * @spec docs/specs/domains/workflow/mcp-server.md
+ * @spec docs/spec/features/workflow-mcp-server.md
  */
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -27,8 +27,6 @@ import {
   resetToolDefinition,
   workflowList,
   listToolDefinition,
-  workflowSwitch,
-  switchToolDefinition,
   workflowCompleteSub,
   completeSubToolDefinition,
 } from './tools/index.js';
@@ -51,7 +49,6 @@ const TOOL_DEFINITIONS = [
   approveToolDefinition,
   resetToolDefinition,
   listToolDefinition,
-  switchToolDefinition,
   completeSubToolDefinition,
 ] as const;
 
@@ -66,22 +63,20 @@ const TOOL_DEFINITIONS = [
  * RecordがneverなのでTypeScript型推論だけでの使用。
  */
 interface ToolArguments {
-  /** ステータス取得（引数なし） */
-  workflow_status: Record<string, never>;
+  /** ステータス取得（taskIdオプション） */
+  workflow_status: { taskId?: string };
   /** タスク開始 */
   workflow_start: { taskName: string; size?: string };
-  /** 次フェーズ遷移（引数なし） */
-  workflow_next: Record<string, never>;
-  /** 承認 */
-  workflow_approve: { type: string };
-  /** リセット */
-  workflow_reset: { reason?: string };
+  /** 次フェーズ遷移（taskId必須） */
+  workflow_next: { taskId?: string };
+  /** 承認（taskId必須） */
+  workflow_approve: { taskId?: string; type: string };
+  /** リセット（taskId必須） */
+  workflow_reset: { taskId?: string; reason?: string };
   /** タスク一覧（引数なし） */
   workflow_list: Record<string, never>;
-  /** タスク切り替え */
-  workflow_switch: { taskId: string };
-  /** サブフェーズ完了 */
-  workflow_complete_sub: { subPhase: string };
+  /** サブフェーズ完了（taskId必須） */
+  workflow_complete_sub: { taskId?: string; subPhase: string };
 }
 
 /** ツール名の型 */
@@ -169,35 +164,36 @@ type ToolHandler = (args: Record<string, unknown>) => ToolResult;
  * 宣言的に管理できる。
  */
 const TOOL_HANDLERS: Record<ToolName, ToolHandler> = {
-  workflow_status: () => workflowStatus(),
+  workflow_status: (args) => {
+    const { taskId } = args as ToolArguments['workflow_status'];
+    return workflowStatus(taskId);
+  },
 
   workflow_start: (args) => {
     const { taskName } = args as ToolArguments['workflow_start'];
     return workflowStart(taskName);
   },
 
-  workflow_next: () => workflowNext(),
+  workflow_next: (args) => {
+    const { taskId } = args as ToolArguments['workflow_next'];
+    return workflowNext(taskId);
+  },
 
   workflow_approve: (args) => {
-    const { type } = args as ToolArguments['workflow_approve'];
-    return workflowApprove(type);
+    const { taskId, type } = args as ToolArguments['workflow_approve'];
+    return workflowApprove(taskId, type);
   },
 
   workflow_reset: (args) => {
-    const { reason } = args as ToolArguments['workflow_reset'];
-    return workflowReset(reason);
+    const { taskId, reason } = args as ToolArguments['workflow_reset'];
+    return workflowReset(taskId, reason);
   },
 
   workflow_list: () => workflowList(),
 
-  workflow_switch: (args) => {
-    const { taskId } = args as ToolArguments['workflow_switch'];
-    return workflowSwitch(taskId);
-  },
-
   workflow_complete_sub: (args) => {
-    const { subPhase } = args as ToolArguments['workflow_complete_sub'];
-    return workflowCompleteSub(subPhase);
+    const { taskId, subPhase } = args as ToolArguments['workflow_complete_sub'];
+    return workflowCompleteSub(taskId, subPhase);
   },
 };
 

@@ -3,7 +3,7 @@
  *
  * 新しいワークフロータスクを作成し、researchフェーズから開始する。
  *
- * @spec docs/specs/domains/workflow/mcp-server.md
+ * @spec docs/spec/features/workflow-mcp-server.md
  */
 
 import { stateManager } from '../state/manager.js';

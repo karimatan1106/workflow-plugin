@@ -165,9 +165,9 @@ ui_design(ストーリー定義) → test_impl(Red) → implementation(Green) �
 
 | ドキュメント | フロントエンド | バックエンド |
 |-------------|---------------|-------------|
-| `docs/product/features/` | `src/frontend/features/` | `src/backend/application/use_cases/` |
-| `docs/product/components/` | `src/frontend/components/ui/` | - |
-| `docs/product/api/` | `src/frontend/features/{機能}/api/` | `src/backend/presentation/routers/` |
+| `docs/spec/features/` | `src/frontend/features/` | `src/backend/application/use_cases/` |
+| `docs/spec/components/` | `src/frontend/components/ui/` | - |
+| `docs/spec/api/` | `src/frontend/features/{機能}/api/` | `src/backend/presentation/routers/` |
 
 詳細な対応表は **CLAUDE.md** を参照。
 

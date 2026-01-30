@@ -1,14 +1,17 @@
 /**
  * 型定義テスト (types.ts)
  * @spec docs/workflows/20260117_150655_ワ-クフロ-スキル未実装機能の追加/test-design.md
+ * @spec docs/workflows/ワ-クフロ-並列タスク対応/spec.md
  *
  * テスト設計書のテストID: TS-001 〜 TS-005
+ *
+ * 注: ActiveTask は並列タスク対応により削除されました。
+ * TS-004 のテストは削除されています。
  */
 
 import { describe, it, expect } from 'vitest';
 import type {
   TaskState,
-  ActiveTask,
   StartResult,
 } from '../types.js';
 
@@ -68,31 +71,9 @@ describe('types.ts - タスクサイズ機能の型定義', () => {
     });
   });
 
-  describe('TS-004: ActiveTaskにtaskSizeフィールドが存在する', () => {
-    it('ActiveTask型にtaskSize?プロパティがある', () => {
-      const activeTask: ActiveTask = {
-        taskId: '20260117_150000',
-        taskName: 'テストタスク',
-        workflowDir: '/path/to/workflow',
-        phase: 'research',
-        // taskSize が追加されているはず
-        taskSize: 'large',
-      };
-
-      expect(activeTask.taskSize).toBe('large');
-    });
-
-    it('taskSizeはオプショナルである', () => {
-      const activeTaskWithoutSize: ActiveTask = {
-        taskId: '20260117_150000',
-        taskName: 'テストタスク',
-        workflowDir: '/path/to/workflow',
-        phase: 'research',
-      };
-
-      expect(activeTaskWithoutSize.taskSize).toBeUndefined();
-    });
-  });
+  // 注: TS-004 (ActiveTaskにtaskSizeフィールドが存在する) は削除されました。
+  // ActiveTask 型は並列タスク対応により廃止されました。
+  // @see docs/workflows/ワ-クフロ-並列タスク対応/spec.md
 
   describe('TS-005: StartResultにtaskSizeフィールドが存在する', () => {
     it('StartResult型にtaskSize?プロパティがある', () => {
@@ -136,10 +117,10 @@ describe('types.ts - タスクサイズ機能の型定義', () => {
         history: [],
         subPhases: {},
         taskSize: 'large',
-        docsDir: 'docs/specs/domains/テストタスク',
+        docsDir: 'docs/workflows/テストタスク',
       };
 
-      expect(taskState.docsDir).toBe('docs/specs/domains/テストタスク');
+      expect(taskState.docsDir).toBe('docs/workflows/テストタスク');
     });
 
     it('docsDirはオプショナルである（後方互換性）', () => {
@@ -168,10 +149,10 @@ describe('types.ts - タスクサイズ機能の型定義', () => {
         workflowDir: '/path/to/workflow',
         message: 'タスク開始',
         taskSize: 'large',
-        docsDir: 'docs/specs/domains/テストタスク',
+        docsDir: 'docs/workflows/テストタスク',
       };
 
-      expect(startResult.docsDir).toBe('docs/specs/domains/テストタスク');
+      expect(startResult.docsDir).toBe('docs/workflows/テストタスク');
     });
   });
 });

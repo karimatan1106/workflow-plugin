@@ -3,9 +3,9 @@
  * ワークフロー成果物反映チェック (PostToolUse hook)
  *
  * workflow_next MCP 呼び出し後にトリガーされ、
- * ワークフローディレクトリの成果物が docs/specs/ に反映されているかチェックする。
+ * ワークフローディレクトリの成果物が docs/spec/ に反映されているかチェックする。
  *
- * @spec docs/specs/features/workflow-artifact-check.md
+ * @spec docs/spec/features/workflow-artifact-check.md
  */
 
 const HOOK_NAME = 'check-workflow-artifact.js';
@@ -94,11 +94,11 @@ const REQUIRED_ARTIFACTS = {
 /** 仕様書パス抽出用の正規表現パターン */
 const SPEC_PATH_PATTERNS = [
   // パターン1: "## 仕様書" セクション内のパス
-  /##\s*仕様書[\s\S]*?(docs\/specs\/[^\s\n]+\.md)/,
+  /##\s*仕様書[\s\S]*?(docs\/product\/features\/[^\s\n]+\.md)/,
   // パターン2: "仕様書:" ラベル付きパス
-  /仕様書:\s*(docs\/specs\/[^\s\n]+\.md)/,
-  // パターン3: docs/specs/ で始まる任意のパス
-  /(docs\/specs\/[^\s\n)]+\.md)/,
+  /仕様書:\s*(docs\/product\/features\/[^\s\n]+\.md)/,
+  // パターン3: docs/spec/features/ で始まる任意のパス
+  /(docs\/product\/features\/[^\s\n)]+\.md)/,
 ];
 
 // =============================================================================
@@ -131,7 +131,7 @@ function printSkipWarning() {
   console.warn(SEPARATOR_LINE);
   console.warn('');
   console.warn('環境変数 SKIP_ARTIFACT_CHECK=1 が設定されています。');
-  console.warn('成果物が docs/specs/ に反映されていない可能性があります。');
+  console.warn('成果物が docs/spec/ に反映されていない可能性があります。');
   console.warn('');
   console.warn('このスキップはログに記録されます。');
   console.warn('');
@@ -349,7 +349,7 @@ function buildMmdPathFromSpec(specPath, mmdType) {
  */
 function buildMmdPathFromTaskName(taskName, mmdType) {
   const kebabName = toKebabCase(taskName);
-  return `docs/specs/features/${kebabName}.${mmdType}.mmd`;
+  return `docs/spec/diagrams/${kebabName}.${mmdType}.mmd`;
 }
 
 // =============================================================================
@@ -510,14 +510,14 @@ function createSpecNotCreatedError(specPath) {
   if (specPath) {
     return {
       type: ERROR_TYPES.SPEC_NOT_CREATED,
-      message: '仕様書が docs/specs/ に作成されていません',
+      message: '仕様書が docs/spec/features/ に作成されていません',
       expected: specPath,
       action: 'planning フェーズの完了条件を確認してください',
     };
   }
   return {
     type: ERROR_TYPES.SPEC_NOT_CREATED,
-    message: '仕様書が docs/specs/ に作成されていません',
+    message: '仕様書が docs/spec/features/ に作成されていません',
     action: 'log.md に仕様書パスを記載し、仕様書を作成してください',
   };
 }
@@ -606,7 +606,7 @@ function checkMmdFiles(workflowDir, result) {
     const expectedPath = inferSpecMmdPath(workflowDir, mmdFile.name);
 
     // 反映先パスが推測できない場合はプレースホルダーを使用
-    const targetPath = expectedPath || `docs/specs/{domain}/{feature-name}.${mmdFile.type}.mmd`;
+    const targetPath = expectedPath || `docs/spec/diagrams/{feature-name}.${mmdFile.type}.mmd`;
 
     // 反映先にファイルが存在するかチェック
     if (expectedPath) {
@@ -669,7 +669,7 @@ function printErrorHeader() {
   console.log('🚫 成果物反映チェック失敗');
   console.log(SEPARATOR_LINE);
   console.log('');
-  console.log('以下のファイルが docs/specs/ に反映されていません:');
+  console.log('以下のファイルが docs/spec/ に反映されていません:');
   console.log('');
 }
 

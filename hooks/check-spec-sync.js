@@ -6,7 +6,7 @@
  * Edit/Write完了後に実行され、関連ファイルの確認を促す。
  *
  * 設定可能な環境変数:
- * - SPEC_DIR: 仕様書ディレクトリのパターン（デフォルト: docs/specs）
+ * - SPEC_DIR: 仕様書ディレクトリのパターン（デフォルト: docs/spec/features）
  * - PROJECT_SUBDIR: プロジェクトのサブディレクトリ（デフォルト: 空 = カレントディレクトリ直下）
  * - SKIP_SPEC_SYNC_CHECK: "true" で一時的にスキップ
  */
@@ -40,7 +40,7 @@ const fs = require('fs');
 const path = require('path');
 
 // 設定
-const SPEC_DIR = process.env.SPEC_DIR || 'docs/specs';
+const SPEC_DIR = process.env.SPEC_DIR || 'docs/spec/features';
 const PROJECT_SUBDIR = process.env.PROJECT_SUBDIR || '';
 
 /**

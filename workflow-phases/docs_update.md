@@ -8,7 +8,7 @@
 
 - タスクディレクトリ: `{workflowDir}`
 - 実装済みコード
-- 仕様書: `docs/specs/`
+- 仕様書: `docs/spec/features/`
 - 設計図: `*.mmd`
 
 ## 実行手順
@@ -105,7 +105,7 @@
 
 - 更新したドキュメント:
   - README.md: [更新内容]
-  - docs/specs/xxx.md: [更新内容]
+  - docs/spec/features/xxx.md: [更新内容]
   - CHANGELOG.md: [追記内容]
 - 設計図の更新:
   - xxx.state-machine.mmd: [更新内容 or 変更なし]

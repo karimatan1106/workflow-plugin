@@ -240,7 +240,7 @@ research → requirements → parallel_analysis（threat_modeling + planning）
 |--------|-------------|------|
 | `WORKFLOW_STATE_FILE` | `.claude-workflow-state.json` | グローバル状態ファイルのパス |
 | `WORKFLOW_DIR` | `docs/workflows` | ワークフローディレクトリ |
-| `SPEC_DIR` | `docs/specs` | 仕様書ディレクトリ |
+| `SPEC_DIR` | `docs/spec/features` | 仕様書ディレクトリ |
 | `CODE_DIRS` | `src` | コードディレクトリ（カンマ区切り） |
 | `SKIP_PHASE_GUARD` | - | `true` でフェーズ編集制限を無効化 |
 | `SKIP_SPEC_GUARD` | - | `true` で仕様ファーストチェックを無効化 |
@@ -328,16 +328,16 @@ workflow-plugin/
 |---------|--------|--------|
 | research | 調査結果 | `{workflowDir}/research.md` |
 | requirements | 要件定義 | `{workflowDir}/requirements.md` |
-| planning | 実装計画・仕様書 | `docs/specs/domains/{domain}/{name}.md` |
+| planning | 実装計画・仕様書 | `docs/spec/features/{name}.md` |
 | threat_modeling | 脅威モデル | `{workflowDir}/threat-model.md` |
-| state_machine | ステートマシン図 | `docs/specs/{domain}/{name}.state-machine.mmd` |
-| flowchart | フローチャート | `docs/specs/{domain}/{name}.flowchart.mmd` |
+| state_machine | ステートマシン図 | `docs/spec/diagrams/{name}.state-machine.mmd` |
+| flowchart | フローチャート | `docs/spec/diagrams/{name}.flowchart.mmd` |
 | ui_design | UI設計 | `{workflowDir}/ui-design.md` |
 | test_design | テストケース | `{workflowDir}/test-cases.md` |
 | code_review | レビュー結果 | `{workflowDir}/code-review.md` |
 | performance_test | パフォーマンステスト結果 | `{workflowDir}/performance-test.md` |
 | e2e_test | E2Eテスト結果 | `{workflowDir}/e2e-test.md` |
-| docs_update | ドキュメント更新 | `docs/specs/`, `README.md` |
+| docs_update | ドキュメント更新 | `docs/spec/`, `README.md` |
 | ci_verification | CI結果記録 | `{workflowDir}/ci-result.md` |
 
 ## TDDサイクル
@@ -401,7 +401,7 @@ Large タスクでは、並列実行可能なフェーズがあります。
 - API ドキュメントの更新
 
 **成果物:**
-- 更新された仕様書（`docs/specs/`）
+- 更新された仕様書（`docs/spec/features/`）
 - 更新されたREADME（必要に応じて）
 - 変更履歴（CHANGELOG.md など）
 
@@ -469,7 +469,7 @@ parallel_verification のサブフェーズ。エンドツーエンドテスト�
 
 ### 仕様ファースト違反が発生した
 
-1. まず `docs/specs/` 内の該当仕様書を更新
+1. まず `docs/spec/features/` 内の該当仕様書を更新
 2. その後コードを編集
 3. 緊急時は `SKIP_SPEC_GUARD=true` でスキップ
 
