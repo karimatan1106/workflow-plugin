@@ -386,7 +386,7 @@ parallel_verification のサブフェーズ。エンドツーエンドテスト�
 │  ルートディレクトリへの以下の配置は禁止                      │
 ├─────────────────────────────────────────────────────────────┤
 │  - tests/ ディレクトリ（ルート直下に作成禁止）              │
-│  - test_*.py, test_*.js（テストスクリプト）                │
+│  - test_*.ts, test_*.js（テストスクリプト）                │
 │  - *.pptx, *.pdf, *.png（テスト生成物）                    │
 │  - screenshot*.png                                          │
 │  - *_output.*, *_result.*（出力ファイル）                  │
@@ -397,14 +397,14 @@ parallel_verification のサブフェーズ。エンドツーエンドテスト�
 
 ```bash
 # ❌ 悪い例（ルートに出力）
-python test_conversion.py
-pytest tests/
+python test_conversion.ts
+vitest tests/
 mkdir tests/
 
 # ✅ 良い例（適切なディレクトリに出力）
-python src/backend/tests/integration/test_conversion.py
-pytest src/backend/tests/
-cd src/backend && pytest tests/
+python src/backend/tests/integration/test_conversion.ts
+vitest src/backend/tests/
+cd src/backend && vitest tests/
 ```
 
 ### クリーンアップ
@@ -424,7 +424,7 @@ cd src/backend && pytest tests/
 | パッケージ種別 | インストール先 | コマンド例 |
 |---------------|---------------|-----------|
 | フロントエンド依存 | `src/frontend/` | `cd src/frontend && npm install xxx` |
-| バックエンド依存 | `src/backend/` | `cd src/backend && pip install xxx` |
+| バックエンド依存 | `src/backend/` | `cd src/backend && pnpm add xxx` |
 | E2Eテスト | `e2e/` | `cd e2e && npm install playwright` |
 | 共通ツール | 各サブプロジェクト | ルートは避ける |
 
@@ -436,7 +436,7 @@ cd src/backend && pytest tests/
 ├─────────────────────────────────────────────────────────────┤
 │  - npm install <package>                                    │
 │  - npm init                                                 │
-│  - pip install <package>（venv外）                         │
+│  - pnpm add <package>（venv外）                         │
 │  - yarn add <package>                                       │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -446,21 +446,21 @@ cd src/backend && pytest tests/
 ```bash
 # ❌ 悪い例（ルートにインストール）
 npm install playwright
-pip install requests
+pnpm add requests
 
 # ✅ 良い例（適切なディレクトリにインストール）
 cd src/frontend && npm install axios
-cd src/backend && pip install -r requirements.txt
+cd src/backend && pnpm add -r package.json
 cd e2e && npm install playwright
 ```
 
-### package.json / requirements.txt の配置
+### package.json / package.json の配置
 
 | ファイル | 配置先 |
 |---------|--------|
 | `package.json` | `src/frontend/`, `e2e/` |
-| `requirements.txt` | `src/backend/` |
-| `pyproject.toml` | `src/backend/` |
+| `package.json` | `src/backend/` |
+| `tsconfig.json` | `src/backend/` |
 
 **ルートディレクトリに package.json や node_modules を作成しないこと。**
 
@@ -538,7 +538,7 @@ cd e2e && npm install playwright
 ## 関連ファイル
 
 <!-- @related-files -->
-- `src/backend/application/use_cases/example/`
+- `src/backend/application/use-cases/example/`
 - `src/frontend/features/example/`
 <!-- @end-related-files -->
 ```
@@ -577,8 +577,9 @@ cd e2e && npm install playwright
 project/
 ├── src/
 │   ├── frontend/         # フロントエンド（React/Next.js + Storybook）
-│   └── backend/          # バックエンド（Python/FastAPI - Clean Architecture）
+│   └── backend/          # バックエンド（TypeScript/Hono - Clean Architecture）
 ├── docs/                 # ドキュメント
+├── packages/              # 共有パッケージ（型定義等）
 ├── e2e/                  # E2Eテスト
 ├── docker-compose.yml    # ローカル開発環境
 └── README.md
@@ -661,39 +662,39 @@ src/frontend/
 
 ---
 
-### バックエンド構成（Clean Architecture + DDD）
+### バックエンド構成（TypeScript/Hono + Clean Architecture + DDD）
 
 ```
 src/backend/
-├── main.py                       # エントリーポイント
+├── index.ts                       # エントリーポイント
 │
 ├── domain/                       # ドメイン層（★ビジネスの核心）
 │   ├── entities/                 # エンティティ
 │   │   └── {entity}/
-│   │       ├── {entity}.py
-│   │       ├── {entity}_test.py
-│   │       └── __init__.py
-│   ├── value_objects/            # 値オブジェクト
-│   │   └── {vo}.py
+│   │       ├── {entity}.ts
+│   │       ├── {entity}.test.ts
+│   │       └── index.ts
+│   ├── value-objects/            # 値オブジェクト
+│   │   └── {vo}.ts
 │   ├── aggregates/               # 集約
 │   │   └── {aggregate}/
 │   ├── events/                   # ドメインイベント
-│   │   └── {event}.py
+│   │   └── {event}.ts
 │   ├── repositories/             # リポジトリIF（Ports）
-│   │   └── {entity}_repository.py
+│   │   └── {entity}.repository.ts
 │   └── services/                 # ドメインサービス
-│       └── {domain}_service.py
+│       └── {domain}.service.ts
 │
 ├── application/                  # アプリケーション層
-│   ├── use_cases/                # ユースケース
+│   ├── use-cases/                # ユースケース
 │   │   └── {feature}/
-│   │       ├── {action}_use_case.py
-│   │       ├── {action}_use_case_test.py
-│   │       └── __init__.py
+│   │       ├── {action}.use-case.ts
+│   │       ├── {action}.use-case.test.ts
+│   │       └── index.ts
 │   ├── commands/                 # CQRS Write
-│   │   └── {command}_command.py
+│   │   └── {command}.command.ts
 │   ├── queries/                  # CQRS Read
-│   │   └── {query}_query.py
+│   │   └── {query}.query.ts
 │   ├── dtos/                     # DTO
 │   │   ├── request/
 │   │   └── response/
@@ -703,39 +704,39 @@ src/backend/
 │
 ├── infrastructure/               # インフラ層
 │   ├── database/
-│   │   ├── models/               # SQLAlchemy Models
-│   │   ├── migrations/           # Alembic migrations
+│   │   ├── models/               # Prisma Client
+│   │   ├── migrations/           # Prisma migrations
 │   │   └── repositories/         # リポジトリ実装（Adapters）
-│   │       └── {entity}_repository_impl.py
+│   │       └── {entity}.repository.impl.ts
 │   ├── external/                 # 外部API連携
 │   │   └── {service}/
-│   │       ├── {service}_client.py
-│   │       └── {service}_adapter.py
+│   │       ├── {service}.client.ts
+│   │       └── {service}.adapter.ts
 │   ├── messaging/                # メッセージング
-│   │   └── {queue}_producer.py
+│   │   └── {queue}.producer.ts
 │   ├── cache/                    # キャッシュ
-│   │   └── redis_service.py
+│   │   └── redis.service.ts
 │   └── config/                   # 設定
-│       └── {config}_config.py
+│       └── {config}.config.ts
 │
 ├── presentation/                 # プレゼンテーション層（API）
-│   ├── routers/                  # FastAPI routers
+│   ├── routes/                  # Hono routes
 │   │   └── {feature}/
-│   │       ├── {feature}_router.py
-│   │       ├── {feature}_router_test.py
-│   │       └── __init__.py
+│   │       ├── {feature}.route.ts
+│   │       ├── {feature}.route.test.ts
+│   │       └── index.ts
 │   ├── middleware/
-│   │   ├── auth_middleware.py
-│   │   └── logging_middleware.py
-│   ├── dependencies/             # FastAPI dependencies
-│   │   └── auth.py
-│   └── schemas/                  # Pydantic schemas
-│       └── {feature}_schema.py
+│   │   ├── auth.middleware.ts
+│   │   └── logging.middleware.ts
+│   ├── dependencies/             # Hono middleware
+│   │   └── auth.ts
+│   └── schemas/                  # Zod schemas
+│       └── {feature}.schema.ts
 │
 ├── batch/                        # バッチ処理
 │   └── {batch}/
-│       ├── {batch}_job.py
-│       └── {batch}_job_test.py
+│       ├── {batch}.job.ts
+│       └── {batch}.job.test.ts
 │
 ├── shared/                       # 共通
 │   ├── constants/
