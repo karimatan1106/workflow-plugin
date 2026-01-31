@@ -1,0 +1,16 @@
+#!/bin/sh
+# post-merge hook: git pull後にinstall.jsを自動実行
+
+echo "🔄 workflow-plugin: 設定を同期中..."
+
+# install.jsのパスを特定
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
+INSTALL_SCRIPT="$PLUGIN_DIR/install.js"
+
+if [ -f "$INSTALL_SCRIPT" ]; then
+    node "$INSTALL_SCRIPT" --quiet
+    echo "✅ workflow-plugin: 設定の同期が完了しました"
+else
+    echo "⚠️ workflow-plugin: install.js が見つかりません: $INSTALL_SCRIPT"
+fi

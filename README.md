@@ -99,10 +99,33 @@ mklink /J .claude\workflow-phases workflow-plugin\workflow-phases
 
 ## アップデート
 
-プラグインを更新後、再度インストールスクリプトを実行：
+### 手動アップデート
+
+プラグインを更新後、**必ず**インストールスクリプトを再実行してください：
 
 ```bash
-node workflow-plugin/install.js
+cd workflow-plugin
+git pull origin main
+node install.js
+```
+
+> ⚠️ **重要**: `git pull` 後に `install.js` を実行しないと、新しいフックや設定が反映されません。
+
+### 自動アップデート（推奨）
+
+git フックを設定すると、`git pull` 後に自動的に `install.js` が実行されます：
+
+```bash
+# フックをセットアップ（初回のみ）
+./workflow-plugin/setup-git-hooks.sh
+```
+
+セットアップ後は、`git pull` するだけで自動的に設定が同期されます：
+
+```bash
+cd workflow-plugin
+git pull origin main
+# → install.js が自動実行される
 ```
 
 ## 使い方
