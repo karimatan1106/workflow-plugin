@@ -811,6 +811,275 @@ src/backend/
 
 ---
 
+## API設計標準（OpenAPI自動生成）
+
+エンタープライズAPIの品質を担保するため、OpenAPI仕様に基づいた設計・実装を行う。
+
+### 技術スタック
+
+| 項目 | ライブラリ |
+|------|-----------|
+| スキーマ定義 | Zod |
+| OpenAPI生成 | @hono/zod-openapi |
+| ドキュメントUI | Swagger UI / Scalar |
+| クライアント生成 | openapi-typescript |
+
+### ディレクトリ構成
+
+```
+src/backend/
+├── presentation/
+│   ├── routes/
+│   │   └── {feature}/
+│   │       ├── {feature}.route.ts      # ルート定義
+│   │       └── {feature}.schema.ts     # Zodスキーマ + OpenAPI定義
+│   └── openapi/
+│       ├── index.ts                    # OpenAPIアプリ設定
+│       └── schemas/                    # 共通スキーマ
+│           ├── error.schema.ts
+│           ├── pagination.schema.ts
+│           └── common.schema.ts
+├── docs/
+│   └── openapi.json                    # 生成されたOpenAPI仕様
+```
+
+### 実装パターン
+
+#### 1. スキーマ定義（Zod + OpenAPI）
+
+```typescript
+// src/backend/presentation/routes/users/users.schema.ts
+import { z } from '@hono/zod-openapi';
+
+// リクエストスキーマ
+export const CreateUserSchema = z.object({
+  name: z.string().min(1).max(100).openapi({ example: '山田太郎' }),
+  email: z.string().email().openapi({ example: 'yamada@example.com' }),
+}).openapi('CreateUserRequest');
+
+// レスポンススキーマ
+export const UserSchema = z.object({
+  id: z.string().uuid().openapi({ example: '550e8400-e29b-41d4-a716-446655440000' }),
+  name: z.string(),
+  email: z.string().email(),
+  createdAt: z.string().datetime(),
+}).openapi('User');
+
+// エラースキーマ（共通）
+export const ErrorSchema = z.object({
+  code: z.string(),
+  message: z.string(),
+  details: z.array(z.object({
+    field: z.string(),
+    message: z.string(),
+  })).optional(),
+}).openapi('Error');
+```
+
+#### 2. ルート定義（OpenAPI統合）
+
+```typescript
+// src/backend/presentation/routes/users/users.route.ts
+import { createRoute, OpenAPIHono } from '@hono/zod-openapi';
+import { CreateUserSchema, UserSchema, ErrorSchema } from './users.schema';
+
+const app = new OpenAPIHono();
+
+// ルート定義（OpenAPIメタデータ付き）
+const createUserRoute = createRoute({
+  method: 'post',
+  path: '/users',
+  tags: ['Users'],
+  summary: 'ユーザー作成',
+  description: '新規ユーザーを作成します',
+  request: {
+    body: {
+      content: {
+        'application/json': { schema: CreateUserSchema },
+      },
+    },
+  },
+  responses: {
+    201: {
+      description: '作成成功',
+      content: { 'application/json': { schema: UserSchema } },
+    },
+    400: {
+      description: 'バリデーションエラー',
+      content: { 'application/json': { schema: ErrorSchema } },
+    },
+    409: {
+      description: '重複エラー',
+      content: { 'application/json': { schema: ErrorSchema } },
+    },
+  },
+});
+
+// ハンドラー実装
+app.openapi(createUserRoute, async (c) => {
+  const body = c.req.valid('json'); // 型安全なリクエストボディ
+  // ... ビジネスロジック
+  return c.json(user, 201);
+});
+
+export default app;
+```
+
+#### 3. OpenAPIドキュメント生成
+
+```typescript
+// src/backend/presentation/openapi/index.ts
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { swaggerUI } from '@hono/swagger-ui';
+import usersRoute from '../routes/users/users.route';
+
+const app = new OpenAPIHono();
+
+// ルート登録
+app.route('/api/v1', usersRoute);
+
+// OpenAPI仕様エンドポイント
+app.doc('/api/openapi.json', {
+  openapi: '3.1.0',
+  info: {
+    title: 'API仕様書',
+    version: '1.0.0',
+    description: 'エンタープライズAPI',
+  },
+  servers: [
+    { url: 'http://localhost:3000', description: '開発環境' },
+    { url: 'https://api.example.com', description: '本番環境' },
+  ],
+});
+
+// Swagger UI
+app.get('/api/docs', swaggerUI({ url: '/api/openapi.json' }));
+
+export default app;
+```
+
+### APIバージョニング
+
+```
+/api/v1/users    # 現行バージョン
+/api/v2/users    # 次期バージョン（破壊的変更時）
+```
+
+**バージョニングルール:**
+- パスプレフィックス方式を採用（`/api/v1/`）
+- マイナーバージョンは後方互換を維持
+- 破壊的変更時のみメジャーバージョンを上げる
+- 旧バージョンは最低6ヶ月間サポート
+
+### 共通レスポンス形式
+
+#### 成功レスポンス
+
+```json
+{
+  "data": { ... },
+  "meta": {
+    "requestId": "req_abc123",
+    "timestamp": "2026-01-31T12:00:00Z"
+  }
+}
+```
+
+#### ページネーション
+
+```json
+{
+  "data": [ ... ],
+  "pagination": {
+    "page": 1,
+    "perPage": 20,
+    "total": 100,
+    "totalPages": 5
+  }
+}
+```
+
+#### エラーレスポンス
+
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "入力値が不正です",
+    "details": [
+      { "field": "email", "message": "有効なメールアドレスを入力してください" }
+    ]
+  },
+  "meta": {
+    "requestId": "req_abc123",
+    "timestamp": "2026-01-31T12:00:00Z"
+  }
+}
+```
+
+### エラーコード体系
+
+| コード | HTTPステータス | 説明 |
+|--------|---------------|------|
+| `VALIDATION_ERROR` | 400 | バリデーションエラー |
+| `UNAUTHORIZED` | 401 | 認証エラー |
+| `FORBIDDEN` | 403 | 権限エラー |
+| `NOT_FOUND` | 404 | リソース未発見 |
+| `CONFLICT` | 409 | 重複・競合エラー |
+| `RATE_LIMITED` | 429 | レート制限超過 |
+| `INTERNAL_ERROR` | 500 | サーバーエラー |
+
+### フロントエンド型生成
+
+```bash
+# OpenAPI仕様から型定義を生成
+pnpm dlx openapi-typescript http://localhost:3000/api/openapi.json -o src/frontend/lib/api/types.ts
+```
+
+```typescript
+// src/frontend/lib/api/client.ts
+import type { paths } from './types';
+import createClient from 'openapi-fetch';
+
+export const api = createClient<paths>({
+  baseUrl: process.env.NEXT_PUBLIC_API_URL,
+});
+
+// 使用例（型安全）
+const { data, error } = await api.POST('/api/v1/users', {
+  body: { name: '山田太郎', email: 'yamada@example.com' },
+});
+```
+
+### CI/CD統合
+
+```yaml
+# .github/workflows/openapi.yml
+- name: Generate OpenAPI spec
+  run: pnpm run openapi:generate
+
+- name: Validate OpenAPI spec
+  run: pnpm dlx @redocly/cli lint src/backend/docs/openapi.json
+
+- name: Generate client types
+  run: pnpm run openapi:types
+
+- name: Check for breaking changes
+  run: pnpm dlx oasdiff breaking base.json new.json
+```
+
+### ワークフローでの扱い
+
+| フェーズ | OpenAPI関連タスク |
+|---------|------------------|
+| planning | API設計、エンドポイント定義 |
+| implementation | スキーマ定義、ルート実装 |
+| testing | OpenAPI仕様のバリデーション |
+| docs_update | openapi.json の生成・更新 |
+
+
+---
+
 ## ドキュメント構成
 
 プロジェクトのドキュメントは以下の構成で管理されます。
