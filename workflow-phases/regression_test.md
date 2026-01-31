@@ -22,7 +22,7 @@
 #### バックエンド
 
 ```bash
-cd src/backend && pytest tests/regression/ -v
+cd src/backend && vitest run tests/regression/
 ```
 
 #### フロントエンド
@@ -63,9 +63,9 @@ cd src/frontend && npm run test -- test/regression/
 ```
 src/backend/tests/regression/
 ├── README.md
-├── conftest.py
+├── setup.ts
 └── {task-name}/
-    └── test_*.py
+    └── *.test.ts
 
 src/frontend/test/regression/
 ├── README.md

@@ -397,12 +397,12 @@ parallel_verification のサブフェーズ。エンドツーエンドテスト�
 
 ```bash
 # ❌ 悪い例（ルートに出力）
-python test_conversion.ts
+node test_conversion.ts
 vitest tests/
 mkdir tests/
 
 # ✅ 良い例（適切なディレクトリに出力）
-python src/backend/tests/integration/test_conversion.ts
+node src/backend/tests/integration/test_conversion.ts
 vitest src/backend/tests/
 cd src/backend && vitest tests/
 ```

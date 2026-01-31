@@ -142,7 +142,7 @@ project/
 │   │   ├── features/  # 機能モジュール（Feature-First）
 │   │   └── components/# 共通UIコンポーネント（CDD対応）
 │   │
-│   └── backend/       # バックエンド（Python/FastAPI - Clean Architecture）
+│   └── backend/       # バックエンド（TypeScript/Hono - Clean Architecture）
 │       ├── domain/    # ドメイン層
 │       ├── application/# アプリケーション層
 │       ├── infrastructure/# インフラ層
