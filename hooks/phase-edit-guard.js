@@ -1046,6 +1046,8 @@ const FILE_MODIFYING_COMMANDS = [
   /\bprintf\s+.*>/i,                     // printf redirection
   /\btee\s+/i,                           // tee command
   /\btouch\s+/i,                         // touch (create file)
+  /<<\s*['\"]?([A-Z_]+)['\"]?/i,         // heredoc pattern
+  /\|\s*(tee|dd)/i,                      // pipe output pattern
   // ファイル削除・移動
   /\brm\s+(-[rf]*\s+)?[^|&;]+\.(ts|tsx|js|jsx|py|go|rs|md|mmd|json|yaml|yml)/i,  // rm with code files
   /\bmv\s+/i,                            // mv (rename/move)
@@ -1075,6 +1077,58 @@ const ALWAYS_ALLOWED_BASH_PATTERNS = [
 ];
 
 /**
+ * Bashコマンドからファイルパスを抽出
+ *
+ * リダイレクト、sed -i、tee、mv/cp/rm などからファイルパスを抽出する。
+ *
+ * @param {string} command - Bashコマンド
+ * @returns {string|null} 抽出されたファイルパス、または null
+ */
+function extractFilePathFromCommand(command) {
+  if (!command || typeof command !== 'string') {
+    return null;
+  }
+
+  // 1. リダイレクト (>, >>) からファイルパス抽出
+  const redirectMatch = command.match(/>\s*([^\s;&|]+)/);
+  if (redirectMatch) {
+    return redirectMatch[1].trim();
+  }
+
+  // 2. sed -i からファイルパス抽出
+  const sedMatch = command.match(/\bsed\s+(?:-[a-z]*i[a-z]*\s+|--in-place\s+).*?\s+([^\s;&|]+\.(ts|tsx|js|jsx|py|go|rs|md|mmd|json|yaml|yml))/i);
+  if (sedMatch) {
+    return sedMatch[1].trim();
+  }
+
+  // 3. tee からファイルパス抽出 (パイプの後も考慮)
+  const teeMatch = command.match(/\|\s*tee\s+(?:-a\s+)?([^\s;&|]+)/i);
+  if (teeMatch) {
+    return teeMatch[1].trim();
+  }
+
+  // tee が単独で使われる場合
+  const teeStandaloneMatch = command.match(/^tee\s+(?:-a\s+)?([^\s;&|]+)/i);
+  if (teeStandaloneMatch) {
+    return teeStandaloneMatch[1].trim();
+  }
+
+  // 4. mv, cp, rm からファイルパス抽出
+  const mvCpRmMatch = command.match(/\b(mv|cp|rm)\s+(?:-[a-z]+\s+)?([^\s;&|]+)/i);
+  if (mvCpRmMatch) {
+    return mvCpRmMatch[2].trim();
+  }
+
+  // 5. 一般的なファイル拡張子パターンでの抽出（フォールバック）
+  const fileMatch = command.match(/[^\s]+\.(ts|tsx|js|jsx|py|go|rs|md|mmd|json|yaml|yml)(?:\s|$)/i);
+  if (fileMatch) {
+    return fileMatch[0].trim();
+  }
+
+  return null;
+}
+
+/**
  * BashコマンドがファイルMを修正するかどうか判定
  *
  * @param {string} command - Bashコマンド
@@ -1085,22 +1139,22 @@ function analyzeBashCommand(command) {
     return { isModifying: false, filePath: null, isExplicitlyAllowed: false };
   }
 
-  // 常に許可するコマンドをチェック
+  // 最初にファイル修正コマンドをチェック（優先度高）
+  // これにより "cat file.txt | tee output.log" のようなケースを正しく検出
+  for (const pattern of FILE_MODIFYING_COMMANDS) {
+    if (pattern.test(command)) {
+      debugLog('ファイル修正Bashコマンド検出:', command.substring(0, 50));
+      // extractFilePathFromCommand() を使用してファイルパスを抽出
+      const filePath = extractFilePathFromCommand(command);
+      return { isModifying: true, filePath, isExplicitlyAllowed: false };
+    }
+  }
+
+  // ファイル修正がない場合、常に許可するコマンドをチェック
   for (const pattern of ALWAYS_ALLOWED_BASH_PATTERNS) {
     if (pattern.test(command)) {
       debugLog('常に許可されるBashコマンド:', command.substring(0, 50));
       return { isModifying: false, filePath: null, isExplicitlyAllowed: true };
-    }
-  }
-
-  // ファイル修正コマンドをチェック
-  for (const pattern of FILE_MODIFYING_COMMANDS) {
-    if (pattern.test(command)) {
-      debugLog('ファイル修正Bashコマンド検出:', command.substring(0, 50));
-      // コマンドからファイルパスを抽出（簡易的な実装）
-      const fileMatch = command.match(/[^\s]+\.(ts|tsx|js|jsx|py|go|rs|md|mmd|json|yaml|yml)(?:\s|$)/i);
-      const filePath = fileMatch ? fileMatch[0].trim() : null;
-      return { isModifying: true, filePath, isExplicitlyAllowed: false };
     }
   }
 
@@ -1251,6 +1305,9 @@ function main(input) {
       // ワークフロー未開始またはファイルパス不明の場合は許可（安全側）
       process.exit(EXIT_CODES.SUCCESS);
     }
+
+    // ファイルパスが抽出できた場合は、非読み取り専用フェーズでもファイルタイプチェックを実行
+    // この後の通常のファイルチェック処理に進む (canEditInPhase でチェック)
   } else {
     filePath = toolInput.file_path || '';
   }
@@ -1372,6 +1429,8 @@ if (require.main === module) {
     findActiveWorkflowState,
     displayBlockMessage,
     normalizePath,
+    extractFilePathFromCommand,
+    analyzeBashCommand,
     PHASE_RULES,
     PARALLEL_PHASES,
     FILE_TYPE_NAMES,
