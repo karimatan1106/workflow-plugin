@@ -1024,13 +1024,88 @@ function logCheck(entry) {
 /**
  * チェック対象のツールかどうか判定
  *
- * Edit/Write ツールのみチェック対象とする。
+ * Edit/Write/Bash ツールをチェック対象とする。
  *
  * @param {string} toolName - ツール名
  * @returns {boolean} チェック対象の場合 true
  */
 function isTargetTool(toolName) {
-  return toolName === 'Edit' || toolName === 'Write';
+  return toolName === 'Edit' || toolName === 'Write' || toolName === 'Bash';
+}
+
+/**
+ * ファイル操作を行うBashコマンドパターン
+ * これらのコマンドが含まれる場合、ファイル編集として扱う
+ */
+const FILE_MODIFYING_COMMANDS = [
+  // ファイル作成・編集
+  /\bsed\s+(-i|--in-place)/i,           // sed -i (in-place edit)
+  /\bawk\s+.*>>/i,                       // awk with append
+  /\becho\s+.*>/i,                       // echo redirection
+  /\bcat\s+.*>/i,                        // cat redirection
+  /\bprintf\s+.*>/i,                     // printf redirection
+  /\btee\s+/i,                           // tee command
+  /\btouch\s+/i,                         // touch (create file)
+  // ファイル削除・移動
+  /\brm\s+(-[rf]*\s+)?[^|&;]+\.(ts|tsx|js|jsx|py|go|rs|md|mmd|json|yaml|yml)/i,  // rm with code files
+  /\bmv\s+/i,                            // mv (rename/move)
+  /\bcp\s+/i,                            // cp (copy)
+  // ディレクトリ操作（コード関連）
+  /\brmdir\s+/i,                         // rmdir
+  /\bmkdir\s+.*\/(src|tests|features|components)\//i,  // mkdir in source dirs
+];
+
+/**
+ * 常に許可するBashコマンドパターン
+ * これらのコマンドはフェーズに関係なく許可する
+ */
+const ALWAYS_ALLOWED_BASH_PATTERNS = [
+  // 読み取り専用コマンド
+  /^\s*(ls|dir|pwd|cat|head|tail|less|more|grep|rg|find|tree|wc|file|stat)\s/i,
+  // プロセス情報（読み取りのみ）
+  /^\s*(ps|top|htop)\s/i,
+  // Git読み取り
+  /\bgit\s+(status|log|diff|branch|show|remote)\b/i,
+  // ネットワーク読み取り
+  /^\s*(curl|wget|netstat|ping|nc|nslookup|dig)\s/i,
+  // システム情報
+  /^\s*(uname|hostname|whoami|id|env|printenv|which|where|type)\s/i,
+  // スリープ・待機
+  /^\s*(sleep|wait)\s/i,
+];
+
+/**
+ * BashコマンドがファイルMを修正するかどうか判定
+ *
+ * @param {string} command - Bashコマンド
+ * @returns {{isModifying: boolean, filePath: string | null}} 修正の有無とファイルパス
+ */
+function analyzeBashCommand(command) {
+  if (!command || typeof command !== 'string') {
+    return { isModifying: false, filePath: null, isExplicitlyAllowed: false };
+  }
+
+  // 常に許可するコマンドをチェック
+  for (const pattern of ALWAYS_ALLOWED_BASH_PATTERNS) {
+    if (pattern.test(command)) {
+      debugLog('常に許可されるBashコマンド:', command.substring(0, 50));
+      return { isModifying: false, filePath: null, isExplicitlyAllowed: true };
+    }
+  }
+
+  // ファイル修正コマンドをチェック
+  for (const pattern of FILE_MODIFYING_COMMANDS) {
+    if (pattern.test(command)) {
+      debugLog('ファイル修正Bashコマンド検出:', command.substring(0, 50));
+      // コマンドからファイルパスを抽出（簡易的な実装）
+      const fileMatch = command.match(/[^\s]+\.(ts|tsx|js|jsx|py|go|rs|md|mmd|json|yaml|yml)(?:\s|$)/i);
+      const filePath = fileMatch ? fileMatch[0].trim() : null;
+      return { isModifying: true, filePath, isExplicitlyAllowed: false };
+    }
+  }
+
+  // どちらにも該当しないコマンド（npm, taskkill等）は明示的に許可されていない
+  return { isModifying: false, filePath: null, isExplicitlyAllowed: false };
 }
 
 /**
@@ -1084,14 +1159,103 @@ function main(input) {
     const toolName = input.tool_name;
     const toolInput = input.tool_input || {};
 
-  // 2. Edit/Write ツール以外は許可
+  // 2. Edit/Write/Bash ツール以外は許可
   if (!isTargetTool(toolName)) {
     process.exit(EXIT_CODES.SUCCESS);
   }
 
-  const filePath = toolInput.file_path || '';
+  // 3. Bashツールの場合は特別な処理
+  let filePath = '';
+  if (toolName === 'Bash') {
+    const command = toolInput.command || '';
+    const analysis = analyzeBashCommand(command);
 
-  // 3. ファイルパスがない場合は許可
+    // 明示的に許可されたコマンドは常に許可
+    if (analysis.isExplicitlyAllowed) {
+      debugLog('Bashコマンド（明示的許可）：許可');
+      process.exit(EXIT_CODES.SUCCESS);
+    }
+
+    // ワークフロー状態を確認
+    const workflowState = findActiveWorkflowState(null);
+    if (workflowState) {
+      const phase = workflowState.phase;
+      const rule = getPhaseRule(phase, workflowState.workflowState);
+
+      // 読み取り専用フェーズでは、明示的に許可されたコマンド以外はブロック
+      if (rule && rule.readOnly) {
+        console.log('');
+        console.log(SEPARATOR_LINE);
+        console.log(' Bashコマンドがブロックされました');
+        console.log(SEPARATOR_LINE);
+        console.log('');
+        console.log(` フェーズ: ${phase}（${rule.japaneseName || phase}）`);
+        console.log(` コマンド: ${command.substring(0, 100)}${command.length > 100 ? '...' : ''}`);
+        console.log('');
+        console.log(` 理由: ${rule.description}`);
+        console.log('');
+        console.log(' このフェーズでは読み取り専用コマンドのみ許可されます。');
+        console.log(' 許可: ls, cat, grep, curl, git status/log/diff 等');
+        console.log('');
+        console.log(SEPARATOR_LINE);
+        logCheck({
+          blocked: true,
+          phase,
+          command: command.substring(0, 100),
+          reason: 'Bash command in read-only phase',
+        });
+        process.exit(EXIT_CODES.BLOCK);
+      }
+    }
+
+    // ファイル修正コマンドでない場合は許可
+    if (!analysis.isModifying) {
+      debugLog('Bashコマンド（ファイル修正なし）：許可');
+      process.exit(EXIT_CODES.SUCCESS);
+    }
+
+    // ファイル修正コマンドの場合、抽出したファイルパスを使用
+    filePath = analysis.filePath || '';
+    debugLog('Bashファイル修正検出:', command.substring(0, 80));
+
+    // ファイルパスが抽出できない場合でも、ファイル修正コマンドはブロック対象
+    if (!filePath) {
+      // ワークフロー状態を確認
+      const workflowState = findActiveWorkflowState(null);
+      if (workflowState) {
+        const phase = workflowState.phase;
+        const rule = getPhaseRule(phase, workflowState.workflowState);
+        if (rule && rule.readOnly) {
+          console.log('');
+          console.log(SEPARATOR_LINE);
+          console.log(' Bashによるファイル操作がブロックされました');
+          console.log(SEPARATOR_LINE);
+          console.log('');
+          console.log(` フェーズ: ${phase}（${rule.japaneseName || phase}）`);
+          console.log(` コマンド: ${command.substring(0, 100)}...`);
+          console.log('');
+          console.log(` 理由: ${rule.description}`);
+          console.log('');
+          console.log(' このフェーズではファイル操作は許可されていません。');
+          console.log('');
+          console.log(SEPARATOR_LINE);
+          logCheck({
+            blocked: true,
+            phase,
+            command: command.substring(0, 100),
+            reason: 'Bash file operation in read-only phase',
+          });
+          process.exit(EXIT_CODES.BLOCK);
+        }
+      }
+      // ワークフロー未開始またはファイルパス不明の場合は許可（安全側）
+      process.exit(EXIT_CODES.SUCCESS);
+    }
+  } else {
+    filePath = toolInput.file_path || '';
+  }
+
+  // 4. ファイルパスがない場合は許可
   if (!filePath) {
     process.exit(EXIT_CODES.SUCCESS);
   }

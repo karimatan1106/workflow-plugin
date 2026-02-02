@@ -18,6 +18,39 @@ import {
 } from '../phases/definitions.js';
 import { getTaskByIdOrError, safeExecute } from './helpers.js';
 import { STATE_ERRORS } from '../utils/errors.js';
+import { DesignValidator, formatValidationError } from '../validation/design-validator.js';
+
+/**
+ * 設計-実装整合性チェックを実行
+ *
+ * @param docsDir ドキュメントディレクトリ
+ * @returns エラーがある場合はエラー結果、ない場合は null
+ */
+function performDesignValidation(docsDir: string): NextResult | null {
+  if (process.env.SKIP_DESIGN_VALIDATION) {
+    return null;
+  }
+
+  const validator = new DesignValidator(docsDir);
+  const validationResult = validator.validateAll();
+
+  if (!validationResult.passed) {
+    const strict = process.env.VALIDATE_DESIGN_STRICT !== 'false';
+
+    if (strict) {
+      return {
+        success: false,
+        message: formatValidationError(validationResult),
+      };
+    } else {
+      // 警告モード: ログ出力のみ
+      console.warn('[設計検証] 警告モード - 未実装項目があります');
+      console.warn(formatValidationError(validationResult));
+    }
+  }
+
+  return null;
+}
 
 /**
  * 次のフェーズへ遷移
@@ -59,6 +92,24 @@ export function workflowNext(taskId?: string): NextResult {
         success: false,
         message: `並列フェーズの未完了サブフェーズがあります: ${incompleteSubPhases.join(', ')}。workflow_complete_sub で完了してください`,
       };
+    }
+  }
+
+  // 設計-実装整合性チェック（test_impl → implementation 遷移時）
+  if (currentPhase === 'test_impl') {
+    const docsDir = taskState.docsDir || taskState.workflowDir;
+    const validationError = performDesignValidation(docsDir);
+    if (validationError) {
+      return validationError;
+    }
+  }
+
+  // 設計-実装整合性チェック（refactoring → parallel_quality 遷移時）
+  if (currentPhase === 'refactoring') {
+    const docsDir = taskState.docsDir || taskState.workflowDir;
+    const validationError = performDesignValidation(docsDir);
+    if (validationError) {
+      return validationError;
     }
   }
 
