@@ -251,6 +251,96 @@ const FILE_TYPE_NAMES = {
 };
 
 /**
+ * フェーズ順序定義（ファイルタイプが許可される最初のフェーズを見つけるため）
+ */
+const PHASE_ORDER = [
+  'research',
+  'requirements',
+  'threat_modeling',
+  'planning',
+  'state_machine',
+  'flowchart',
+  'ui_design',
+  'design_review',
+  'test_design',
+  'test_impl',
+  'implementation',
+  'refactoring',
+  'build_check',
+  'code_review',
+  'testing',
+  'manual_test',
+  'security_scan',
+  'docs_update',
+  'commit',
+  'completed',
+];
+
+/**
+ * ファイルタイプごとに編集可能になる推奨フェーズ
+ *
+ * 各ファイルタイプが最初に編集可能になるフェーズを定義。
+ * ブロック時に「このフェーズへ進むと編集できます」という案内に使用。
+ */
+const FILE_TYPE_TARGET_PHASES = {
+  code: 'implementation',
+  test: 'test_impl',
+  spec: 'requirements',
+  diagram: 'state_machine',
+  config: 'requirements',
+  env: 'requirements',
+  other: 'refactoring',
+};
+
+/**
+ * 現在のフェーズからファイルタイプが編集可能になる次のフェーズを見つける
+ *
+ * @param {string} currentPhase - 現在のフェーズ名
+ * @param {string} fileType - ファイルタイプ (code, test, spec, diagram など)
+ * @returns {object|null} { phase: フェーズ名, japaneseName: 日本語名 } または null
+ */
+function findNextPhaseForFileType(currentPhase, fileType) {
+  const currentIndex = PHASE_ORDER.indexOf(currentPhase);
+  if (currentIndex === -1) {
+    // 不明なフェーズの場合は推奨フェーズを返す
+    const targetPhase = FILE_TYPE_TARGET_PHASES[fileType];
+    if (targetPhase && PHASE_RULES[targetPhase]) {
+      return {
+        phase: targetPhase,
+        japaneseName: PHASE_RULES[targetPhase].japaneseName || targetPhase,
+      };
+    }
+    return null;
+  }
+
+  // 現在のフェーズより後のフェーズを順番にチェック
+  for (let i = currentIndex + 1; i < PHASE_ORDER.length; i++) {
+    const phase = PHASE_ORDER[i];
+    const rule = PHASE_RULES[phase];
+    if (rule && rule.allowed && rule.allowed.includes(fileType)) {
+      return {
+        phase,
+        japaneseName: rule.japaneseName || phase,
+      };
+    }
+  }
+
+  // 見つからない場合はファイルタイプの推奨フェーズを返す（現在のフェーズより後であれば）
+  const targetPhase = FILE_TYPE_TARGET_PHASES[fileType];
+  if (targetPhase) {
+    const targetIndex = PHASE_ORDER.indexOf(targetPhase);
+    if (targetIndex > currentIndex && PHASE_RULES[targetPhase]) {
+      return {
+        phase: targetPhase,
+        japaneseName: PHASE_RULES[targetPhase].japaneseName || targetPhase,
+      };
+    }
+  }
+
+  return null;
+}
+
+/**
  * 常に編集を許可するファイルパターン
  */
 const ALWAYS_ALLOWED_PATTERNS = [
@@ -870,11 +960,29 @@ function displayAllowedFiles(allowedTypes) {
 /**
  * 次のステップを表示
  *
+ * ブロックされたファイルタイプに基づいて、どのフェーズに進めば
+ * 編集可能になるかを案内する。
+ *
  * @param {object} rule - フェーズルール
+ * @param {string} [phase] - 現在のフェーズ名
+ * @param {string} [fileType] - ブロックされたファイルタイプ
  */
-function displayNextSteps(rule) {
+function displayNextSteps(rule, phase, fileType) {
   console.log(' 次のステップ:');
 
+  // ブロックされたファイルタイプに基づいて移行先フェーズを案内
+  if (phase && fileType) {
+    const nextPhase = findNextPhaseForFileType(phase, fileType);
+    if (nextPhase) {
+      const fileTypeName = FILE_TYPE_NAMES[fileType] || fileType;
+      console.log(`   → /workflow next で ${nextPhase.phase}（${nextPhase.japaneseName}）`);
+      console.log(`     フェーズへ進むと${fileTypeName}の編集が可能になります`);
+      console.log('');
+      return;
+    }
+  }
+
+  // フォールバック: 一般的な案内
   if (rule.readOnly) {
     console.log('   1. このフェーズの作業を完了してください');
     console.log('   2. /workflow next で次フェーズへ進んでください');
@@ -932,8 +1040,8 @@ function displayBlockMessage(phase, filePath, fileType, rule) {
   // 許可されるファイル一覧
   displayAllowedFiles(rule.allowed);
 
-  // 次のステップ
-  displayNextSteps(rule);
+  // 次のステップ（ブロックされたファイルタイプに基づいてフェーズ移行案内）
+  displayNextSteps(rule, phase, fileType);
 
   // スキップ方法
   console.log(' スキップ（緊急時のみ）:');
@@ -1251,6 +1359,14 @@ function main(input) {
         console.log(' このフェーズでは読み取り専用コマンドのみ許可されます。');
         console.log(' 許可: ls, cat, grep, curl, git status/log/diff 等');
         console.log('');
+        // フェーズ移行案内
+        const nextWritePhase = findNextPhaseForFileType(phase, 'code');
+        if (nextWritePhase) {
+          console.log(' 次のステップ:');
+          console.log(`   → /workflow next で ${nextWritePhase.phase}（${nextWritePhase.japaneseName}）`);
+          console.log('     フェーズへ進むとファイル編集が可能になります');
+          console.log('');
+        }
         console.log(SEPARATOR_LINE);
         logCheck({
           blocked: true,
@@ -1292,6 +1408,14 @@ function main(input) {
           console.log('');
           console.log(' このフェーズではファイル操作は許可されていません。');
           console.log('');
+          // フェーズ移行案内
+          const nextWritePhase = findNextPhaseForFileType(phase, 'code');
+          if (nextWritePhase) {
+            console.log(' 次のステップ:');
+            console.log(`   → /workflow next で ${nextWritePhase.phase}（${nextWritePhase.japaneseName}）`);
+            console.log('     フェーズへ進むとファイル編集が可能になります');
+            console.log('');
+          }
           console.log(SEPARATOR_LINE);
           logCheck({
             blocked: true,
@@ -1431,9 +1555,11 @@ if (require.main === module) {
     normalizePath,
     extractFilePathFromCommand,
     analyzeBashCommand,
+    findNextPhaseForFileType,
     PHASE_RULES,
     PARALLEL_PHASES,
     FILE_TYPE_NAMES,
+    FILE_TYPE_TARGET_PHASES,
     EXIT_CODES,
   };
 }
