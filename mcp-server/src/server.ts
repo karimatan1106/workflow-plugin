@@ -29,6 +29,12 @@ import {
   listToolDefinition,
   workflowCompleteSub,
   completeSubToolDefinition,
+  workflowRecordTest,
+  recordTestToolDefinition,
+  workflowCaptureBaseline,
+  captureBaselineToolDefinition,
+  workflowGetTestInfo,
+  getTestInfoToolDefinition,
 } from './tools/index.js';
 
 import type { ToolResult } from './state/types.js';
@@ -50,6 +56,9 @@ const TOOL_DEFINITIONS = [
   resetToolDefinition,
   listToolDefinition,
   completeSubToolDefinition,
+  recordTestToolDefinition,
+  captureBaselineToolDefinition,
+  getTestInfoToolDefinition,
 ] as const;
 
 // ============================================================================
@@ -77,6 +86,12 @@ interface ToolArguments {
   workflow_list: Record<string, never>;
   /** サブフェーズ完了（taskId必須） */
   workflow_complete_sub: { taskId?: string; subPhase: string };
+  /** テストファイル記録 */
+  workflow_record_test: { taskId: string; testFile: string };
+  /** ベースライン記録 */
+  workflow_capture_baseline: { taskId: string; totalTests: number; passedTests: number; failedTests: string[] };
+  /** テスト情報取得 */
+  workflow_get_test_info: { taskId: string };
 }
 
 /** ツール名の型 */
@@ -194,6 +209,21 @@ const TOOL_HANDLERS: Record<ToolName, ToolHandler> = {
   workflow_complete_sub: (args) => {
     const { taskId, subPhase } = args as ToolArguments['workflow_complete_sub'];
     return workflowCompleteSub(taskId, subPhase);
+  },
+
+  workflow_record_test: (args) => {
+    const { taskId, testFile } = args as ToolArguments['workflow_record_test'];
+    return workflowRecordTest(taskId, testFile);
+  },
+
+  workflow_capture_baseline: (args) => {
+    const { taskId, totalTests, passedTests, failedTests } = args as ToolArguments['workflow_capture_baseline'];
+    return workflowCaptureBaseline(taskId, totalTests, passedTests, failedTests);
+  },
+
+  workflow_get_test_info: (args) => {
+    const { taskId } = args as ToolArguments['workflow_get_test_info'];
+    return workflowGetTestInfo(taskId);
   },
 };
 

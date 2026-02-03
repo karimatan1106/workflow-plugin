@@ -31,6 +31,16 @@ export { workflowList, listToolDefinition } from './list.js';
 /** サブフェーズ完了ツール */
 export { workflowCompleteSub, completeSubToolDefinition } from './complete-sub.js';
 
+/** テストファイル記録ツール */
+export {
+  workflowRecordTest,
+  recordTestToolDefinition,
+  workflowCaptureBaseline,
+  captureBaselineToolDefinition,
+  workflowGetTestInfo,
+  getTestInfoToolDefinition,
+} from './test-tracking.js';
+
 // ============================================================================
 // ツール定義のリスト
 // ============================================================================
@@ -49,4 +59,7 @@ export const allToolDefinitions = [
   { name: 'workflow_reset', module: 'reset' },
   { name: 'workflow_list', module: 'list' },
   { name: 'workflow_complete_sub', module: 'complete-sub' },
+  { name: 'workflow_record_test', module: 'test-tracking' },
+  { name: 'workflow_capture_baseline', module: 'test-tracking' },
+  { name: 'workflow_get_test_info', module: 'test-tracking' },
 ] as const;

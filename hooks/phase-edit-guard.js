@@ -91,11 +91,10 @@ const PHASE_RULES = {
     japaneseName: 'アイドル',
   },
   research: {
-    allowed: [],
-    blocked: ['code', 'test', 'spec', 'diagram', 'config', 'env', 'other'],
-    description: 'research フェーズは読み取り専用です。ファイル編集はできません。',
+    allowed: ['spec'],
+    blocked: ['code', 'test', 'diagram', 'config', 'env', 'other'],
+    description: 'research フェーズでは調査結果（.md）のみ作成可能。コードは編集できません。',
     japaneseName: '調査',
-    readOnly: true,
   },
   requirements: {
     allowed: ['spec', 'config', 'env'],

@@ -123,6 +123,23 @@ export interface HistoryEntry {
   details?: string;
 }
 
+/**
+ * テストベースライン
+ *
+ * researchフェーズで記録する既存テストの状態。
+ * regression_testフェーズでの比較に使用する。
+ */
+export interface TestBaseline {
+  /** 記録日時（ISO 8601形式） */
+  capturedAt: string;
+  /** 失敗していたテスト名の配列 */
+  failedTests: string[];
+  /** テスト総数 */
+  totalTests: number;
+  /** 成功したテスト数 */
+  passedTests: number;
+}
+
 // ============================================================================
 // タスク状態
 // ============================================================================
@@ -158,6 +175,10 @@ export interface TaskState {
   resetHistory?: ResetHistoryEntry[];
   /** タスクサイズ */
   taskSize?: TaskSize;
+  /** test_implフェーズで作成したテストファイル */
+  testFiles?: string[];
+  /** researchフェーズで記録したテストベースライン */
+  testBaseline?: TestBaseline;
 }
 
 // ============================================================================
