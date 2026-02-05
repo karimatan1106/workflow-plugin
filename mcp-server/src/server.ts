@@ -35,6 +35,10 @@ import {
   captureBaselineToolDefinition,
   workflowGetTestInfo,
   getTestInfoToolDefinition,
+  workflowRecordKnownBug,
+  recordKnownBugToolDefinition,
+  workflowGetKnownBugs,
+  getKnownBugsToolDefinition,
 } from './tools/index.js';
 
 import type { ToolResult } from './state/types.js';
@@ -59,6 +63,8 @@ const TOOL_DEFINITIONS = [
   recordTestToolDefinition,
   captureBaselineToolDefinition,
   getTestInfoToolDefinition,
+  recordKnownBugToolDefinition,
+  getKnownBugsToolDefinition,
 ] as const;
 
 // ============================================================================
@@ -92,6 +98,10 @@ interface ToolArguments {
   workflow_capture_baseline: { taskId: string; totalTests: number; passedTests: number; failedTests: string[] };
   /** テスト情報取得 */
   workflow_get_test_info: { taskId: string };
+  /** 既知バグ記録 */
+  workflow_record_known_bug: { taskId: string; testName: string; description: string; severity: string; issueUrl?: string; targetPhase?: string };
+  /** 既知バグ一覧取得 */
+  workflow_get_known_bugs: { taskId: string };
 }
 
 /** ツール名の型 */
@@ -224,6 +234,16 @@ const TOOL_HANDLERS: Record<ToolName, ToolHandler> = {
   workflow_get_test_info: (args) => {
     const { taskId } = args as ToolArguments['workflow_get_test_info'];
     return workflowGetTestInfo(taskId);
+  },
+
+  workflow_record_known_bug: (args) => {
+    const { taskId, testName, description, severity, issueUrl, targetPhase } = args as ToolArguments['workflow_record_known_bug'];
+    return workflowRecordKnownBug(taskId, testName, description, severity as 'low' | 'medium' | 'high' | 'critical', issueUrl, targetPhase as 'next_sprint' | 'backlog' | 'deferred' | undefined);
+  },
+
+  workflow_get_known_bugs: (args) => {
+    const { taskId } = args as ToolArguments['workflow_get_known_bugs'];
+    return workflowGetKnownBugs(taskId);
   },
 };
 

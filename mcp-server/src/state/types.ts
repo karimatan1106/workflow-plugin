@@ -140,6 +140,41 @@ export interface TestBaseline {
   passedTests: number;
 }
 
+/**
+ * 既知バグの深刻度
+ */
+export type BugSeverity = 'low' | 'medium' | 'high' | 'critical';
+
+/**
+ * 既知バグの対応予定
+ */
+export type BugTargetPhase = 'next_sprint' | 'backlog' | 'deferred';
+
+/**
+ * 既知バグ
+ *
+ * regression_testフェーズで記録する既存バグの情報。
+ * テスト削除ではなく、バグを適切に追跡するために使用する。
+ *
+ * @spec docs/spec/features/known-bugs.md
+ */
+export interface KnownBug {
+  /** バグID（自動生成: BUG-001形式） */
+  bugId: string;
+  /** 失敗するテスト名 */
+  testName: string;
+  /** バグの説明 */
+  description: string;
+  /** 深刻度 */
+  severity: BugSeverity;
+  /** 関連Issue URL（オプション） */
+  issueUrl?: string;
+  /** 対応予定 */
+  targetPhase: BugTargetPhase;
+  /** 記録日時（ISO 8601形式） */
+  recordedAt: string;
+}
+
 // ============================================================================
 // タスク状態
 // ============================================================================
@@ -179,6 +214,8 @@ export interface TaskState {
   testFiles?: string[];
   /** researchフェーズで記録したテストベースライン */
   testBaseline?: TestBaseline;
+  /** regression_testフェーズで記録した既知バグ */
+  knownBugs?: KnownBug[];
 }
 
 // ============================================================================

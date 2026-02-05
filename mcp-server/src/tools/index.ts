@@ -39,6 +39,10 @@ export {
   captureBaselineToolDefinition,
   workflowGetTestInfo,
   getTestInfoToolDefinition,
+  workflowRecordKnownBug,
+  recordKnownBugToolDefinition,
+  workflowGetKnownBugs,
+  getKnownBugsToolDefinition,
 } from './test-tracking.js';
 
 // ============================================================================
@@ -62,4 +66,6 @@ export const allToolDefinitions = [
   { name: 'workflow_record_test', module: 'test-tracking' },
   { name: 'workflow_capture_baseline', module: 'test-tracking' },
   { name: 'workflow_get_test_info', module: 'test-tracking' },
+  { name: 'workflow_record_known_bug', module: 'test-tracking' },
+  { name: 'workflow_get_known_bugs', module: 'test-tracking' },
 ] as const;
