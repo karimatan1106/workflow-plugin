@@ -52,9 +52,64 @@ const path = require('path');
 // 設定
 const STATE_FILE = path.join(STATE_DIR, 'loop-detector-state.json');
 const LOG_FILE = path.join(STATE_DIR, 'loop-detection-log.json');
-const EDIT_THRESHOLD = 5; // 警告閾値（5回以上）
 const TIME_WINDOW = 5 * 60 * 1000; // 時間ウィンドウ（5分）
 const WARNING_SUPPRESS_TIME = 60 * 1000; // 警告抑止期間（1分）
+
+// フェーズ別編集閾値
+const PHASE_EDIT_LIMITS = {
+  research: 3,
+  requirements: 3,
+  test_impl: 7,
+  implementation: 10,
+  refactoring: 10,
+  default: 5,
+};
+
+/**
+ * 現在のフェーズを取得
+ * @returns {string|null} - 現在のフェーズ、またはnull
+ */
+function getCurrentPhase() {
+  try {
+    const workflowDir = path.join(STATE_DIR, 'workflows');
+    if (!fs.existsSync(workflowDir)) {
+      return null;
+    }
+
+    const entries = fs.readdirSync(workflowDir);
+    for (const entry of entries) {
+      const entryPath = path.join(workflowDir, entry);
+      const stat = fs.statSync(entryPath);
+      if (!stat.isDirectory()) {
+        continue;
+      }
+
+      const stateFile = path.join(entryPath, 'workflow-state.json');
+      if (fs.existsSync(stateFile)) {
+        const content = fs.readFileSync(stateFile, 'utf8');
+        const taskState = JSON.parse(content);
+        if (taskState && taskState.phase !== 'completed') {
+          return taskState.phase;
+        }
+      }
+    }
+  } catch (e) {
+    // エラー時はnullを返す
+  }
+  return null;
+}
+
+/**
+ * フェーズに応じた編集閾値を取得
+ * @param {string|null} phase - 現在のフェーズ
+ * @returns {number} - 編集閾値
+ */
+function getEditThreshold(phase) {
+  if (!phase) {
+    return PHASE_EDIT_LIMITS.default;
+  }
+  return PHASE_EDIT_LIMITS[phase] || PHASE_EDIT_LIMITS.default;
+}
 
 /**
  * ファイルパスを正規化
@@ -283,8 +338,12 @@ function checkLoop(filePath) {
     fileEntry.lastWarning = null;
   }
 
+  // 現在のフェーズに応じた閾値を取得
+  const currentPhase = getCurrentPhase();
+  const threshold = getEditThreshold(currentPhase);
+
   // 警告条件をチェック
-  if (fileEntry.timestamps.length >= EDIT_THRESHOLD && !shouldSuppress) {
+  if (fileEntry.timestamps.length >= threshold && !shouldSuppress) {
     // 警告を発火
     displayWarning(filePath, fileEntry.timestamps.length);
 

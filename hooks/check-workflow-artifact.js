@@ -59,6 +59,28 @@ const MAX_SKIP_LOG_ENTRIES = 100;
 /** コンソール出力の区切り線 */
 const SEPARATOR_LINE = '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━';
 
+/** 成果物の最小サイズ（REQ-5: 50→200バイト） */
+const MIN_ARTIFACT_SIZE = 200;
+
+/** 成果物の必須セクション（REQ-5） */
+const REQUIRED_SECTIONS = {
+  'requirements.md': ['## 機能要件', '## 背景'],
+  'spec.md': ['## 実装計画', '## アーキテクチャ'],
+  'threat-model.md': ['## 脅威', '## リスク'],
+  'test-design.md': ['## テストケース', '## テスト計画'],
+  'research.md': ['## 調査結果', '## 既存実装の分析'],
+  'state-machine.mmd': ['stateDiagram-v2'],
+  'flowchart.mmd': ['flowchart'],
+  'ui-design.md': ['## UI設計', '## コンポーネント仕様'],
+};
+
+/** 禁止パターン（REQ-5） */
+const FORBIDDEN_PATTERNS = [
+  /^\s*TODO\s*$/,
+  /^\s*WIP\s*$/,
+  /^\s*#[^#\n]*\s*$/,
+];
+
 /**
  * フェーズごとの必須成果物定義
  *
@@ -417,6 +439,45 @@ function createArtifactMissingWarning(artifact, searchDir) {
 }
 
 /**
+ * 成果物の内容を検証（REQ-5）
+ * @param {string} filePath - ファイルパス
+ * @param {string} content - ファイル内容
+ * @returns {{valid: boolean, errors: string[]}}
+ */
+function validateArtifactContent(filePath, content) {
+  const errors = [];
+  const fileName = require('path').basename(filePath);
+
+  if (content.length < MIN_ARTIFACT_SIZE) {
+    errors.push(`サイズ不足: ${content.length}バイト（最小: ${MIN_ARTIFACT_SIZE}バイト）`);
+    return { valid: false, errors };
+  }
+
+  const requiredSections = REQUIRED_SECTIONS[fileName];
+  if (requiredSections) {
+    const hasRequired = requiredSections.some(section => content.includes(section));
+    if (!hasRequired) {
+      errors.push(`必須セクションが見つかりません: ${requiredSections.join(' または ')}`);
+    }
+  }
+
+  for (const pattern of FORBIDDEN_PATTERNS) {
+    if (pattern.test(content.trim())) {
+      errors.push('禁止パターンが検出されました: ファイルがスタブまたは空です');
+      break;
+    }
+  }
+
+  const lines = content.trim().split('\n').filter(line => line.trim().length > 0);
+  const headerOnly = lines.every(line => line.startsWith('#'));
+  if (headerOnly) {
+    errors.push('ヘッダーのみで本文がありません');
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
+/**
  * 必須成果物の存在をチェック
  *
  * @param {string} workflowDir - ワークフローディレクトリパス
@@ -456,7 +517,7 @@ function checkRequiredArtifacts(workflowDir, currentPhase) {
         result.passed = false;
       }
     } else {
-      // ★★★ REQ-4: ファイルサイズチェック ★★★
+      // ★★★ REQ-5: ファイル内容検証 ★★★
       for (const fileName of matchedFiles) {
         const fullPath = path.join(workflowDir, fileName);
         try {
@@ -471,18 +532,26 @@ function checkRequiredArtifacts(workflowDir, currentPhase) {
               action: '最低限の内容を記述してください',
             });
             result.passed = false;
-          } else if (stats.size < 50) {
-            result.warnings.push({
-              type: 'artifact_too_short',
-              artifact: artifact.description,
-              filePath: fullPath,
-              fileSize: stats.size,
-              message: `成果物の内容が不足している可能性があります: ${artifact.description} (${stats.size}バイト)`,
-            });
+          } else {
+            // REQ-5: 内容検証
+            const content = fs.readFileSync(fullPath, 'utf-8');
+            const validation = validateArtifactContent(fullPath, content);
+            if (!validation.valid) {
+              result.errors.push({
+                type: 'artifact_invalid_content',
+                artifact: artifact.description,
+                filePath: fullPath,
+                fileSize: stats.size,
+                message: `成果物の内容が不適切です: ${artifact.description}`,
+                details: validation.errors,
+                action: '内容を充実させてください',
+              });
+              result.passed = false;
+            }
           }
         } catch (e) {
-          // ファイルサイズ取得エラーは警告のみ
-          result.warnings.push(`ファイルサイズチェックに失敗: ${fullPath}`);
+          // ファイルサイズ・内容読み取りエラーは警告のみ
+          result.warnings.push(`ファイルチェックに失敗: ${fullPath} - ${e.message}`);
         }
       }
     }

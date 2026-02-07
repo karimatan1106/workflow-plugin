@@ -240,6 +240,11 @@ export interface TaskState {
     /** 失敗したテスト件数（自動抽出） */
     failedCount?: number;
   }>;
+  /**
+   * 状態ファイルのHMAC-SHA256署名
+   * @spec docs/workflows/ワ-クフロ-プラグイン大規模対応根本改修/spec.md#REQ-2
+   */
+  stateIntegrity?: string;
 }
 
 // ============================================================================

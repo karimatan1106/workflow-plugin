@@ -44,6 +44,34 @@ export class DesignValidator {
   }
 
   /**
+   * スコープファイル内でスタブを検出（REQ-6）
+   */
+  private findStubsInContent(content: string): Array<{name: string; reason: string}> {
+    const stubs: Array<{name: string; reason: string}> = [];
+    let match;
+
+    // Empty methods
+    const emptyMethod = /\b(\w+)\s*\([^)]*\)\s*\{\s*\}/g;
+    while ((match = emptyMethod.exec(content)) !== null) {
+      stubs.push({ name: match[1], reason: `空メソッド: ${match[1]}()` });
+    }
+
+    // TODO/FIXME in methods
+    const todoMethod = /\b(\w+)\s*\([^)]*\)\s*\{[^}]*(TODO|FIXME|NotImplemented)[^}]*\}/g;
+    while ((match = todoMethod.exec(content)) !== null) {
+      stubs.push({ name: match[1], reason: `スタブ: ${match[1]}() - ${match[2]}` });
+    }
+
+    // Empty classes
+    const emptyClass = /\bclass\s+(\w+)[^{]*\{\s*\}/g;
+    while ((match = emptyClass.exec(content)) !== null) {
+      stubs.push({ name: match[1], reason: `空クラス: class ${match[1]}` });
+    }
+
+    return stubs;
+  }
+
+  /**
    * 全設計書を検証
    *
    * 以下を検証する：
@@ -130,6 +158,33 @@ export class DesignValidator {
       const fcContent = fs.readFileSync(flowchartPath, 'utf-8');
       const fcItems = parseFlowchart(fcContent);
       this.validateFlowchartItems(fcItems, result);
+    }
+
+    // REQ-6: スコープファイル内のスタブ検出
+    if (fs.existsSync(specPath)) {
+      const specContent = fs.readFileSync(specPath, 'utf-8');
+      const specItems = parseSpec(specContent);
+
+      for (const filePath of specItems.filePaths) {
+        const fullPath = path.join(this.projectRoot, filePath);
+        if (fs.existsSync(fullPath)) {
+          const stat = fs.statSync(fullPath);
+          if (!stat.isDirectory()) {
+            const fileContent = fs.readFileSync(fullPath, 'utf-8');
+            const stubs = this.findStubsInContent(fileContent);
+
+            for (const stub of stubs) {
+              result.missingItems.push({
+                type: 'stub',
+                source: filePath,
+                name: stub.name,
+                expectedPath: fullPath,
+              });
+              result.warnings.push(`${stub.reason} in ${filePath}`);
+            }
+          }
+        }
+      }
     }
 
     // サマリー計算

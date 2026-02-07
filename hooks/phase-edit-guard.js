@@ -36,19 +36,11 @@ function logError(type, message, stack) {
 // グローバルエラーハンドラ（REQ-3: Fail Closed）
 process.on('uncaughtException', (err) => {
   logError('未捕捉エラー', err.message, err.stack);
-  if (process.env.FAIL_OPEN === 'true') {
-    console.error('[phase-edit-guard] FAIL_OPEN: 未捕捉エラー時に許可');
-    process.exit(0);
-  }
   process.exit(2);
 });
 
 process.on('unhandledRejection', (reason) => {
   logError('未処理のPromise拒否', String(reason), null);
-  if (process.env.FAIL_OPEN === 'true') {
-    console.error('[phase-edit-guard] FAIL_OPEN: 未処理のPromise拒否時に許可');
-    process.exit(0);
-  }
   process.exit(2);
 });
 
@@ -1166,6 +1158,7 @@ function isTargetTool(toolName) {
 const FILE_MODIFYING_COMMANDS = [
   // ファイル作成・編集
   /\bsed\s+(-i|--in-place)/i,           // sed -i (in-place edit)
+  /\bawk\b.*?\s+>\s+/i,                  // awk ... > file (REQ-4)
   /\bawk\s+.*>>/i,                       // awk with append
   /\becho\s+.*>/i,                       // echo redirection
   /\bcat\s+.*>/i,                        // cat redirection
@@ -1263,6 +1256,13 @@ function extractFilePathFromCommand(command) {
 }
 
 /**
+ * 複合コマンドを分割する（REQ-4）
+ */
+function splitCompoundCommand(command) {
+  return command.split(/\s*(?:&&|\|\||;|\|)\s+/).filter(part => part.trim().length > 0);
+}
+
+/**
  * BashコマンドがファイルMを修正するかどうか判定
  *
  * @param {string} command - Bashコマンド
@@ -1273,14 +1273,19 @@ function analyzeBashCommand(command) {
     return { isModifying: false, filePath: null, isExplicitlyAllowed: false };
   }
 
+  // REQ-4: 複合コマンドを分割してチェック
+  const commandParts = splitCompoundCommand(command);
+
   // 最初にファイル修正コマンドをチェック（優先度高）
   // これにより "cat file.txt | tee output.log" のようなケースを正しく検出
-  for (const pattern of FILE_MODIFYING_COMMANDS) {
-    if (pattern.test(command)) {
-      debugLog('ファイル修正Bashコマンド検出:', command.substring(0, 50));
-      // extractFilePathFromCommand() を使用してファイルパスを抽出
-      const filePath = extractFilePathFromCommand(command);
-      return { isModifying: true, filePath, isExplicitlyAllowed: false };
+  for (const part of commandParts) {
+    for (const pattern of FILE_MODIFYING_COMMANDS) {
+      if (pattern.test(part)) {
+        debugLog('ファイル修正Bashコマンド検出:', part.substring(0, 50));
+        // extractFilePathFromCommand() を使用してファイルパスを抽出
+        const filePath = extractFilePathFromCommand(part);
+        return { isModifying: true, filePath, isExplicitlyAllowed: false };
+      }
     }
   }
 
@@ -1646,12 +1651,8 @@ function main(input) {
     });
     process.exit(EXIT_CODES.BLOCK);
   } catch (e) {
-    // REQ-3: Fail Closed - エラー時はブロック（FAIL_OPEN=trueで回避可能）
+    // REQ-3: Fail Closed - エラー時はブロック
     debugLog('エラー発生:', e.message);
-    if (process.env.FAIL_OPEN === 'true') {
-      console.error('[phase-edit-guard] FAIL_OPEN: エラー時に許可');
-      process.exit(EXIT_CODES.SUCCESS);
-    }
     process.exit(EXIT_CODES.BLOCK);
   }
 }
@@ -1673,11 +1674,7 @@ if (require.main === module) {
   process.stdin.on('error', (err) => {
     clearTimeout(timeout);
     debugLog('stdin エラー:', err.message);
-    // REQ-3: Fail Closed - stdinエラー時はブロック（FAIL_OPEN=trueで回避可能）
-    if (process.env.FAIL_OPEN === 'true') {
-      console.error('[phase-edit-guard] FAIL_OPEN: stdinエラー時に許可');
-      process.exit(EXIT_CODES.SUCCESS);
-    }
+    // REQ-3: Fail Closed - stdinエラー時はブロック
     process.exit(EXIT_CODES.BLOCK);
   });
   process.stdin.on('end', () => {
@@ -1688,10 +1685,6 @@ if (require.main === module) {
     } catch (e) {
       // REQ-3: Fail Closed - JSON パースエラー時もブロック
       debugLog('JSON パースエラー:', e.message);
-      if (process.env.FAIL_OPEN === 'true') {
-        console.error('[phase-edit-guard] FAIL_OPEN: JSON パースエラー時に許可');
-        process.exit(EXIT_CODES.SUCCESS);
-      }
       process.exit(EXIT_CODES.BLOCK);
     }
   });

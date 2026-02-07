@@ -92,23 +92,3 @@ export function safeExecute<T extends ToolResult>(
   }
 }
 
-/**
- * 非同期操作を安全に実行し、エラーをキャッチしてToolResult形式で返す
- *
- * @param operation 操作名（エラーメッセージ用）
- * @param fn 実行する非同期関数
- * @returns 操作結果のPromise
- */
-export async function safeExecuteAsync<T extends ToolResult>(
-  operation: string,
-  fn: () => Promise<T>,
-): Promise<T | ToolResult> {
-  try {
-    return await fn();
-  } catch (error) {
-    return {
-      success: false,
-      message: formatOperationError(operation, error),
-    };
-  }
-}

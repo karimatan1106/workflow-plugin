@@ -19,7 +19,7 @@ export interface ValidationResult {
 
 /** 未実装項目 */
 export interface MissingItem {
-  type: 'class' | 'method' | 'state' | 'process' | 'requirement' | 'file';
+  type: 'class' | 'method' | 'state' | 'process' | 'requirement' | 'file' | 'stub';
   source: string;
   name: string;
   expectedPath?: string;

@@ -69,14 +69,14 @@ describe('REQ-3: Fail Closed - phase-edit-guard.js', () => {
     expect(result.exitCode).toBe(0);
   });
 
-  // TC-3.4: FAIL_OPEN=trueでエラー→exit 0
-  test('TC-3.4: FAIL_OPEN=true設定時→exit 0（警告付き許可）', () => {
+  // TC-3.4: FAIL_OPEN=true設定時→exit 2（REQ-1: FAIL_OPEN除去後はブロック）
+  test('TC-3.4: FAIL_OPEN=true設定時→exit 2（FAIL_OPEN除去済み）', () => {
     const result = runHook('phase-edit-guard.js', 'INVALID JSON', {
       FAIL_OPEN: 'true',
     });
 
-    expect(result.exitCode).toBe(0);
-    expect(result.stderr).toContain('FAIL_OPEN');
+    // REQ-1: FAIL_OPEN環境変数は除去済み。エラー時は常にブロック
+    expect(result.exitCode).toBe(2);
   });
 });
 
@@ -88,13 +88,14 @@ describe('REQ-3: Fail Closed - enforce-workflow.js', () => {
     expect(result.exitCode).toBe(2);
   });
 
-  // TC-3.2b: FAIL_OPEN=trueでエラー→exit 0
-  test('TC-3.2b: FAIL_OPEN=true→exit 0', () => {
+  // TC-3.2b: FAIL_OPEN=true→exit 2（REQ-1: FAIL_OPEN除去済み）
+  test('TC-3.2b: FAIL_OPEN=true→exit 2（FAIL_OPEN除去済み）', () => {
     const result = runHook('enforce-workflow.js', 'INVALID JSON', {
       FAIL_OPEN: 'true',
     });
 
-    expect(result.exitCode).toBe(0);
+    // REQ-1: FAIL_OPEN環境変数は除去済み。エラー時は常にブロック
+    expect(result.exitCode).toBe(2);
   });
 });
 
@@ -106,12 +107,13 @@ describe('REQ-3: Fail Closed - block-dangerous-commands.js', () => {
     expect(result.exitCode).toBe(2);
   });
 
-  // TC-3.3b: FAIL_OPEN=trueでエラー→exit 0
-  test('TC-3.3b: FAIL_OPEN=true→exit 0', () => {
+  // TC-3.3b: FAIL_OPEN=true→exit 2（REQ-1: FAIL_OPEN除去済み）
+  test('TC-3.3b: FAIL_OPEN=true→exit 2（FAIL_OPEN除去済み）', () => {
     const result = runHook('block-dangerous-commands.js', 'INVALID JSON', {
       FAIL_OPEN: 'true',
     });
 
-    expect(result.exitCode).toBe(0);
+    // REQ-1: FAIL_OPEN環境変数は除去済み。エラー時は常にブロック
+    expect(result.exitCode).toBe(2);
   });
 });

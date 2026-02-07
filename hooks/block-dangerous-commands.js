@@ -137,11 +137,7 @@ function handleInput(inputData) {
     process.exit(0);
   } catch (e) {
     logError('PARSE_ERROR', e.message);
-    // REQ-3: Fail Closed - エラー時はブロック（FAIL_OPEN=trueで回避可能）
-    if (process.env.FAIL_OPEN === 'true') {
-      console.error('[block-dangerous-commands] FAIL_OPEN: エラー時に許可');
-      process.exit(0);
-    }
+    // REQ-3: Fail Closed - エラー時はブロック
     process.exit(2);
   }
 }
@@ -150,10 +146,6 @@ process.stdin.on('error', (err) => {
   clearTimeout(timeoutId);
   logError('STDIN_ERROR', err.message);
   // REQ-3: Fail Closed
-  if (process.env.FAIL_OPEN === 'true') {
-    console.error('[block-dangerous-commands] FAIL_OPEN: stdin エラー時に許可');
-    process.exit(0);
-  }
   process.exit(2);
 });
 
@@ -161,9 +153,5 @@ process.on('uncaughtException', (err) => {
   clearTimeout(timeoutId);
   logError('UNCAUGHT', err.message, err.stack);
   // REQ-3: Fail Closed
-  if (process.env.FAIL_OPEN === 'true') {
-    console.error('[block-dangerous-commands] FAIL_OPEN: 未捕捉エラー時に許可');
-    process.exit(0);
-  }
   process.exit(2);
 });

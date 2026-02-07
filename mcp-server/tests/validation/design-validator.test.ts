@@ -28,9 +28,7 @@ describe('DesignValidator', () => {
           return `
 **ファイル**: \`src/validation/design-validator.ts\`
 
-class DesignValidator {
-  validateAll(): ValidationResult {}
-}
+DesignValidator クラスは validateAll メソッドを提供する。
 `;
         }
         if (path.includes('state-machine.mmd')) {
@@ -48,7 +46,7 @@ flowchart TD
         }
         // 実装ファイルの内容（class検索用）
         if (path.includes('design-validator.ts')) {
-          return 'class DesignValidator { validateAll() {} }';
+          return 'class DesignValidator { validateAll() { return result; } }';
         }
         return '';
       });

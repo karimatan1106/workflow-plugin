@@ -11,6 +11,8 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import * as crypto from 'crypto';
+import * as os from 'os';
 import type {
   TaskState,
   PhaseName,
@@ -121,6 +123,40 @@ function readJsonFile<T>(filePath: string): T | null {
 }
 
 // ============================================================================
+// HMAC署名関連（REQ-2: 状態ファイルの改竄検出）
+// ============================================================================
+
+function generateSignatureKey(): Buffer {
+  const hostname = os.hostname();
+  const username = os.userInfo().username;
+  const salt = 'workflow-mcp-v1';
+  return crypto.pbkdf2Sync(hostname + username, salt, 100000, 32, 'sha256');
+}
+
+function generateStateHmac(state: TaskState): string {
+  const { stateIntegrity, ...stateWithoutSignature } = state;
+  const data = JSON.stringify(stateWithoutSignature, Object.keys(stateWithoutSignature).sort());
+  const key = generateSignatureKey();
+  const hmac = crypto.createHmac('sha256', key);
+  hmac.update(data, 'utf8');
+  return hmac.digest('base64');
+}
+
+function verifyStateHmac(state: TaskState, expectedHmac: string): boolean {
+  const actualHmac = generateStateHmac(state);
+  try {
+    const expectedBuffer = Buffer.from(expectedHmac, 'base64');
+    const actualBuffer = Buffer.from(actualHmac, 'base64');
+    if (expectedBuffer.length !== actualBuffer.length) {
+      return false;
+    }
+    return crypto.timingSafeEqual(expectedBuffer, actualBuffer);
+  } catch {
+    return false;
+  }
+}
+
+// ============================================================================
 // WorkflowStateManager クラス
 // ============================================================================
 
@@ -159,18 +195,40 @@ export class WorkflowStateManager {
    */
   readTaskState(taskWorkflowDir: string): TaskState | null {
     const stateFile = path.join(taskWorkflowDir, 'workflow-state.json');
-    return readJsonFile<TaskState>(stateFile);
+    const state = readJsonFile<TaskState>(stateFile);
+
+    if (!state) {
+      return null;
+    }
+
+    if (state.stateIntegrity) {
+      if (!verifyStateHmac(state, state.stateIntegrity)) {
+        console.error(`[WorkflowStateManager] 署名検証失敗: ${stateFile}`);
+        console.error(`  タスク状態ファイルが改竄されている可能性があります。`);
+        console.error(`  手動でファイルを編集した場合は、ファイルを削除して再度タスクを開始してください。`);
+        return null;
+      }
+    } else {
+      console.warn(`[WorkflowStateManager] 署名なしファイルを検出 - 署名を追加します: ${stateFile}`);
+      this.writeTaskState(taskWorkflowDir, state);
+    }
+
+    return state;
   }
 
   /**
-   * タスク状態を保存する
+   * タスク状態を保存する（REQ-2: HMAC署名付き）
    *
    * @param taskWorkflowDir タスクのワークフローディレクトリ
    * @param state 保存するタスク状態
    */
   writeTaskState(taskWorkflowDir: string, state: TaskState): void {
+    const stateWithSignature = {
+      ...state,
+      stateIntegrity: generateStateHmac(state),
+    };
     const stateFile = path.join(taskWorkflowDir, 'workflow-state.json');
-    writeJsonFile(stateFile, state);
+    writeJsonFile(stateFile, stateWithSignature);
   }
 
   // ==========================================================================

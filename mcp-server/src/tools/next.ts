@@ -22,6 +22,10 @@ import { getTaskByIdOrError, safeExecute } from './helpers.js';
 import { STATE_ERRORS } from '../utils/errors.js';
 import { DesignValidator, formatValidationError } from '../validation/design-validator.js';
 
+/** スコープサイズ制限（REQ-3） */
+const MAX_SCOPE_FILES = 200;
+const MAX_SCOPE_DIRS = 20;
+
 /**
  * フェーズごとの必須成果物マッピング
  *
@@ -52,32 +56,20 @@ function checkPhaseArtifacts(phase: PhaseName, docsDir: string): string[] {
 }
 
 /**
- * 設計-実装整合性チェックを実行
+ * 設計-実装整合性チェックを実行（REQ-6: 必須化）
  *
  * @param docsDir ドキュメントディレクトリ
  * @returns エラーがある場合はエラー結果、ない場合は null
  */
 function performDesignValidation(docsDir: string): NextResult | null {
-  if (process.env.SKIP_DESIGN_VALIDATION) {
-    return null;
-  }
-
   const validator = new DesignValidator(docsDir);
   const validationResult = validator.validateAll();
 
   if (!validationResult.passed) {
-    const strict = process.env.VALIDATE_DESIGN_STRICT !== 'false';
-
-    if (strict) {
-      return {
-        success: false,
-        message: formatValidationError(validationResult),
-      };
-    } else {
-      // 警告モード: ログ出力のみ
-      console.warn('[設計検証] 警告モード - 未実装項目があります');
-      console.warn(formatValidationError(validationResult));
-    }
+    return {
+      success: false,
+      message: formatValidationError(validationResult),
+    };
   }
 
   return null;
@@ -86,7 +78,7 @@ function performDesignValidation(docsDir: string): NextResult | null {
 /**
  * 次のフェーズへ遷移
  *
- * @param taskId タスクID（必須）
+ * @param taskId タスクID
  * @returns 遷移結果
  */
 export function workflowNext(taskId?: string): NextResult {
@@ -96,7 +88,7 @@ export function workflowNext(taskId?: string): NextResult {
     return result.error as NextResult;
   }
 
-  const { taskState } = result;
+  const taskState = result.taskState;
   const currentPhase = taskState.phase;
 
   // 完了済みチェック
@@ -126,14 +118,37 @@ export function workflowNext(taskId?: string): NextResult {
     }
   }
 
+  // スコープのファイル数・ディレクトリ数を取得（API互換性: 両フィールド名サポート）
+  const scope = taskState.scope as any;
+  const scopeFileCount = (scope?.affectedFiles?.length || scope?.files?.length || 0);
+  const scopeDirCount = (scope?.affectedDirs?.length || scope?.directories?.length || 0);
+
   // REQ-1: parallel_analysis → parallel_design 遷移時のスコープ必須チェック
   if (currentPhase === 'parallel_analysis') {
-    const scope = taskState.scope;
-    if (!scope || (!scope.affectedFiles?.length && !scope.affectedDirs?.length)) {
+    if (scopeFileCount === 0 && scopeDirCount === 0) {
       return {
         success: false,
-        message: 'スコープが設定されていません。workflow_set_scope で影響範囲を設定してから次フェーズに進んでください',
+        message: 'スコープが設定されていません。workflow_set_scope で影響範囲を設定してください',
       };
+    }
+  }
+
+  // REQ-3: スコープサイズ制限チェック（全フェーズ共通）
+  if (scopeFileCount > 0 || scopeDirCount > 0) {
+    const scopeErrors: string[] = [];
+    if (scopeFileCount > MAX_SCOPE_FILES) {
+      scopeErrors.push(`ファイル数: ${scopeFileCount}/${MAX_SCOPE_FILES}`);
+    }
+    if (scopeDirCount > MAX_SCOPE_DIRS) {
+      scopeErrors.push(`ディレクトリ数: ${scopeDirCount}/${MAX_SCOPE_DIRS}`);
+    }
+
+    if (scopeErrors.length > 0) {
+      return {
+        success: false,
+        error: `スコープが大きすぎます。\n${scopeErrors.join('\n')}\nタスクを分割してください。`,
+        message: `スコープが大きすぎます。\n${scopeErrors.join('\n')}\nタスクを分割してください。`,
+      } as any;
     }
   }
 

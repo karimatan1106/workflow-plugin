@@ -20,6 +20,10 @@ import {
 /** スコープ設定が可能なフェーズ */
 const ALLOWED_PHASES = ['research', 'requirements', 'planning'] as const;
 
+/** スコープサイズ制限（REQ-3） */
+const MAX_SCOPE_FILES = 200;
+const MAX_SCOPE_DIRS = 20;
+
 /**
  * 影響範囲を設定
  *
@@ -58,6 +62,21 @@ export function workflowSetScope(
     return {
       success: false,
       message: 'files または dirs の少なくとも1つを指定してください',
+    };
+  }
+
+  // REQ-3: スコープサイズ制限チェック
+  if (affectedFiles.length > MAX_SCOPE_FILES) {
+    return {
+      success: false,
+      message: `スコープが大きすぎます（ファイル: ${affectedFiles.length}件、上限: ${MAX_SCOPE_FILES}件）。\nタスクを機能単位に分割してください。`,
+    };
+  }
+
+  if (affectedDirs.length > MAX_SCOPE_DIRS) {
+    return {
+      success: false,
+      message: `スコープが大きすぎます（ディレクトリ: ${affectedDirs.length}件、上限: ${MAX_SCOPE_DIRS}件）。\nタスクを機能単位に分割してください。`,
     };
   }
 

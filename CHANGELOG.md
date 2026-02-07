@@ -5,6 +5,63 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-02-07
+
+### Added
+
+- **REQ-1: FAIL_OPEN環境変数の除去**: エラー時のfail-closed原則を強制
+  - `FAIL_OPEN` 環境変数のサポートを削除
+  - エラー発生時は必ず例外をスロー（fail-closed）
+  - セキュリティ監査対応
+
+- **REQ-2: 状態ファイルのHMAC署名**: workflow-state.json の改竄検出
+  - `workflow-state.json` に対する HMAC-SHA256 署名を実装
+  - ファイル変更時の署名検証でレジスタリー攻撃を防止
+  - 署名キーはマスターパスワードから派生
+
+- **REQ-3: スコープサイズ制限**: ファイル数・ディレクトリ数に上限を設定
+  - `WORKFLOW_MAX_FILES`: 単一ワークフロー内の最大ファイル数（デフォルト: 1000）
+  - `WORKFLOW_MAX_DIRS`: 単一ワークフロー内の最大ディレクトリ数（デフォルト: 500）
+  - ファイルシステム DoS 攻撃を防止
+
+- **REQ-4: Bash解析強化**: コマンド連結パターンの検出改善
+  - `&&`, `||`, `;` を含むコマンド連結の解析を強化
+  - 複数コマンドの依存関係を正確に追跡
+  - パイプライン（`|`）内の危険なコマンド検出
+
+- **REQ-5: 成果物検証強化**: 成果物の内容品質検証
+  - ワークフロー成果物ファイルの形式検証
+  - 必須セクション（## サマリー）の存在チェック
+  - ファイルサイズ上限チェック（デフォルト: 10MB）
+
+- **REQ-6: 設計検証必須化**: SKIP_DESIGN_VALIDATION 環境変数を削除
+  - `SKIP_DESIGN_VALIDATION` 環境変数のサポートを削除
+  - 設計-実装整合性検証を必須化
+  - 設計書と実装の同期を厳格に検証
+
+### Changed
+
+- **エラーハンドリング**: fail-closed 原則に統一
+  - 不明なエラーは安全側（失敗）に倒す
+  - ログに詳細な診断情報を記録
+
+- **設計検証**: より厳格な検証ロジックに統一
+  - 設計書の全項目が実装に反映されているか確認
+  - 設計書にない実装（勝手な追加機能）を検出
+
+### Security
+
+- **改竄検出**: HMAC 署名による状態ファイル保護
+- **DoS 対策**: ファイルシステムリソース制限
+- **エラー処理**: fail-closed 原則による安全性向上
+
+### Documentation
+
+- CLAUDE.md: REQ-6 の設計検証必須化を明記
+- REQ-3 のスコープサイズ限度を環境変数テーブルに追加
+
+---
+
 ## [1.4.0] - 2026-01-18
 
 ### Added

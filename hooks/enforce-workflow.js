@@ -32,19 +32,11 @@ function logError(type, message, stack) {
 // グローバルエラーハンドラ（REQ-3: Fail Closed）
 process.on('uncaughtException', (err) => {
   logError('未捕捉エラー', err.message, err.stack);
-  if (process.env.FAIL_OPEN === 'true') {
-    console.error('[enforce-workflow] FAIL_OPEN: 未捕捉エラー時に許可');
-    process.exit(0);
-  }
   process.exit(2);
 });
 
 process.on('unhandledRejection', (reason) => {
   logError('未処理のPromise拒否', String(reason), null);
-  if (process.env.FAIL_OPEN === 'true') {
-    console.error('[enforce-workflow] FAIL_OPEN: 未処理のPromise拒否時に許可');
-    process.exit(0);
-  }
   process.exit(2);
 });
 
@@ -220,10 +212,6 @@ process.stdin.on('data', chunk => inputData += chunk);
 process.stdin.on('error', () => {
   clearTimeout(timeout);
   // REQ-3: Fail Closed
-  if (process.env.FAIL_OPEN === 'true') {
-    console.error('[enforce-workflow] FAIL_OPEN: stdinエラー時に許可');
-    process.exit(0);
-  }
   process.exit(2);
 });
 process.stdin.on('end', () => {
@@ -233,11 +221,7 @@ process.stdin.on('end', () => {
     main(input);
   } catch (e) {
     console.error('[enforce-workflow] JSON parse error:', e.message);
-    // REQ-3: Fail Closed - JSONパースエラー時もブロック（FAIL_OPEN=trueで回避可能）
-    if (process.env.FAIL_OPEN === 'true') {
-      console.error('[enforce-workflow] FAIL_OPEN: JSONパースエラー時に許可');
-      process.exit(0);
-    }
+    // REQ-3: Fail Closed - JSONパースエラー時もブロック
     process.exit(2);
   }
 });
@@ -319,11 +303,7 @@ function main(input) {
 
   } catch (e) {
     console.error('[enforce-workflow] Error:', e.message);
-    // REQ-3: Fail Closed - エラー時はブロック（FAIL_OPEN=trueで回避可能）
-    if (process.env.FAIL_OPEN === 'true') {
-      console.error('[enforce-workflow] FAIL_OPEN: エラー時に許可');
-      process.exit(0);
-    }
+    // REQ-3: Fail Closed - エラー時はブロック
     process.exit(2);
   }
 }
