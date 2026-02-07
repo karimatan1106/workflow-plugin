@@ -29,6 +29,12 @@ vi.mock('../../state/manager.js', () => ({
   },
 }));
 
+// 50文字以上のテスト出力を生成するヘルパー
+function makeOutput(content: string, minLength: number = 100): string {
+  if (content.length >= minLength) return content;
+  return content + ' '.repeat(minLength - content.length);
+}
+
 describe('workflowRecordTestResult', () => {
   const mockTaskId = 'test_20260207_120000';
   let mockTaskState: TaskState;
@@ -52,7 +58,8 @@ describe('workflowRecordTestResult', () => {
 
   // TC-2.1: テスト結果記録成功（testing）
   test('should record test result in testing phase', () => {
-    const result = workflowRecordTestResult(mockTaskId, 0, 'All tests passed') as TestResultResponse;
+    const output = makeOutput('Tests: 5 passed, 5 total - All tests passed');
+    const result = workflowRecordTestResult(mockTaskId, 0, 'All tests passed', output) as TestResultResponse;
 
     expect(result.success).toBe(true);
     expect(result.result?.exitCode).toBe(0);
@@ -67,7 +74,8 @@ describe('workflowRecordTestResult', () => {
     mockTaskState.phase = 'regression_test';
     vi.mocked(stateManager.getTaskById).mockReturnValue(mockTaskState);
 
-    const result = workflowRecordTestResult(mockTaskId, 1, '3 tests failed') as TestResultResponse;
+    const output = makeOutput('Tests: 3 failed, 7 passed, 10 total');
+    const result = workflowRecordTestResult(mockTaskId, 1, '3 tests failed', output) as TestResultResponse;
 
     expect(result.success).toBe(true);
     expect(result.result?.exitCode).toBe(1);
@@ -100,15 +108,17 @@ describe('workflowRecordTestResult', () => {
     mockTaskState.testResults = [];
     vi.mocked(stateManager.getTaskById).mockReturnValue(mockTaskState);
 
+    const output1 = makeOutput('Tests: 5 passed, 5 total - First run');
     // 1回目
-    workflowRecordTestResult(mockTaskId, 0, 'First run');
+    workflowRecordTestResult(mockTaskId, 0, 'First run', output1);
 
     // 1回目の呼び出しで保存された状態を取得し、2回目のmockに反映
     const firstSavedState = vi.mocked(stateManager.writeTaskState).mock.calls[0][1] as TaskState;
     vi.mocked(stateManager.getTaskById).mockReturnValue(firstSavedState);
 
+    const output2 = makeOutput('Tests: 3 failed, 7 passed - Second run');
     // 2回目
-    const result = workflowRecordTestResult(mockTaskId, 1, 'Second run');
+    const result = workflowRecordTestResult(mockTaskId, 1, 'Second run', output2);
 
     expect(result.success).toBe(true);
 
@@ -139,9 +149,10 @@ describe('workflowRecordTestResult', () => {
     expect(result.message).toContain('指定されたタスクが見つかりません');
   });
 
-  // summaryなしでも成功
+  // summaryなしでも成功（outputありの場合）
   test('should succeed without summary', () => {
-    const result = workflowRecordTestResult(mockTaskId, 0) as TestResultResponse;
+    const output = makeOutput('Tests: 5 passed, 5 total');
+    const result = workflowRecordTestResult(mockTaskId, 0, undefined, output) as TestResultResponse;
 
     expect(result.success).toBe(true);
     expect(result.result?.summary).toBeUndefined();
@@ -149,7 +160,8 @@ describe('workflowRecordTestResult', () => {
 
   // exitCode非0でも記録可能
   test('should record non-zero exitCode', () => {
-    const result = workflowRecordTestResult(mockTaskId, 5, 'Build failed') as TestResultResponse;
+    const output = makeOutput('Tests: 5 failed, 0 passed - Build failed');
+    const result = workflowRecordTestResult(mockTaskId, 5, 'Build failed', output) as TestResultResponse;
 
     expect(result.success).toBe(true);
     expect(result.result?.exitCode).toBe(5);

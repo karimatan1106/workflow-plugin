@@ -112,7 +112,7 @@ describe('workflowSetScope', () => {
     const result = workflowSetScope(mockTaskId, ['src/index.ts'], []);
 
     expect(result.success).toBe(false);
-    expect(result.message).toContain('影響範囲の設定はresearchフェーズでのみ可能です');
+    expect(result.message).toContain('影響範囲の設定はresearch/requirements/planningフェーズでのみ可能です');
     expect(result.message).toContain('現在: implementation');
   });
 

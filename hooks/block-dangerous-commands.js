@@ -16,14 +16,19 @@ const LOG_FILE = path.join(__dirname, '.claude-hook-errors.log');
 // タイムアウト設定（3秒）
 const TIMEOUT_MS = 3000;
 
-// ログ出力
+/**
+ * エラーをログに記録（書き込み失敗時は無視）
+ * @param {string} type - エラータイプ
+ * @param {string} message - メッセージ
+ * @param {string} [details] - 詳細情報
+ */
 function logError(type, message, details = '') {
   const timestamp = new Date().toISOString();
   const logEntry = `[${timestamp}] [block-dangerous] ${type}: ${message} ${details}\n`;
   try {
     fs.appendFileSync(LOG_FILE, logEntry);
   } catch (e) {
-    // ログ書き込み失敗は無視
+    // ログ書き込み失敗は無視（本処理に影響しないため）
   }
 }
 
@@ -99,19 +104,27 @@ process.stdin.setEncoding('utf8');
 process.stdin.on('data', (chunk) => { input += chunk; });
 process.stdin.on('end', () => {
   clearTimeout(timeoutId);
-  
+  handleInput(input);
+});
+
+/**
+ * 入力データを処理（コマンドチェック実行）
+ * @param {string} inputData - JSON文字列
+ */
+function handleInput(inputData) {
   try {
-    const data = JSON.parse(input);
+    const data = JSON.parse(inputData);
     const command = data.tool_input?.command || data.command || '';
-    
+
     if (!command) {
       process.exit(0);
     }
-    
+
+    // 危険なコマンドをチェック
     for (const pattern of dangerousPatterns) {
       if (pattern.test(command)) {
         const errorMsg = {
-          error: `危険なコマンドがブロックされました`,
+          error: '危険なコマンドがブロックされました',
           blocked_pattern: pattern.toString(),
           command_preview: command.substring(0, 100)
         };
@@ -120,23 +133,37 @@ process.stdin.on('end', () => {
         process.exit(1);
       }
     }
-    
+
     process.exit(0);
-    
   } catch (e) {
     logError('PARSE_ERROR', e.message);
-    process.exit(0);
+    // REQ-3: Fail Closed - エラー時はブロック（FAIL_OPEN=trueで回避可能）
+    if (process.env.FAIL_OPEN === 'true') {
+      console.error('[block-dangerous-commands] FAIL_OPEN: エラー時に許可');
+      process.exit(0);
+    }
+    process.exit(2);
   }
-});
+}
 
 process.stdin.on('error', (err) => {
   clearTimeout(timeoutId);
   logError('STDIN_ERROR', err.message);
-  process.exit(0);
+  // REQ-3: Fail Closed
+  if (process.env.FAIL_OPEN === 'true') {
+    console.error('[block-dangerous-commands] FAIL_OPEN: stdin エラー時に許可');
+    process.exit(0);
+  }
+  process.exit(2);
 });
 
 process.on('uncaughtException', (err) => {
   clearTimeout(timeoutId);
   logError('UNCAUGHT', err.message, err.stack);
-  process.exit(0);
+  // REQ-3: Fail Closed
+  if (process.env.FAIL_OPEN === 'true') {
+    console.error('[block-dangerous-commands] FAIL_OPEN: 未捕捉エラー時に許可');
+    process.exit(0);
+  }
+  process.exit(2);
 });

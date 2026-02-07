@@ -95,6 +95,17 @@ export function workflowNext(taskId?: string): NextResult {
     }
   }
 
+  // REQ-1: parallel_analysis → parallel_design 遷移時のスコープ必須チェック
+  if (currentPhase === 'parallel_analysis') {
+    const scope = taskState.scope;
+    if (!scope || (!scope.affectedFiles?.length && !scope.affectedDirs?.length)) {
+      return {
+        success: false,
+        message: 'スコープが設定されていません。workflow_set_scope で影響範囲を設定してから次フェーズに進んでください',
+      };
+    }
+  }
+
   // REQ-2: testing → regression_test 遷移時のテスト結果検証
   if (currentPhase === 'testing') {
     const testResult = getLatestTestResult(taskState, 'testing');
@@ -192,11 +203,11 @@ function getLatestTestResult(
 ): { phase: 'testing' | 'regression_test'; exitCode: number; timestamp: string; summary?: string } | undefined {
   const results = taskState.testResults || [];
   const phaseResults = results.filter(r => r.phase === phase);
-  if (phaseResults.length === 0) {
-    return undefined;
-  }
-  // 最新のタイムスタンプのものを返す
-  return phaseResults.sort((a, b) => b.timestamp.localeCompare(a.timestamp))[0];
+
+  // 最新のタイムスタンプのものを返す（タイムスタンプ逆順でソート）
+  return phaseResults.length > 0
+    ? phaseResults.sort((a, b) => b.timestamp.localeCompare(a.timestamp))[0]
+    : undefined;
 }
 
 /**

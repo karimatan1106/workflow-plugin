@@ -233,6 +233,12 @@ export interface TaskState {
     timestamp: string;
     /** サマリー（オプション） */
     summary?: string;
+    /** テスト実行の出力（末尾500文字まで） */
+    output?: string;
+    /** パスしたテスト件数（自動抽出） */
+    passedCount?: number;
+    /** 失敗したテスト件数（自動抽出） */
+    failedCount?: number;
   }>;
 }
 

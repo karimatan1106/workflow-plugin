@@ -1,7 +1,7 @@
 /**
  * workflow_set_scope ツール - 影響範囲を設定
  *
- * researchフェーズで変更対象ファイル/ディレクトリをTaskStateに記録する。
+ * research/requirements/planningフェーズで変更対象ファイル/ディレクトリをTaskStateに記録する。
  *
  * @spec docs/workflows/ワークフロー大規模対応改善/spec.md
  */
@@ -9,6 +9,9 @@
 import { stateManager } from '../state/manager.js';
 import type { ToolResult } from '../state/types.js';
 import { getTaskByIdOrError, safeExecute } from './helpers.js';
+
+/** スコープ設定が可能なフェーズ */
+const ALLOWED_PHASES = ['research', 'requirements', 'planning'] as const;
 
 /**
  * 影響範囲を設定
@@ -32,11 +35,11 @@ export function workflowSetScope(
   const { taskState } = result;
   const currentPhase = taskState.phase;
 
-  // researchフェーズでのみ許可
-  if (currentPhase !== 'research') {
+  // research/requirements/planningフェーズでのみ許可
+  if (!ALLOWED_PHASES.includes(currentPhase as typeof ALLOWED_PHASES[number])) {
     return {
       success: false,
-      message: `影響範囲の設定はresearchフェーズでのみ可能です（現在: ${currentPhase}）`,
+      message: `影響範囲の設定はresearch/requirements/planningフェーズでのみ可能です（現在: ${currentPhase}）`,
     };
   }
 
@@ -81,7 +84,7 @@ export function workflowSetScope(
  */
 export const setScopeToolDefinition = {
   name: 'workflow_set_scope',
-  description: 'タスクの影響範囲（変更対象ファイル/ディレクトリ）を設定します。researchフェーズでのみ使用可能です。',
+  description: 'タスクの影響範囲（変更対象ファイル/ディレクトリ）を設定します。research/requirements/planningフェーズで使用可能です。',
   inputSchema: {
     type: 'object',
     properties: {

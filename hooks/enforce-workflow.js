@@ -11,26 +11,41 @@
 const HOOK_NAME = 'enforce-workflow.js';
 const ERROR_LOG = require('path').join(process.cwd(), '.claude-hook-errors.log');
 
-// エラーをログファイルに書き出す
+/**
+ * エラーをログファイルに書き出す（書き込み失敗時は無視）
+ * @param {string} type - エラータイプ
+ * @param {string} message - メッセージ
+ * @param {string|null} stack - スタックトレース
+ */
 function logError(type, message, stack) {
   const timestamp = new Date().toISOString();
   const entry = `[${timestamp}] [${HOOK_NAME}] ${type}: ${message}\n${stack ? `  Stack: ${stack}\n` : ''}\n`;
   try {
     require('fs').appendFileSync(ERROR_LOG, entry);
-  } catch (e) { /* ignore */ }
+  } catch (e) {
+    // ログ書き込み失敗は無視（本処理に影響しないため）
+  }
   console.error(`[${HOOK_NAME}] ${type}: ${message}`);
   if (stack) console.error(`  スタック: ${stack}`);
 }
 
-// グローバルエラーハンドラ
+// グローバルエラーハンドラ（REQ-3: Fail Closed）
 process.on('uncaughtException', (err) => {
   logError('未捕捉エラー', err.message, err.stack);
-  process.exit(1);
+  if (process.env.FAIL_OPEN === 'true') {
+    console.error('[enforce-workflow] FAIL_OPEN: 未捕捉エラー時に許可');
+    process.exit(0);
+  }
+  process.exit(2);
 });
 
 process.on('unhandledRejection', (reason) => {
   logError('未処理のPromise拒否', String(reason), null);
-  process.exit(1);
+  if (process.env.FAIL_OPEN === 'true') {
+    console.error('[enforce-workflow] FAIL_OPEN: 未処理のPromise拒否時に許可');
+    process.exit(0);
+  }
+  process.exit(2);
 });
 
 const fs = require('fs');
@@ -120,59 +135,76 @@ function isParallelPhase(phase) {
 
 /**
  * フェーズの許可拡張子を取得（並列フェーズは合算）
+ *
+ * 並列フェーズの場合、全サブフェーズの拡張子を合算する。
+ * ワイルドカード（*）が見つかれば、全て許可して即座に終了。
+ *
+ * @param {string} phase - フェーズ名
+ * @returns {string[]} 許可される拡張子の配列
  */
 function getAllowedExtensions(phase) {
-  if (isParallelPhase(phase)) {
-    const subPhases = PARALLEL_GROUPS[phase];
-    const allExt = new Set();
-    for (const sp of subPhases) {
-      const ext = PHASE_EXTENSIONS[sp] || [];
-      if (ext.includes('*')) {
-        return ['*'];
-      }
-      ext.forEach(e => allExt.add(e));
-    }
-    return Array.from(allExt);
+  if (!isParallelPhase(phase)) {
+    return PHASE_EXTENSIONS[phase] || [];
   }
-  return PHASE_EXTENSIONS[phase] || [];
+
+  const subPhases = PARALLEL_GROUPS[phase];
+  const allExt = new Set();
+
+  for (const sp of subPhases) {
+    const ext = PHASE_EXTENSIONS[sp] || [];
+    if (ext.includes('*')) {
+      return ['*'];  // ワイルドカード見つけたら即座に返す
+    }
+    ext.forEach(e => allExt.add(e));
+  }
+
+  return Array.from(allExt);
 }
 
 /**
  * ファイル編集が許可されているかチェック
+ *
+ * 判定順序:
+ * 1. ワイルドカード（*）が許可拡張子にあれば許可
+ * 2. 許可拡張子が空なら禁止（読み取り専用フェーズ）
+ * 3. ファイルの拡張子が許可リストに含まれているかチェック
+ *
+ * @param {string} filePath - チェック対象ファイルパス
+ * @param {string} phase - 現在のフェーズ
+ * @returns {{allowed: boolean, phase?: string, allowed_extensions?: string, message?: string}}
  */
 function checkFileAllowed(filePath, phase) {
   const allowedExt = getAllowedExtensions(phase);
+  const phaseDesc = PHASE_DESC[phase] || 'このフェーズでは編集不可';
 
-  // 全許可
+  // ワイルドカード許可
   if (allowedExt.includes('*')) {
     return { allowed: true };
   }
 
-  // 空の場合はブロック
+  // 許可拡張子がない場合はブロック（読み取り専用）
   if (allowedExt.length === 0) {
     return {
       allowed: false,
       phase,
       allowed_extensions: 'なし',
-      message: PHASE_DESC[phase] || 'このフェーズでは編集不可'
+      message: phaseDesc
     };
   }
 
-  // 拡張子チェック
+  // ファイル拡張子をチェック（複合拡張子.test.ts等に対応）
   const fileName = path.basename(filePath);
+  const isAllowed = allowedExt.some(ext => fileName.endsWith(ext));
 
-  // 複合拡張子（.test.ts など）もチェック
-  for (const ext of allowedExt) {
-    if (fileName.endsWith(ext)) {
-      return { allowed: true };
-    }
+  if (isAllowed) {
+    return { allowed: true };
   }
 
   return {
     allowed: false,
     phase,
     allowed_extensions: allowedExt.join(' '),
-    message: PHASE_DESC[phase] || 'このフェーズではこの拡張子のファイルを編集できません'
+    message: phaseDesc
   };
 }
 
@@ -187,7 +219,12 @@ process.stdin.setEncoding('utf8');
 process.stdin.on('data', chunk => inputData += chunk);
 process.stdin.on('error', () => {
   clearTimeout(timeout);
-  process.exit(0);
+  // REQ-3: Fail Closed
+  if (process.env.FAIL_OPEN === 'true') {
+    console.error('[enforce-workflow] FAIL_OPEN: stdinエラー時に許可');
+    process.exit(0);
+  }
+  process.exit(2);
 });
 process.stdin.on('end', () => {
   clearTimeout(timeout);
@@ -196,6 +233,11 @@ process.stdin.on('end', () => {
     main(input);
   } catch (e) {
     console.error('[enforce-workflow] JSON parse error:', e.message);
+    // REQ-3: Fail Closed - JSONパースエラー時もブロック（FAIL_OPEN=trueで回避可能）
+    if (process.env.FAIL_OPEN === 'true') {
+      console.error('[enforce-workflow] FAIL_OPEN: JSONパースエラー時に許可');
+      process.exit(0);
+    }
     process.exit(2);
   }
 });
@@ -277,7 +319,11 @@ function main(input) {
 
   } catch (e) {
     console.error('[enforce-workflow] Error:', e.message);
-    // エラー時は許可（開発中の安全策）
-    process.exit(0);
+    // REQ-3: Fail Closed - エラー時はブロック（FAIL_OPEN=trueで回避可能）
+    if (process.env.FAIL_OPEN === 'true') {
+      console.error('[enforce-workflow] FAIL_OPEN: エラー時に許可');
+      process.exit(0);
+    }
+    process.exit(2);
   }
 }

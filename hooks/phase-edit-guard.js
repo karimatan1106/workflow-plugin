@@ -15,26 +15,41 @@
 const HOOK_NAME = 'phase-edit-guard.js';
 const ERROR_LOG = require('path').join(process.cwd(), '.claude-hook-errors.log');
 
-// エラーをログファイルに書き出す
+/**
+ * エラーをログファイルに書き出す（書き込み失敗時は無視）
+ * @param {string} type - エラータイプ
+ * @param {string} message - メッセージ
+ * @param {string|null} stack - スタックトレース
+ */
 function logError(type, message, stack) {
   const timestamp = new Date().toISOString();
   const entry = `[${timestamp}] [${HOOK_NAME}] ${type}: ${message}\n${stack ? `  Stack: ${stack}\n` : ''}\n`;
   try {
     require('fs').appendFileSync(ERROR_LOG, entry);
-  } catch (e) { /* ignore */ }
+  } catch (e) {
+    // ログ書き込み失敗は無視（本処理に影響しないため）
+  }
   console.error(`[${HOOK_NAME}] ${type}: ${message}`);
   if (stack) console.error(`  スタック: ${stack}`);
 }
 
-// グローバルエラーハンドラ
+// グローバルエラーハンドラ（REQ-3: Fail Closed）
 process.on('uncaughtException', (err) => {
   logError('未捕捉エラー', err.message, err.stack);
-  process.exit(1);
+  if (process.env.FAIL_OPEN === 'true') {
+    console.error('[phase-edit-guard] FAIL_OPEN: 未捕捉エラー時に許可');
+    process.exit(0);
+  }
+  process.exit(2);
 });
 
 process.on('unhandledRejection', (reason) => {
   logError('未処理のPromise拒否', String(reason), null);
-  process.exit(1);
+  if (process.env.FAIL_OPEN === 'true') {
+    console.error('[phase-edit-guard] FAIL_OPEN: 未処理のPromise拒否時に許可');
+    process.exit(0);
+  }
+  process.exit(2);
 });
 
 const fs = require('fs');
@@ -396,10 +411,11 @@ const CONFIG_FILE_EXTENSIONS_REGEX = /\.(json|yaml|yml|toml)$/;
  * バックスラッシュをスラッシュに変換し、小文字に正規化する。
  *
  * @param {string} filePath - ファイルパス
- * @returns {string} 正規化されたパス（不正な入力の場合は空文字）
+ * @returns {string} 正規化されたパス
+ *                   不正な入力（null/undefined/非文字列）の場合は空文字を返す
  */
 function normalizePath(filePath) {
-  if (!filePath || typeof filePath !== 'string') {
+  if (typeof filePath !== 'string' || !filePath) {
     return '';
   }
   return filePath.replace(/\\/g, '/').toLowerCase();
@@ -559,6 +575,7 @@ function getFileType(filePath) {
  * JSONファイルを安全に読み込む
  *
  * ファイルが存在しない場合やパースエラー時は null を返す
+ * エラーはdebugLogで出力し、本処理には影響しない。
  *
  * @param {string} filePath - ファイルパス
  * @param {string} logLabel - デバッグログ用のラベル
@@ -573,7 +590,7 @@ function safeReadJsonFile(filePath, logLabel) {
     return JSON.parse(content);
   } catch (e) {
     debugLog(`${logLabel} 読み込みエラー:`, e.message);
-    return null;
+    return null;  // エラーは無視し、呼び出し元は null 処理を用意
   }
 }
 
@@ -1074,16 +1091,18 @@ function debugLog(...args) {
  * ログファイルを読み込む
  *
  * ファイルが存在しない場合やエラー時は空配列を返す。
+ * ログの読み込み失敗は本処理に影響しない。
  *
- * @returns {Array} ログエントリの配列
+ * @returns {Array} ログエントリの配列（読み込み失敗時は空配列）
  */
 function loadLogs() {
   try {
     if (fs.existsSync(LOG_FILE)) {
       return JSON.parse(fs.readFileSync(LOG_FILE, 'utf8'));
     }
-  } catch {
+  } catch (e) {
     // ログ読み込みエラーは無視（本処理に影響しないため）
+    // debugLog でログ失敗を通知しない（ログシステム自体のエラーのため）
   }
   return [];
 }
@@ -1099,11 +1118,12 @@ function loadLogs() {
 function saveLogs(logs) {
   try {
     const trimmedLogs = logs.length > MAX_LOG_ENTRIES
-      ? logs.slice(-MAX_LOG_ENTRIES)
+      ? logs.slice(-MAX_LOG_ENTRIES)  // 最新のMAX_LOG_ENTRIES件を保持
       : logs;
     fs.writeFileSync(LOG_FILE, JSON.stringify(trimmedLogs, null, 2), 'utf8');
-  } catch {
+  } catch (e) {
     // ログ書き込みエラーは無視（本処理に影響しないため）
+    // debugLog でログ失敗を通知しない（ログシステム自体のエラーのため）
   }
 }
 
@@ -1414,14 +1434,14 @@ function displayScopeViolationMessage(filePath, checkResult) {
  */
 function main(input) {
   try {
-    // 入力の検証
+    // 入力の検証（不正な入力は許可して処理を進める）
     if (!input || typeof input !== 'object') {
       process.exit(EXIT_CODES.SUCCESS);
     }
 
-    // 1. スキップフラグのチェック
+    // 1. スキップフラグのチェック（環境変数でフェーズ制限を無効化）
     if (process.env.SKIP_PHASE_GUARD === 'true') {
-      debugLog('SKIP_PHASE_GUARD=true によりスキップ');
+      debugLog('SKIP_PHASE_GUARD=true によりチェックを無効化');
       logCheck({ skipped: true, reason: 'SKIP_PHASE_GUARD=true' });
       process.exit(EXIT_CODES.SUCCESS);
     }
@@ -1627,9 +1647,13 @@ function main(input) {
     });
     process.exit(EXIT_CODES.BLOCK);
   } catch (e) {
-    // エラー時は許可（安全側に倒す）
+    // REQ-3: Fail Closed - エラー時はブロック（FAIL_OPEN=trueで回避可能）
     debugLog('エラー発生:', e.message);
-    process.exit(EXIT_CODES.SUCCESS);
+    if (process.env.FAIL_OPEN === 'true') {
+      console.error('[phase-edit-guard] FAIL_OPEN: エラー時に許可');
+      process.exit(EXIT_CODES.SUCCESS);
+    }
+    process.exit(EXIT_CODES.BLOCK);
   }
 }
 
@@ -1643,13 +1667,19 @@ if (require.main === module) {
     process.exit(0);
   }, 3000);
 
-  // 非同期stdin読み取り
+  // 非同期stdin読み取り（3秒タイムアウト付き）
   let inputData = '';
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', (chunk) => (inputData += chunk));
-  process.stdin.on('error', () => {
+  process.stdin.on('error', (err) => {
     clearTimeout(timeout);
-    process.exit(0);
+    debugLog('stdin エラー:', err.message);
+    // REQ-3: Fail Closed - stdinエラー時はブロック（FAIL_OPEN=trueで回避可能）
+    if (process.env.FAIL_OPEN === 'true') {
+      console.error('[phase-edit-guard] FAIL_OPEN: stdinエラー時に許可');
+      process.exit(EXIT_CODES.SUCCESS);
+    }
+    process.exit(EXIT_CODES.BLOCK);
   });
   process.stdin.on('end', () => {
     clearTimeout(timeout);
@@ -1657,9 +1687,13 @@ if (require.main === module) {
       const input = JSON.parse(inputData);
       main(input);
     } catch (e) {
-      // stdin からの入力エラー時は許可（安全側）
-      debugLog('stdin読み込みエラー：許可');
-      process.exit(EXIT_CODES.SUCCESS);
+      // REQ-3: Fail Closed - JSON パースエラー時もブロック
+      debugLog('JSON パースエラー:', e.message);
+      if (process.env.FAIL_OPEN === 'true') {
+        console.error('[phase-edit-guard] FAIL_OPEN: JSON パースエラー時に許可');
+        process.exit(EXIT_CODES.SUCCESS);
+      }
+      process.exit(EXIT_CODES.BLOCK);
     }
   });
 } else {
