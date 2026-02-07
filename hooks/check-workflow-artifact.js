@@ -455,6 +455,36 @@ function checkRequiredArtifacts(workflowDir, currentPhase) {
         result.errors.push(createArtifactMissingError(artifact, workflowDir));
         result.passed = false;
       }
+    } else {
+      // ★★★ REQ-4: ファイルサイズチェック ★★★
+      for (const fileName of matchedFiles) {
+        const fullPath = path.join(workflowDir, fileName);
+        try {
+          const stats = fs.statSync(fullPath);
+          if (stats.size === 0) {
+            result.errors.push({
+              type: 'artifact_empty_file',
+              artifact: artifact.description,
+              filePath: fullPath,
+              fileSize: 0,
+              message: `成果物が空ファイルです: ${artifact.description}`,
+              action: '最低限の内容を記述してください',
+            });
+            result.passed = false;
+          } else if (stats.size < 50) {
+            result.warnings.push({
+              type: 'artifact_too_short',
+              artifact: artifact.description,
+              filePath: fullPath,
+              fileSize: stats.size,
+              message: `成果物の内容が不足している可能性があります: ${artifact.description} (${stats.size}バイト)`,
+            });
+          }
+        } catch (e) {
+          // ファイルサイズ取得エラーは警告のみ
+          result.warnings.push(`ファイルサイズチェックに失敗: ${fullPath}`);
+        }
+      }
     }
   }
 

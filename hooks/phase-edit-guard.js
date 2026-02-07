@@ -1162,6 +1162,14 @@ const FILE_MODIFYING_COMMANDS = [
   // ディレクトリ操作（コード関連）
   /\brmdir\s+/i,                         // rmdir
   /\bmkdir\s+.*\/(src|tests|features|components)\//i,  // mkdir in source dirs
+  // ★★★ REQ-1: スクリプト言語のワンライナー実行 ★★★
+  /\b(node|python3?|ruby|perl)\s+(--eval|-[ec])\s+/i,
+  // ★★★ REQ-1: シェルコマンド実行 ★★★
+  /\b(sh|bash)\s+-c\s+/i,
+  /\beval\s+["']/i,
+  // ★★★ REQ-1: パイプ経由のシェル実行 ★★★
+  /\|\s*(sh|bash)\b/i,
+  /&&\s*(sh|bash)\s+/i,
 ];
 
 /**
@@ -1580,8 +1588,8 @@ function main(input) {
     process.exit(EXIT_CODES.SUCCESS);
   }
 
-  // ★★★ REQ-1: implementationフェーズでのスコープチェック ★★★
-  if (phase === 'implementation') {
+  // ★★★ REQ-1/REQ-3: implementation/refactoringフェーズでのスコープチェック ★★★
+  if (phase === 'implementation' || phase === 'refactoring') {
     const scopeCheckResult = checkScopeViolation(filePath, workflowState.workflowState);
     if (scopeCheckResult.blocked) {
       displayScopeViolationMessage(filePath, scopeCheckResult);

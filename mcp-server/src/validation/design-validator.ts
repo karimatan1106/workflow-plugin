@@ -207,23 +207,55 @@ export class DesignValidator {
   }
 
   /**
-   * プロジェクト内でクラスを検索
+   * ソースコードからコメントと文字列リテラルを除去
    *
-   * 指定されたファイルパスの中から、クラス定義を検索する。
+   * コメント・文字列内のキーワードが誤検知されるのを防ぐ。
    *
-   * @param className 検索するクラス名
-   * @param filePaths 検索対象のファイルパス配列
-   * @returns クラスが見つかった場合は true
+   * @param content ソースコード
+   * @returns コメント・文字列を除去したコード
    */
-  private findClassInProject(
-    className: string,
-    filePaths: string[]
-  ): boolean {
+  private removeCommentsAndStrings(content: string): string {
+    return content
+      // ブロックコメント除去 (/* ... */)
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      // 行コメント除去 (// ...)
+      .replace(/\/\/.*/g, '')
+      // ダブルクォート文字列
+      .replace(/"(?:[^"\\]|\\.)*"/g, '""')
+      // シングルクォート文字列
+      .replace(/'(?:[^'\\]|\\.)*'/g, "''")
+      // テンプレートリテラル
+      .replace(/`(?:[^`\\]|\\.)*`/g, '``');
+  }
+
+  /**
+   * 正規表現の特殊文字をエスケープ
+   *
+   * @param str エスケープする文字列
+   * @returns エスケープ済み文字列
+   */
+  private escapeRegExp(str: string): string {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  /**
+   * ファイル群からパターンを検索する共通ヘルパー
+   *
+   * コメント・文字列を除去した上で正規表現マッチを行う。
+   *
+   * @param patterns マッチさせる正規表現の配列（いずれかにマッチすればtrue）
+   * @param filePaths 検索対象のファイルパス配列
+   * @returns いずれかのパターンが見つかった場合は true
+   */
+  private searchInFiles(patterns: RegExp[], filePaths: string[]): boolean {
     for (const filePath of filePaths) {
       const fullPath = path.join(this.projectRoot, filePath);
       if (fs.existsSync(fullPath)) {
+        const stat = fs.statSync(fullPath);
+        if (stat.isDirectory()) continue;
         const content = fs.readFileSync(fullPath, 'utf-8');
-        if (content.includes(`class ${className}`)) {
+        const cleanContent = this.removeCommentsAndStrings(content);
+        if (patterns.some((p) => p.test(cleanContent))) {
           return true;
         }
       }
@@ -232,32 +264,83 @@ export class DesignValidator {
   }
 
   /**
+   * プロジェクト内でクラスを検索
+   */
+  private findClassInProject(
+    className: string,
+    filePaths: string[]
+  ): boolean {
+    const escapedName = this.escapeRegExp(className);
+    return this.searchInFiles(
+      [
+        new RegExp(
+          `\\b(?:export\\s+)?(?:default\\s+)?(?:abstract\\s+)?class\\s+${escapedName}\\s*(?:[{<]|extends|implements)`
+        ),
+      ],
+      filePaths
+    );
+  }
+
+  /**
    * プロジェクト内でメソッドを検索
-   *
-   * 指定されたファイルパスの中から、メソッド定義を検索する。
-   *
-   * @param methodName 検索するメソッド名
-   * @param filePaths 検索対象のファイルパス配列
-   * @returns メソッドが見つかった場合は true
    */
   private findMethodInProject(
     methodName: string,
     filePaths: string[]
   ): boolean {
-    for (const filePath of filePaths) {
-      const fullPath = path.join(this.projectRoot, filePath);
-      if (fs.existsSync(fullPath)) {
-        const content = fs.readFileSync(fullPath, 'utf-8');
-        // メソッド定義パターン
-        if (
-          content.includes(`${methodName}(`) ||
-          content.includes(`${methodName} (`)
-        ) {
-          return true;
-        }
-      }
-    }
-    return false;
+    const escapedName = this.escapeRegExp(methodName);
+    return this.searchInFiles(
+      [
+        new RegExp(
+          `\\b(?:async\\s+)?(?:export\\s+)?(?:default\\s+)?(?:function\\s+)?${escapedName}\\s*\\(`
+        ),
+        // アロー関数パターン: const/let/var methodName = (...) =>
+        new RegExp(`\\b${escapedName}\\s*=\\s*(?:async\\s+)?\\(`),
+      ],
+      filePaths
+    );
+  }
+
+  /**
+   * プロジェクト内でinterfaceを検索
+   */
+  private findInterfaceInProject(
+    interfaceName: string,
+    filePaths: string[]
+  ): boolean {
+    const escapedName = this.escapeRegExp(interfaceName);
+    return this.searchInFiles(
+      [new RegExp(`\\b(?:export\\s+)?interface\\s+${escapedName}\\s*[{<]`)],
+      filePaths
+    );
+  }
+
+  /**
+   * プロジェクト内でtype定義を検索
+   */
+  private findTypeInProject(
+    typeName: string,
+    filePaths: string[]
+  ): boolean {
+    const escapedName = this.escapeRegExp(typeName);
+    return this.searchInFiles(
+      [new RegExp(`\\b(?:export\\s+)?type\\s+${escapedName}\\s*[=<]`)],
+      filePaths
+    );
+  }
+
+  /**
+   * プロジェクト内でenum定義を検索
+   */
+  private findEnumInProject(
+    enumName: string,
+    filePaths: string[]
+  ): boolean {
+    const escapedName = this.escapeRegExp(enumName);
+    return this.searchInFiles(
+      [new RegExp(`\\b(?:export\\s+)?enum\\s+${escapedName}\\s*\\{`)],
+      filePaths
+    );
   }
 }
 
