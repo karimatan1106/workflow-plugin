@@ -34,6 +34,12 @@ vi.mock('../../validation/dependency-analyzer.js', () => ({
   validateScopeDependencies: vi.fn(() => ({ valid: true, outOfScopeDependencies: [], suggestedAdditions: [] })),
 }));
 
+// scope-validatorをモック化（REQ-5ファイル存在・深度チェックをバイパス）
+vi.mock('../../validation/scope-validator.js', () => ({
+  validateScopeDepth: vi.fn(() => ({ valid: true, errors: [] })),
+  validateScopeFiles: vi.fn(() => ({ valid: true, errors: [] })),
+}));
+
 describe('workflowSetScope', () => {
   const mockTaskId = 'test_20260207_120000';
   let mockTaskState: TaskState;

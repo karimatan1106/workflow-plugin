@@ -14,13 +14,14 @@ import type { CompleteSubResult, SubPhaseName } from '../state/types.js';
 import { isParallelPhase, PARALLEL_GROUPS, getSubPhaseDependencies } from '../phases/definitions.js';
 import { getTaskByIdOrError, validateRequiredString, safeExecute } from './helpers.js';
 import { MISSING_PARAM_ERRORS, invalidValueError } from '../utils/errors.js';
+import { validateArtifactQuality, PHASE_ARTIFACT_REQUIREMENTS } from '../validation/artifact-validator.js';
 
 /**
- * サブフェーズごとの必須成果物マッピング
+ * サブフェーズ名から成果物ファイル名への対応表（REQ-3: 品質検証強化）
  *
- * @spec docs/workflows/ワ-クフロ-成果物検証強制/spec.md
+ * @spec docs/workflows/ワークフロー全問題完全解決/spec.md REQ-3
  */
-const SUB_PHASE_REQUIRED_ARTIFACTS: Partial<Record<SubPhaseName, string[]>> = {
+const SUB_PHASE_TO_ARTIFACT: Partial<Record<SubPhaseName, string[]>> = {
   threat_modeling: ['threat-model.md'],
   planning: ['spec.md'],
   state_machine: ['state-machine.mmd'],
@@ -34,21 +35,51 @@ const SUB_PHASE_REQUIRED_ARTIFACTS: Partial<Record<SubPhaseName, string[]>> = {
 };
 
 /**
- * サブフェーズ完了時の成果物存在チェック
+ * サブフェーズ完了時の成果物品質チェック（REQ-3: 強化版）
+ *
+ * 存在チェックだけでなく、以下の品質検証も実施:
+ * - 最小行数チェック
+ * - 必須セクションチェック
+ * - 禁止パターン検出（TODO, TBD, WIP, FIXME）
+ * - ダミーテキスト検出
+ * - ヘッダーのみ検出
  *
  * @param subPhase サブフェーズ名
  * @param docsDir ドキュメントディレクトリ
- * @returns 未作成の成果物ファイル名の配列（空なら問題なし）
+ * @returns エラーメッセージの配列（空なら問題なし）
  */
 function checkSubPhaseArtifacts(subPhase: SubPhaseName, docsDir: string): string[] {
-  if (process.env.SKIP_ARTIFACT_CHECK === 'true') {
+  const artifactFiles = SUB_PHASE_TO_ARTIFACT[subPhase];
+  if (!artifactFiles) {
     return [];
   }
-  const artifacts = SUB_PHASE_REQUIRED_ARTIFACTS[subPhase];
-  if (!artifacts) {
-    return [];
+
+  const allErrors: string[] = [];
+
+  for (const artifactFile of artifactFiles) {
+    const filePath = path.join(docsDir, artifactFile);
+
+    // ファイル存在チェック
+    if (!fs.existsSync(filePath)) {
+      allErrors.push(`${artifactFile} が存在しません`);
+      continue;
+    }
+
+    // 品質要件を取得
+    const requirements = PHASE_ARTIFACT_REQUIREMENTS[artifactFile];
+    if (!requirements) {
+      // 品質要件が定義されていない場合は存在チェックのみ
+      continue;
+    }
+
+    // 品質検証を実行
+    const validationResult = validateArtifactQuality(filePath, requirements);
+    if (!validationResult.passed) {
+      allErrors.push(...validationResult.errors);
+    }
   }
-  return artifacts.filter(f => !fs.existsSync(path.join(docsDir, f)));
+
+  return allErrors;
 }
 
 /**
@@ -109,13 +140,13 @@ export function workflowCompleteSub(taskId?: string, subPhase?: string): Complet
     }
   }
 
-  // ★★★ 成果物存在チェック ★★★
+  // ★★★ 成果物品質チェック（REQ-3: 強化版） ★★★
   const docsDir = taskState.docsDir || taskState.workflowDir;
-  const missingArtifacts = checkSubPhaseArtifacts(subPhaseName, docsDir);
-  if (missingArtifacts.length > 0) {
+  const artifactErrors = checkSubPhaseArtifacts(subPhaseName, docsDir);
+  if (artifactErrors.length > 0) {
     return {
       success: false,
-      message: `${subPhaseName}の必須成果物が未作成です: ${missingArtifacts.join(', ')}\n出力先: ${docsDir}/`,
+      message: `${subPhaseName}の成果物に問題があります:\n${artifactErrors.map(e => `  - ${e}`).join('\n')}\n\n出力先: ${docsDir}/`,
     };
   }
 

@@ -26,6 +26,12 @@ vi.mock('../helpers.js', () => ({
   safeExecute: vi.fn((_label: string, fn: () => unknown) => fn()),
 }));
 
+// scope-validatorをモック化（REQ-5チェックをバイパスしてvalidateScopeExistsに到達させる）
+vi.mock('../../validation/scope-validator.js', () => ({
+  validateScopeDepth: vi.fn(() => ({ valid: true, errors: [] })),
+  validateScopeFiles: vi.fn(() => ({ valid: true, errors: [] })),
+}));
+
 import { getTaskByIdOrError } from '../helpers.js';
 
 let tmpDir: string;

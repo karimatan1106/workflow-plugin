@@ -6,7 +6,6 @@
  * 編集可能なファイルタイプのみを許可する。
  *
  * 設定可能な環境変数:
- * - SKIP_PHASE_GUARD: "true" でチェックを無効化
  * - DEBUG_PHASE_GUARD: "true" でデバッグログ出力
  *
  * @spec docs/spec/features/phase-edit-guard.md
@@ -46,6 +45,7 @@ process.on('unhandledRejection', (reason) => {
 
 const fs = require('fs');
 const path = require('path');
+const { checkBashWhitelist } = require('./bash-whitelist');
 
 // =============================================================================
 // 定数定義
@@ -1050,10 +1050,6 @@ function displayBlockMessage(phase, filePath, fileType, rule) {
   // 次のステップ（ブロックされたファイルタイプに基づいてフェーズ移行案内）
   displayNextSteps(rule, phase, fileType);
 
-  // スキップ方法
-  console.log(' スキップ（緊急時のみ）:');
-  console.log('   SKIP_PHASE_GUARD=true を設定');
-  console.log('');
   console.log(SEPARATOR_LINE);
 }
 
@@ -1443,13 +1439,6 @@ function main(input) {
       process.exit(EXIT_CODES.SUCCESS);
     }
 
-    // 1. スキップフラグのチェック（環境変数でフェーズ制限を無効化）
-    if (process.env.SKIP_PHASE_GUARD === 'true') {
-      debugLog('SKIP_PHASE_GUARD=true によりチェックを無効化');
-      logCheck({ skipped: true, reason: 'SKIP_PHASE_GUARD=true' });
-      process.exit(EXIT_CODES.SUCCESS);
-    }
-
     const toolName = input.tool_name;
     const toolInput = input.tool_input || {};
 
@@ -1462,6 +1451,38 @@ function main(input) {
   let filePath = '';
   if (toolName === 'Bash') {
     const command = toolInput.command || '';
+
+    // ★★★ REQ-2: Bashコマンドホワイトリストチェック ★★★
+    // ワークフロー状態を確認してフェーズを取得
+    const workflowState = findActiveWorkflowState(null);
+    if (workflowState) {
+      const phase = workflowState.phase;
+
+      // ホワイトリストチェック実行
+      const whitelistResult = checkBashWhitelist(command, phase);
+      if (!whitelistResult.allowed) {
+        const rule = getPhaseRule(phase, workflowState.workflowState);
+        console.log('');
+        console.log(SEPARATOR_LINE);
+        console.log(' Bashコマンドがブロックされました（ホワイトリスト）');
+        console.log(SEPARATOR_LINE);
+        console.log('');
+        console.log(` フェーズ: ${phase}（${rule?.japaneseName || phase}）`);
+        console.log(` コマンド: ${command.substring(0, 100)}${command.length > 100 ? '...' : ''}`);
+        console.log('');
+        console.log(` 理由: ${whitelistResult.reason}`);
+        console.log('');
+        console.log(SEPARATOR_LINE);
+        logCheck({
+          blocked: true,
+          phase,
+          command: command.substring(0, 100),
+          reason: 'Bash whitelist violation: ' + whitelistResult.reason,
+        });
+        process.exit(EXIT_CODES.BLOCK);
+      }
+    }
+
     const analysis = analyzeBashCommand(command);
 
     // 明示的に許可されたコマンドは常に許可
@@ -1470,8 +1491,7 @@ function main(input) {
       process.exit(EXIT_CODES.SUCCESS);
     }
 
-    // ワークフロー状態を確認
-    const workflowState = findActiveWorkflowState(null);
+    // ワークフロー状態を再確認（既に上で取得しているが、既存コードとの整合性のため）
     if (workflowState) {
       const phase = workflowState.phase;
       const rule = getPhaseRule(phase, workflowState.workflowState);

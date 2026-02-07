@@ -21,38 +21,69 @@ import {
 import { getTaskByIdOrError, safeExecute } from './helpers.js';
 import { STATE_ERRORS } from '../utils/errors.js';
 import { DesignValidator, formatValidationError } from '../validation/design-validator.js';
+import { validateArtifactQuality, PHASE_ARTIFACT_REQUIREMENTS } from '../validation/artifact-validator.js';
 
 /** スコープサイズ制限（REQ-3） */
 const MAX_SCOPE_FILES = 200;
 const MAX_SCOPE_DIRS = 20;
 
 /**
- * フェーズごとの必須成果物マッピング
+ * フェーズ名から成果物ファイル名への対応表（REQ-3: 品質検証強化）
  *
- * @spec docs/workflows/ワ-クフロ-成果物検証強制/spec.md
+ * @spec docs/workflows/ワークフロー全問題完全解決/spec.md REQ-3
  */
-const PHASE_REQUIRED_ARTIFACTS: Partial<Record<PhaseName, string[]>> = {
+const PHASE_TO_ARTIFACT: Partial<Record<PhaseName, string[]>> = {
   research: ['research.md'],
   requirements: ['requirements.md'],
   test_design: ['test-design.md'],
 };
 
 /**
- * フェーズ遷移時の成果物存在チェック
+ * フェーズ遷移時の成果物品質チェック（REQ-3: 強化版）
+ *
+ * 存在チェックだけでなく、以下の品質検証も実施:
+ * - 最小行数チェック
+ * - 必須セクションチェック
+ * - 禁止パターン検出（TODO, TBD, WIP, FIXME）
+ * - ダミーテキスト検出
+ * - ヘッダーのみ検出
  *
  * @param phase 現在のフェーズ
  * @param docsDir ドキュメントディレクトリ
- * @returns 未作成の成果物ファイル名の配列（空なら問題なし）
+ * @returns エラーメッセージの配列（空なら問題なし）
  */
 function checkPhaseArtifacts(phase: PhaseName, docsDir: string): string[] {
-  if (process.env.SKIP_ARTIFACT_CHECK === 'true') {
+  const artifactFiles = PHASE_TO_ARTIFACT[phase];
+  if (!artifactFiles) {
     return [];
   }
-  const artifacts = PHASE_REQUIRED_ARTIFACTS[phase];
-  if (!artifacts) {
-    return [];
+
+  const allErrors: string[] = [];
+
+  for (const artifactFile of artifactFiles) {
+    const filePath = path.join(docsDir, artifactFile);
+
+    // ファイル存在チェック
+    if (!fs.existsSync(filePath)) {
+      allErrors.push(`${artifactFile} が存在しません`);
+      continue;
+    }
+
+    // 品質要件を取得
+    const requirements = PHASE_ARTIFACT_REQUIREMENTS[artifactFile];
+    if (!requirements) {
+      // 品質要件が定義されていない場合は存在チェックのみ
+      continue;
+    }
+
+    // 品質検証を実行
+    const validationResult = validateArtifactQuality(filePath, requirements);
+    if (!validationResult.passed) {
+      allErrors.push(...validationResult.errors);
+    }
   }
-  return artifacts.filter(f => !fs.existsSync(path.join(docsDir, f)));
+
+  return allErrors;
 }
 
 /**
@@ -204,13 +235,13 @@ export function workflowNext(taskId?: string): NextResult {
     }
   }
 
-  // ★★★ 成果物存在チェック ★★★
+  // ★★★ 成果物品質チェック（REQ-3: 強化版） ★★★
   const artifactDocsDir = taskState.docsDir || taskState.workflowDir;
-  const missingArtifacts = checkPhaseArtifacts(currentPhase, artifactDocsDir);
-  if (missingArtifacts.length > 0) {
+  const artifactErrors = checkPhaseArtifacts(currentPhase, artifactDocsDir);
+  if (artifactErrors.length > 0) {
     return {
       success: false,
-      message: `${currentPhase}フェーズの必須成果物が未作成です: ${missingArtifacts.join(', ')}\n出力先: ${artifactDocsDir}/`,
+      message: `${currentPhase}フェーズの成果物に問題があります:\n${artifactErrors.map(e => `  - ${e}`).join('\n')}\n\n出力先: ${artifactDocsDir}/`,
     };
   }
 

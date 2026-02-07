@@ -42,17 +42,45 @@ vi.mock('../../validation/design-validator.js', () => ({
 }));
 
 // fsモジュールをモック
-vi.mock('fs', () => ({
-  existsSync: vi.fn(),
-  readFileSync: vi.fn(),
-  writeFileSync: vi.fn(),
-  mkdirSync: vi.fn(),
-}));
+vi.mock('fs', async () => {
+  const actual = await vi.importActual<typeof import('fs')>('fs');
+  return {
+    ...actual,
+    existsSync: vi.fn(actual.existsSync),
+    readFileSync: vi.fn(actual.readFileSync),
+    statSync: vi.fn(actual.statSync),
+    writeFileSync: vi.fn(),
+    mkdirSync: vi.fn(),
+  };
+});
 
 import { stateManager } from '../../state/manager.js';
 import * as fs from 'fs';
 
 const TEST_TASK_ID = '20260207_100000';
+
+/**
+ * 有効なモックコンテンツ（artifact-validator要件を満たす）
+ */
+const MOCK_RESEARCH_MD = Array.from({length: 25}, (_, i) =>
+  i === 0 ? '# Research' :
+  i === 2 ? '## 調査結果' :
+  i === 5 ? '調査内容。' :
+  i === 10 ? '## 既存実装の分析' :
+  i === 13 ? '分析内容。' :
+  `内容行${i}`
+).join('\n');
+
+const MOCK_REQUIREMENTS_MD = Array.from({length: 35}, (_, i) =>
+  i === 0 ? '# Requirements' :
+  i === 2 ? '## 背景' :
+  i === 5 ? '背景情報。' :
+  i === 10 ? '## 機能要件' :
+  i === 13 ? 'REQ-1。' :
+  i === 20 ? '## 受入条件' :
+  i === 23 ? 'AC-1。' :
+  `内容行${i}`
+).join('\n');
 
 /**
  * テスト用のモックタスク状態を生成
@@ -117,6 +145,8 @@ describe('next.ts - 成果物チェック (REQ-1)', () => {
         const pathStr = String(path);
         return pathStr.includes('research.md');
       });
+      vi.mocked(fs.statSync).mockReturnValue({ size: 500 } as any);
+      vi.mocked(fs.readFileSync).mockReturnValue(MOCK_RESEARCH_MD);
 
       const result = workflowNext(TEST_TASK_ID) as NextResult;
 
@@ -184,8 +214,8 @@ describe('next.ts - 成果物チェック (REQ-1)', () => {
     });
   });
 
-  describe('TC-1-6: SKIP_ARTIFACT_CHECK=true', () => {
-    it('成果物なしでも success: true', () => {
+  describe('TC-1-6: SKIP_ARTIFACT_CHECK は削除された (REQ-1)', () => {
+    it('SKIP_ARTIFACT_CHECK=true でも成果物チェックは実行される', () => {
       process.env.SKIP_ARTIFACT_CHECK = 'true';
 
       vi.mocked(stateManager.getTaskById).mockReturnValue(
@@ -198,10 +228,9 @@ describe('next.ts - 成果物チェック (REQ-1)', () => {
 
       const result = workflowNext(TEST_TASK_ID) as NextResult;
 
-      // SKIP_ARTIFACT_CHECKが有効なのでチェックをスキップして成功
-      expect(result.success).toBe(true);
-      expect(result.from).toBe('research');
-      expect(result.to).toBe('requirements');
+      // REQ-1により SKIP_ARTIFACT_CHECK は削除されたため、チェックは必ず実行される
+      expect(result.success).toBe(false);
+      expect(result.message).toContain('research.md');
     });
   });
 

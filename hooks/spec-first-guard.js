@@ -8,7 +8,6 @@
  * 設定可能な環境変数:
  * - SPEC_DIR: 仕様書ディレクトリ（デフォルト: docs/spec/features）
  * - CODE_DIRS: コードディレクトリのカンマ区切りリスト（デフォルト: src）
- * - SKIP_SPEC_GUARD: "true" で一時的にスキップ
  */
 
 const HOOK_NAME = 'spec-first-guard.js';
@@ -114,11 +113,6 @@ function main(input) {
       process.exit(0);
     }
 
-    // スキップフラグのチェック
-    if (process.env.SKIP_SPEC_GUARD === 'true') {
-      process.exit(0);
-    }
-
     const toolName = input.tool_name;
     const toolInput = input.tool_input || {};
 
@@ -158,9 +152,6 @@ function main(input) {
         console.log(`   1. ${SPEC_DIR}/ 内の該当仕様書を更新`);
         console.log('   2. 仕様書に変更内容を記載');
         console.log('   3. その後コードを編集');
-        console.log('');
-        console.log(' スキップ（緊急時のみ）:');
-        console.log('   SKIP_SPEC_GUARD=true を設定');
         console.log('');
         console.log('='.repeat(60));
         process.exit(2); // ブロック

@@ -129,18 +129,10 @@ const SPEC_PATH_PATTERNS = [
 
 /**
  * 環境変数によるスキップ設定が有効かどうか判定
- * @returns {boolean} - スキップすべきかどうか
+ * @returns {boolean} - スキップすべきかどうか（常にfalse）
  */
 function shouldSkipCheck() {
-  const skipEnv = process.env.SKIP_ARTIFACT_CHECK;
-  const shouldSkip = skipEnv === '1' || skipEnv === 'true';
-
-  if (shouldSkip) {
-    printSkipWarning();
-    logSkipEvent();
-  }
-
-  return shouldSkip;
+  return false;
 }
 
 /**

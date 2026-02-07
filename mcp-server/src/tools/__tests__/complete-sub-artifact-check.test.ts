@@ -10,12 +10,17 @@ import { workflowCompleteSub } from '../complete-sub.js';
 import type { PhaseName, SubPhaseName } from '../../state/types.js';
 
 // fs モック
-vi.mock('fs', () => ({
-  existsSync: vi.fn(),
-  readFileSync: vi.fn(),
-  writeFileSync: vi.fn(),
-  mkdirSync: vi.fn(),
-}));
+vi.mock('fs', async () => {
+  const actual = await vi.importActual<typeof import('fs')>('fs');
+  return {
+    ...actual,
+    existsSync: vi.fn(actual.existsSync),
+    readFileSync: vi.fn(actual.readFileSync),
+    statSync: vi.fn(actual.statSync),
+    writeFileSync: vi.fn(),
+    mkdirSync: vi.fn(),
+  };
+});
 import * as fs from 'fs';
 
 // stateManager モック
@@ -28,6 +33,26 @@ vi.mock('../../state/manager.js', () => ({
 }));
 
 import { stateManager } from '../../state/manager.js';
+
+const MOCK_THREAT_MD = Array.from({length: 25}, (_, i) =>
+  i === 0 ? '# Threat Model' :
+  i === 2 ? '## 脅威' :
+  i === 5 ? '脅威1を記載。' :
+  i === 12 ? '## リスク' :
+  i === 15 ? 'リスク1を記載。' :
+  `内容行${i}`
+).join('\n');
+
+const MOCK_SPEC_MD = Array.from({length: 55}, (_, i) =>
+  i === 0 ? '# Spec' :
+  i === 2 ? '## 概要' :
+  i === 10 ? '要件を記載。' :
+  i === 20 ? '## 実装計画' :
+  i === 30 ? '計画を記載。' :
+  i === 40 ? '## 変更対象ファイル' :
+  i === 43 ? '- src/file.ts' :
+  `内容行${i}`
+).join('\n');
 
 /**
  * モックタスク状態を作成
@@ -78,6 +103,8 @@ describe('complete-sub.ts - 成果物チェック（REQ-2）', () => {
 
       vi.mocked(stateManager.getTaskById).mockReturnValue(mockTask);
       vi.mocked(fs.existsSync).mockReturnValue(true); // ファイルあり
+      vi.mocked(fs.statSync).mockReturnValue({ size: 500 } as any);
+      vi.mocked(fs.readFileSync).mockReturnValue(MOCK_THREAT_MD);
       vi.mocked(stateManager.getIncompleteSubPhases).mockReturnValue([]);
 
       const result = workflowCompleteSub('test_task_123', 'threat_modeling');
@@ -206,7 +233,7 @@ describe('complete-sub.ts - 成果物チェック（REQ-2）', () => {
     });
   });
 
-  describe('TC-2-9: SKIP_ARTIFACT_CHECK=true', () => {
+  describe('TC-2-9: SKIP_ARTIFACT_CHECK は削除された (REQ-1)', () => {
     let originalEnv: string | undefined;
 
     beforeEach(() => {
@@ -222,23 +249,21 @@ describe('complete-sub.ts - 成果物チェック（REQ-2）', () => {
       }
     });
 
-    it('should return success: true without artifact check', () => {
+    it('SKIP_ARTIFACT_CHECK=true でも成果物チェックは実行される', () => {
       const mockTask = createMockTaskState('parallel_analysis', {
         threat_modeling: 'pending',
       });
 
       vi.mocked(stateManager.getTaskById).mockReturnValue(mockTask);
       vi.mocked(stateManager.getIncompleteSubPhases).mockReturnValue([]);
+      vi.mocked(fs.existsSync).mockReturnValue(false); // ファイルなし
 
       const result = workflowCompleteSub('test_task_123', 'threat_modeling');
 
-      expect(result.success).toBe(true);
-      expect(fs.existsSync).not.toHaveBeenCalled(); // スキップされる
-      expect(stateManager.updateSubPhaseStatus).toHaveBeenCalledWith(
-        'test_task_123',
-        'threat_modeling',
-        'completed'
-      );
+      // REQ-1により SKIP_ARTIFACT_CHECK は削除されたため、チェックは必ず実行される
+      expect(result.success).toBe(false);
+      expect(result.message).toContain('threat-model.md');
+      expect(stateManager.updateSubPhaseStatus).not.toHaveBeenCalled();
     });
   });
 

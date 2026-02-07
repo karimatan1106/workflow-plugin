@@ -3,13 +3,16 @@
  *
  * testing/regression_testフェーズでのテスト実行結果をTaskStateに記録する。
  * REQ-1: 整合性検証強化（exitCode と output の矛盾を検出）
+ * REQ-4: テスト実行の真正性証明
  *
  * @spec docs/workflows/ワ-クフロ-1000万行対応強化/spec.md
+ * @spec docs/workflows/ワ-クフロ-全問題完全解決/spec.md REQ-4
  */
 
 import { stateManager } from '../state/manager.js';
 import type { ToolResult } from '../state/types.js';
 import { getTaskByIdOrError, safeExecute } from './helpers.js';
+import { validateTestAuthenticity } from '../validation/test-authenticity.js';
 
 /** テスト出力の最小文字数 */
 const MIN_OUTPUT_LENGTH = 50;
@@ -245,6 +248,22 @@ export function workflowRecordTestResult(
     return {
       success: false,
       message: validation.reason,
+    };
+  }
+
+  // REQ-4: テスト実行の真正性検証
+  // フェーズ開始時刻をタスク状態の履歴から取得
+  // 現在のフェーズに遷移した最新のエントリを探す
+  const phaseEntry = [...taskState.history]
+    .reverse()
+    .find(entry => entry.phase === currentPhase && entry.action === 'phase_start');
+  const phaseStartedAt = phaseEntry?.timestamp || taskState.startedAt;
+
+  const authenticityValidation = validateTestAuthenticity(output, exitCode, phaseStartedAt);
+  if (!authenticityValidation.valid) {
+    return {
+      success: false,
+      message: `[真正性検証エラー] ${authenticityValidation.reason}`,
     };
   }
 

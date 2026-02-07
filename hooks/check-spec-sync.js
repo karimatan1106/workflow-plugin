@@ -8,7 +8,6 @@
  * 設定可能な環境変数:
  * - SPEC_DIR: 仕様書ディレクトリのパターン（デフォルト: docs/spec/features）
  * - PROJECT_SUBDIR: プロジェクトのサブディレクトリ（デフォルト: 空 = カレントディレクトリ直下）
- * - SKIP_SPEC_SYNC_CHECK: "true" で一時的にスキップ
  */
 
 const HOOK_NAME = 'check-spec-sync.js';
@@ -172,11 +171,6 @@ function main(input) {
   try {
     // 入力の検証
     if (!input || typeof input !== 'object') {
-      process.exit(0);
-    }
-
-    // スキップフラグのチェック
-    if (process.env.SKIP_SPEC_SYNC_CHECK === 'true') {
       process.exit(0);
     }
 

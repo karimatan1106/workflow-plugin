@@ -47,13 +47,18 @@ vi.mock('../../validation/design-validator.js', () => ({
   formatValidationError: vi.fn(),
 }));
 
-// fsモジュールをモック（成果物チェック用: デフォルトで全てtrue）
-vi.mock('fs', () => ({
-  existsSync: vi.fn(() => true),
-  readFileSync: vi.fn(),
-  writeFileSync: vi.fn(),
-  mkdirSync: vi.fn(),
-}));
+// fsモジュールをモック（成果物チェック用）
+vi.mock('fs', async () => {
+  const actual = await vi.importActual<typeof import('fs')>('fs');
+  return {
+    ...actual,
+    existsSync: vi.fn(actual.existsSync),
+    readFileSync: vi.fn(actual.readFileSync),
+    statSync: vi.fn(actual.statSync),
+    writeFileSync: vi.fn(),
+    mkdirSync: vi.fn(),
+  };
+});
 
 import { stateManager } from '../../state/manager.js';
 import { DesignValidator } from '../../validation/design-validator.js';
@@ -62,10 +67,88 @@ import * as fs from 'fs';
 const TEST_TASK_ID = '20260117_150000';
 
 /**
+ * 有効なモックコンテンツ（artifact-validator要件を満たす）
+ * 要件: 20行以上（空白行除く）、必須セクション、5行以上の本文
+ */
+const MOCK_RESEARCH_MD = [
+  '# Research',
+  '',
+  '## 調査結果',
+  '',
+  '調査概要を記載します。',
+  '既存コード分析を実施しました。',
+  '問題点を特定しました。',
+  '課題の優先順位を決定しました。',
+  '対応方針を策定しました。',
+  '',
+  '## 既存実装の分析',
+  '',
+  '詳細分析結果を記載します。',
+  'モジュール構成を確認しました。',
+  'アーキテクチャを把握しました。',
+  'カバレッジを確認しました。',
+  '依存関係を整理しました。',
+  'パフォーマンス特性を調査しました。',
+  '',
+  '## 依存関係',
+  '',
+  '依存関係を特定しました。',
+  'ライブラリ調査を実施しました。',
+  'バージョン互換性を確認しました。',
+  '',
+  '## 結論',
+  '',
+  '調査結果をまとめます。',
+  '次ステップを明確にします。',
+  '優先事項を決定しました。',
+  '',
+].join('\n');
+
+/**
+ * requirements.md用モックコンテンツ
+ * 要件: 30行以上、必須セクション: '## 背景', '## 機能要件', '## 受入条件'
+ */
+const MOCK_REQUIREMENTS_MD = Array.from({length: 35}, (_, i) =>
+  i === 0 ? '# Requirements' :
+  i === 2 ? '## 背景' :
+  i === 5 ? '背景情報を記載。' :
+  i === 10 ? '## 機能要件' :
+  i === 13 ? 'REQ-1: 要件1。' :
+  i === 20 ? '## 受入条件' :
+  i === 23 ? 'AC-1: 受入条件1。' :
+  `内容行${i}`
+).join('\n');
+
+/**
+ * test-design.md用モックコンテンツ
+ * 要件: 30行以上、必須セクション: '## テストケース', '## テスト計画'
+ */
+const MOCK_TEST_DESIGN_MD = Array.from({length: 35}, (_, i) =>
+  i === 0 ? '# Test Design' :
+  i === 2 ? '## テストケース' :
+  i === 5 ? 'TC-1: テストケース1。' :
+  i === 15 ? '## テスト計画' :
+  i === 18 ? 'テスト計画の詳細。' :
+  `内容行${i}`
+).join('\n');
+
+/**
+ * ファイルパスに応じたモックコンテンツを返す
+ */
+function getMockContent(filePath: unknown): string {
+  const fp = String(filePath);
+  if (fp.includes('requirements.md')) return MOCK_REQUIREMENTS_MD;
+  if (fp.includes('test-design.md')) return MOCK_TEST_DESIGN_MD;
+  return MOCK_RESEARCH_MD;
+}
+
+/**
  * 共通モック再設定（vi.clearAllMocksで消えるため毎回再設定）
  */
 function resetCommonMocks() {
   vi.mocked(fs.existsSync).mockReturnValue(true);
+  vi.mocked(fs.statSync).mockReturnValue({ size: 500 } as any);
+  vi.mocked(fs.readFileSync).mockImplementation(((filePath: unknown) => getMockContent(filePath)) as any);
   vi.mocked(DesignValidator).mockImplementation(() => ({
     validateAll: vi.fn().mockReturnValue({
       passed: true,
@@ -138,6 +221,7 @@ describe('next.ts - workflow_next ツールテスト (基本遷移)', () => {
       ];
 
       for (const [currentPhase, nextPhase] of basicTransitions) {
+        resetCommonMocks();
         vi.mocked(stateManager.getTaskById).mockReturnValue(
           createMockTaskState(currentPhase, 'large')
         );
@@ -185,6 +269,7 @@ describe('next.ts - workflow_next ツールテスト (19フェーズ遷移)', ()
       ];
 
       for (const [currentPhase, expectedNextPhase] of testableTransitions) {
+        resetCommonMocks();
         vi.mocked(stateManager.getTaskById).mockReturnValue(
           createMockTaskState(currentPhase, 'large')
         );

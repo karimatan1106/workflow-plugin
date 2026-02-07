@@ -149,11 +149,14 @@ describe('workflowRecordTestResult - REQ-1: テスト結果偽造防止', () => 
     vi.mocked(getTaskByIdOrError).mockReturnValue({ taskState: mockTaskState });
     vi.mocked(stateManager.writeTaskState).mockImplementation(() => {});
 
+    // REQ-4: 200文字以上 + フレームワークパターン必須
+    const output = 'Test execution\n✓ should validate input (15ms)\n✓ should handle errors (8ms)\n\nTests: 5 passed, 5 total' + ' '.repeat(100);
+
     const result = workflowRecordTestResult(
       'test-task-005',
       0,
       undefined,
-      '✓ should validate input (15ms)\n✓ should handle errors (8ms)\n\n5 tests passed'
+      output
     );
 
     expect(result.success).toBe(true);
@@ -175,11 +178,14 @@ describe('workflowRecordTestResult - REQ-1: テスト結果偽造防止', () => 
     vi.mocked(getTaskByIdOrError).mockReturnValue({ taskState: mockTaskState });
     vi.mocked(stateManager.writeTaskState).mockImplementation(() => {});
 
+    // REQ-4: 200文字以上必要
+    const output = 'Tests: 5 passed, 2 failed, 7 total\n  FAIL src/user.test.ts\n  FAIL src/order.test.ts' + ' '.repeat(117);
+
     const result = workflowRecordTestResult(
       'test-task-006',
       1,
       undefined,
-      'Tests: 5 passed, 2 failed, 7 total\n  FAIL src/user.test.ts\n  FAIL src/order.test.ts'
+      output
     );
 
     expect(result.success).toBe(true);
@@ -192,28 +198,26 @@ describe('workflowRecordTestResult - REQ-1: テスト結果偽造防止', () => 
   // TC-1.7: テストフレームワーク構造なし → 警告（ブロックしない）
   // ==========================================================================
 
-  test('TC-1.7: exitCode=0 + テストフレームワーク構造なし → 警告付きで成功', () => {
+  test('TC-1.7: exitCode=0 + テストフレームワーク構造なし → REQ-4で真正性検証エラー', () => {
     const mockTaskState = createMockTaskState();
 
     vi.mocked(getTaskByIdOrError).mockReturnValue({ taskState: mockTaskState });
     vi.mocked(stateManager.writeTaskState).mockImplementation(() => {});
 
+    // REQ-4対応: フレームワーク構造なしの出力は真正性検証でブロックされる
+    // 200文字以上だが、フレームワークパターンがない
+    const output = 'Everything is fine. No problems detected. ' + 'x'.repeat(160);
+
     const result = workflowRecordTestResult(
       'test-task-007',
       0,
       undefined,
-      'Everything is fine. No problems detected. This is a very long output that exceeds the 50 character minimum requirement.'
+      output
     );
 
-    expect(result.success).toBe(true);
-    expect(consoleWarnSpy).toHaveBeenCalled();
-
-    // 警告メッセージの内容を確認
-    const warningCalls = consoleWarnSpy.mock.calls.map(call => call.join(' '));
-    const hasFrameworkWarning = warningCalls.some(msg =>
-      msg.includes('テストフレームワークの構造が検出されませんでした')
-    );
-    expect(hasFrameworkWarning).toBe(true);
+    // 真正性検証でブロックされる
+    expect(result.success).toBe(false);
+    expect(result.message).toContain('[真正性検証エラー]');
   });
 
   // ==========================================================================
@@ -226,11 +230,14 @@ describe('workflowRecordTestResult - REQ-1: テスト結果偽造防止', () => 
     vi.mocked(getTaskByIdOrError).mockReturnValue({ taskState: mockTaskState });
     vi.mocked(stateManager.writeTaskState).mockImplementation(() => {});
 
+    // REQ-4: 200文字以上 + フレームワークパターン必須
+    const output = 'Test execution\nTests: 5 passed, 5 total\nat UserService.getUser (src/user.ts:10:5)\nExpected 5 but got 10' + ' '.repeat(97);
+
     const result = workflowRecordTestResult(
       'test-task-008',
       0,
       undefined,
-      '5 tests passed\nat UserService.getUser (src/user.ts:10:5)\nExpected 5 but got 10'
+      output
     );
 
     expect(result.success).toBe(true);

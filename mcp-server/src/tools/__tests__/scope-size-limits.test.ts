@@ -42,6 +42,12 @@ vi.mock('../../validation/dependency-analyzer.js', () => ({
   })),
 }));
 
+// Mock scope-validator (REQ-5 depth/file validation bypass)
+vi.mock('../../validation/scope-validator.js', () => ({
+  validateScopeDepth: vi.fn(() => ({ valid: true, errors: [] })),
+  validateScopeFiles: vi.fn(() => ({ valid: true, errors: [] })),
+}));
+
 // Mock design-validator (for next.ts tests)
 vi.mock('../../validation/design-validator.js', () => ({
   DesignValidator: vi.fn().mockImplementation(() => ({

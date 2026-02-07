@@ -29,10 +29,11 @@ vi.mock('../../state/manager.js', () => ({
   },
 }));
 
-// 50文字以上のテスト出力を生成するヘルパー
-function makeOutput(content: string, minLength: number = 100): string {
-  if (content.length >= minLength) return content;
-  return content + ' '.repeat(minLength - content.length);
+// 200文字以上のテスト出力を生成するヘルパー（test-authenticityの要件に合致）
+function makeOutput(content: string): string {
+  const base = ` RUN  v2.1.9 /mnt/c/test-project\n\n ✓ src/test.test.ts (5 tests) 10ms\n\n Test Files  1 passed (1)\n      Tests  5 passed (5)\n   Start at  12:00:00\n   Duration  2.50s\n\n${content}`;
+  if (base.length >= 200) return base;
+  return base + '\n' + ' '.repeat(200 - base.length);
 }
 
 describe('workflowRecordTestResult', () => {

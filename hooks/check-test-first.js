@@ -7,7 +7,6 @@
  *
  * 設定可能な環境変数:
  * - CODE_EXTENSIONS: チェック対象の拡張子（カンマ区切り、デフォルト: .ts,.tsx）
- * - SKIP_TEST_FIRST_CHECK: "true" でチェックを無効化
  * - DEBUG_TEST_FIRST: "true" でデバッグログ出力
  *
  * @spec docs/spec/features/test-first-check.md
@@ -241,12 +240,6 @@ function main(input) {
   try {
     // 入力の検証
     if (!input || typeof input !== 'object') {
-      process.exit(0);
-    }
-
-    // 1. スキップフラグのチェック
-    if (process.env.SKIP_TEST_FIRST_CHECK === 'true') {
-      debugLog('SKIP_TEST_FIRST_CHECK=true によりスキップ');
       process.exit(0);
     }
 

@@ -31,14 +31,38 @@ vi.mock('../../validation/design-validator.js', () => ({
 }));
 
 // fsモジュールをモック（成果物チェック用: デフォルトで全てtrue）
-vi.mock('fs', () => ({
-  existsSync: vi.fn(() => true),
-  readFileSync: vi.fn(),
-  writeFileSync: vi.fn(),
-  mkdirSync: vi.fn(),
-}));
+vi.mock('fs', async () => {
+  const actual = await vi.importActual<typeof import('fs')>('fs');
+  return {
+    ...actual,
+    existsSync: vi.fn(() => true),
+    readFileSync: vi.fn(),
+    statSync: vi.fn(() => ({ size: 500 })),
+    writeFileSync: vi.fn(),
+    mkdirSync: vi.fn(),
+  };
+});
 
 import * as fs from 'fs';
+
+/**
+ * requirements.md用モックコンテンツ
+ * 要件: 30行以上、必須セクション: '## 背景', '## 機能要件', '## 受入条件'
+ */
+const MOCK_REQUIREMENTS_MD = Array.from({length: 35}, (_, i) =>
+  i === 0 ? '# Requirements' :
+  i === 2 ? '## 背景' :
+  i === 5 ? '背景情報を記載。' :
+  i === 10 ? '## 機能要件' :
+  i === 13 ? 'REQ-1: 要件1。' :
+  i === 20 ? '## 受入条件' :
+  i === 23 ? 'AC-1: 受入条件1。' :
+  `内容行${i}`
+).join('\n');
+
+function getMockContent(filePath: unknown): string {
+  return MOCK_REQUIREMENTS_MD;
+}
 
 interface NextResult {
   success: boolean;
@@ -69,6 +93,8 @@ describe('REQ-1: planningフェーズscope必須チェック', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.statSync).mockReturnValue({ size: 500 } as any);
+    vi.mocked(fs.readFileSync).mockImplementation(((filePath: unknown) => getMockContent(filePath)) as any);
     process.env.SKIP_DESIGN_VALIDATION = 'true';
   });
 

@@ -6,7 +6,7 @@
  * 5分以内に同一ファイルが5回以上編集された場合に警告を表示し、処理を中止する。
  *
  * 設定可能な環境変数:
- * - SKIP_LOOP_DETECTION: "true" で無効化
+ * （なし）
  *
  * @spec docs/spec/features/loop-detector.md
  */
@@ -253,9 +253,6 @@ function displayWarning(filePath, count) {
   console.log('   3. 仕様書と実装の乖離がないか確認する');
   console.log('   4. ビルド/テスト結果を確認してから編集を再開する');
   console.log('');
-  console.log(' 強制スキップ（非推奨）:');
-  console.log('   SKIP_LOOP_DETECTION=true 環境変数を設定');
-  console.log('');
   console.log('='.repeat(60));
 }
 
@@ -371,11 +368,6 @@ function main(input) {
   try {
     // 入力の検証
     if (!input || typeof input !== 'object') {
-      process.exit(0);
-    }
-
-    // スキップフラグのチェック
-    if (process.env.SKIP_LOOP_DETECTION === 'true') {
       process.exit(0);
     }
 

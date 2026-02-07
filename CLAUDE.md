@@ -1662,14 +1662,7 @@ docs/
 | `DOCS_BASE` | ドキュメントのベースディレクトリ（デフォルト: `docs/`） |
 | `DOCS_DIR` | ワークフロー成果物ディレクトリ（デフォルト: `docs/workflows/`） |
 | `STATE_DIR` | 内部状態ディレクトリ（デフォルト: `.claude/state/`） |
-| `SKIP_PHASE_GUARD=true` | フェーズ編集制限を無効化（非推奨） |
-| `SKIP_SPEC_GUARD=true` | 仕様ファーストチェックを無効化（非推奨） |
-| `SKIP_LOOP_DETECTION=true` | 無限ループ検出を無効化（非推奨） |
-| `SKIP_ARTIFACT_CHECK=true` | 成果物反映チェックを無効化（非推奨） |
-| `SKIP_DESIGN_VALIDATION=true` | 設計-実装整合性検証をスキップ（非推奨） |
 | `VALIDATE_DESIGN_STRICT=false` | 設計検証を警告モードで実行（デフォルト: true = 厳格モード） |
-
-**注意**: これらのスキップは監査証跡として記録される。
 
 ---
 

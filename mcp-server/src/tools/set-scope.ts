@@ -16,6 +16,10 @@ import {
   validateScopeExists,
   validateScopeDependencies,
 } from '../validation/dependency-analyzer.js';
+import {
+  validateScopeDepth,
+  validateScopeFiles,
+} from '../validation/scope-validator.js';
 
 /** スコープ設定が可能なフェーズ */
 const ALLOWED_PHASES = ['research', 'requirements', 'planning'] as const;
@@ -80,11 +84,29 @@ export function workflowSetScope(
     };
   }
 
-  // ★★★ 新規追加: ファイル/ディレクトリの存在チェック ★★★
+  // REQ-5: ディレクトリ深度検証
+  const depthResult = validateScopeDepth(affectedDirs);
+  if (!depthResult.valid) {
+    return {
+      success: false,
+      message: `スコープ深度検証エラー:\n${depthResult.errors.join('\n')}`,
+    };
+  }
+
+  // REQ-5: ファイル存在確認（相対パスは絶対パスに変換してチェック）
   const projectRoot = process.cwd();
   const absoluteFiles = affectedFiles.map((f) =>
     path.isAbsolute(f) ? f : path.resolve(projectRoot, f)
   );
+  const fileExistsResult = validateScopeFiles(absoluteFiles);
+  if (!fileExistsResult.valid) {
+    return {
+      success: false,
+      message: `ファイル存在確認エラー:\n${fileExistsResult.errors.join('\n')}`,
+    };
+  }
+
+  // ★★★ ディレクトリ存在チェック ★★★
   const absoluteDirs = affectedDirs.map((d) =>
     path.isAbsolute(d) ? d : path.resolve(projectRoot, d)
   );
