@@ -32,10 +32,18 @@ describe('E2E: ワークフロー全体の統合テスト', () => {
       fs.mkdirSync(workflowDir, { recursive: true });
       fs.mkdirSync(srcDir, { recursive: true });
 
-      // 設計書ファイルを作成
+      // 設計書ファイルを作成（コードブロック外にclass定義、パスはバッククォート内）
       fs.writeFileSync(
         path.join(workflowDir, 'spec.md'),
-        `# テスト機能仕様書\n\n## ファイル: src/utils/test-util.ts\n\n\`\`\`typescript\nclass TestUtil {\n  execute(): string {}\n}\n\`\`\``
+        [
+          '# テスト機能仕様書',
+          '',
+          '**ファイル**: `src/utils/test-util.ts`',
+          '',
+          'class TestUtil {',
+          '  execute(): string {}',
+          '}',
+        ].join('\n')
       );
 
       fs.writeFileSync(
@@ -72,7 +80,13 @@ describe('E2E: ワークフロー全体の統合テスト', () => {
       // 設計書だけを作成（実装ファイルなし）
       fs.writeFileSync(
         path.join(workflowDir, 'spec.md'),
-        `# テスト機能仕様書\n\n## ファイル: src/missing/missing-file.ts\n\n\`\`\`typescript\nclass MissingClass {}\n\`\`\``
+        [
+          '# テスト機能仕様書',
+          '',
+          '**ファイル**: `src/missing/missing-file.ts`',
+          '',
+          'class MissingClass {}',
+        ].join('\n')
       );
 
       fs.writeFileSync(
@@ -106,7 +120,15 @@ describe('E2E: ワークフロー全体の統合テスト', () => {
       // 設計書を作成
       fs.writeFileSync(
         path.join(workflowDir, 'spec.md'),
-        `# リファクタリング仕様\n\n## ファイル: src/core/service.ts\n\n\`\`\`typescript\nclass Service {\n  process(data: object): object {}\n}\n\`\`\``
+        [
+          '# リファクタリング仕様',
+          '',
+          '**ファイル**: `src/core/service.ts`',
+          '',
+          'class Service {',
+          '  process(data: object): object {}',
+          '}',
+        ].join('\n')
       );
 
       fs.writeFileSync(
@@ -161,7 +183,15 @@ describe('E2E: ワークフロー全体の統合テスト', () => {
       // 設計書を作成
       fs.writeFileSync(
         path.join(workflowDir, 'spec.md'),
-        `# 認証機能\n\n## ファイル: src/features/auth/authenticator.ts\n\n\`\`\`typescript\nclass Authenticator {\n  authenticate(creds: any): any {}\n}\n\`\`\``
+        [
+          '# 認証機能',
+          '',
+          '**ファイル**: `src/features/auth/authenticator.ts`',
+          '',
+          'class Authenticator {',
+          '  authenticate(creds: any): any {}',
+          '}',
+        ].join('\n')
       );
 
       fs.writeFileSync(

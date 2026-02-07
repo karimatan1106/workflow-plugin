@@ -4,21 +4,20 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseSpec, type SpecItems } from '../../src/validation/parsers/spec-parser.js';
+import { parseSpec } from '../../src/validation/parsers/spec-parser.js';
 
 describe('SpecParser', () => {
   describe('UT-1.1: クラス抽出', () => {
     it('クラス定義を抽出できる', () => {
+      // コードブロック外のクラス定義を抽出
       const markdown = `
 ## クラス設計
 
 ### Foo
 
-\`\`\`typescript
 class Foo {
   bar(): void;
 }
-\`\`\`
 `;
       const result = parseSpec(markdown);
       expect(result.classes).toContain('Foo');
@@ -26,26 +25,31 @@ class Foo {
 
     it('複数クラスを抽出できる', () => {
       const markdown = `
-\`\`\`typescript
 class Foo {}
 class Bar {}
-\`\`\`
 `;
       const result = parseSpec(markdown);
       expect(result.classes).toContain('Foo');
       expect(result.classes).toContain('Bar');
     });
+
+    it('コードブロック内のクラスは抽出されない（REQ-7）', () => {
+      const markdown = `
+\`\`\`typescript
+class InsideCodeBlock {}
+\`\`\`
+`;
+      const result = parseSpec(markdown);
+      expect(result.classes).not.toContain('InsideCodeBlock');
+    });
   });
 
   describe('UT-1.2: メソッド抽出', () => {
     it('メソッド定義を抽出できる', () => {
+      // コードブロック外のメソッド定義を抽出
       const markdown = `
-\`\`\`typescript
-class Foo {
-  bar(): void {}
-  baz(arg: string): number {}
-}
-\`\`\`
+bar(): void {}
+baz(arg: string): number {}
 `;
       const result = parseSpec(markdown);
       expect(result.methods).toContain('bar');
@@ -64,7 +68,7 @@ class Foo {
 
     it('src/で始まるパスを抽出できる', () => {
       const markdown = `
-実装は src/foo/bar.ts に配置します。
+実装は \`src/foo/bar.ts\` に配置します。
 `;
       const result = parseSpec(markdown);
       expect(result.filePaths.some(p => p.includes('src/foo/bar.ts'))).toBe(true);

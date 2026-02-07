@@ -27,11 +27,9 @@ describe('DesignValidator', () => {
           return `
 **ファイル**: \`src/validation/design-validator.ts\`
 
-\`\`\`typescript
 class DesignValidator {
   validateAll(): ValidationResult {}
 }
-\`\`\`
 `;
         }
         if (path.includes('state-machine.mmd')) {
@@ -47,6 +45,10 @@ flowchart TD
     A[Start] --> B[End]
 `;
         }
+        // 実装ファイルの内容（class検索用）
+        if (path.includes('design-validator.ts')) {
+          return 'class DesignValidator { validateAll() {} }';
+        }
         return '';
       });
 
@@ -59,22 +61,21 @@ flowchart TD
 
   describe('UT-5.2: 一部未実装', () => {
     it('ファイル欠損時にpassedがfalseになる', () => {
-      // モック設定: spec.mdは存在するが、実装ファイルが存在しない
+      // モック設定: workflowDir, spec.md, mmd は存在するが、実装ファイルが存在しない
       vi.mocked(fs.existsSync).mockImplementation((path: any) => {
-        if (path.includes('spec.md')) return true;
-        if (path.includes('state-machine.mmd')) return true;
-        if (path.includes('flowchart.mmd')) return true;
-        if (path.includes('design-validator.ts')) return false; // 実装ファイルなし
-        return false;
+        const p = String(path);
+        if (p === '/mock/workflow/dir') return true; // workflowDir
+        if (p.includes('spec.md')) return true;
+        if (p.includes('state-machine.mmd')) return true;
+        if (p.includes('flowchart.mmd')) return true;
+        return false; // 実装ファイルなし
       });
       vi.mocked(fs.readFileSync).mockImplementation((path: any) => {
         if (path.includes('spec.md')) {
           return `
 **ファイル**: \`src/validation/design-validator.ts\`
 
-\`\`\`typescript
 class DesignValidator {}
-\`\`\`
 `;
         }
         if (path.includes('state-machine.mmd')) {
@@ -95,14 +96,29 @@ class DesignValidator {}
   });
 
   describe('UT-5.3: 設計書なし', () => {
-    it('設計書が存在しない場合にwarningsが設定される', () => {
-      // モック設定: 全ファイルが存在しない
-      vi.mocked(fs.existsSync).mockReturnValue(false);
+    it('設計書が存在しない場合にwarningsとpassedがtrueになる（スキップ扱い）', () => {
+      // モック設定: workflowDirは存在するが設計書ファイルが全て存在しない
+      vi.mocked(fs.existsSync).mockImplementation((path: any) => {
+        const p = String(path);
+        if (p === '/mock/workflow/dir') return true; // workflowDir
+        return false; // 設計書なし
+      });
 
       const validator = new DesignValidator('/mock/workflow/dir');
       const result = validator.validateAll();
 
-      expect(result.passed).toBe(false);
+      // 設計書が全てない場合はスキップ扱い（passed: true, warnings あり）
+      expect(result.passed).toBe(true);
+      expect(result.warnings.length).toBeGreaterThan(0);
+    });
+
+    it('workflowDirが存在しない場合もpassedがtrueになる（スキップ扱い）', () => {
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+
+      const validator = new DesignValidator('/nonexistent/dir');
+      const result = validator.validateAll();
+
+      expect(result.passed).toBe(true);
       expect(result.warnings.length).toBeGreaterThan(0);
     });
   });

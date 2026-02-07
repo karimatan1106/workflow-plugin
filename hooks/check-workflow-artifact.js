@@ -94,11 +94,11 @@ const REQUIRED_ARTIFACTS = {
 /** 仕様書パス抽出用の正規表現パターン */
 const SPEC_PATH_PATTERNS = [
   // パターン1: "## 仕様書" セクション内のパス
-  /##\s*仕様書[\s\S]*?(docs\/product\/features\/[^\s\n]+\.md)/,
+  /##\s*仕様書[\s\S]*?(docs\/spec\/features\/[^\s\n]+\.md)/,
   // パターン2: "仕様書:" ラベル付きパス
-  /仕様書:\s*(docs\/product\/features\/[^\s\n]+\.md)/,
+  /仕様書:\s*(docs\/spec\/features\/[^\s\n]+\.md)/,
   // パターン3: docs/spec/features/ で始まる任意のパス
-  /(docs\/product\/features\/[^\s\n)]+\.md)/,
+  /(docs\/spec\/features\/[^\s\n)]+\.md)/,
 ];
 
 // =============================================================================

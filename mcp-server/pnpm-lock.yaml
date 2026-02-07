@@ -12,6 +12,12 @@ importers:
         specifier: ^1.0.0
         version: 1.25.2(hono@4.11.4)(zod@4.3.5)
     devDependencies:
+      '@esbuild/linux-x64':
+        specifier: 0.21.5
+        version: 0.21.5
+      '@rollup/rollup-linux-x64-gnu':
+        specifier: ^4.57.1
+        version: 4.57.1
       '@types/node':
         specifier: ^20.10.0
         version: 20.19.30
@@ -317,6 +323,11 @@ packages:
 
   '@rollup/rollup-linux-x64-gnu@4.55.1':
     resolution: {integrity: sha512-a8G4wiQxQG2BAvo+gU6XrReRRqj+pLS2NGXKm8io19goR+K8lw269eTrPkSdDTALwMmJp4th2Uh0D8J9bEV1vg==}
+    cpu: [x64]
+    os: [linux]
+
+  '@rollup/rollup-linux-x64-gnu@4.57.1':
+    resolution: {integrity: sha512-ABca4ceT4N+Tv/GtotnWAeXZUZuM/9AQyCyKYyKnpk4yoA7QIAuBt6Hkgpw8kActYlew2mvckXkvx0FfoInnLg==}
     cpu: [x64]
     os: [linux]
 
@@ -1132,8 +1143,7 @@ snapshots:
   '@esbuild/linux-s390x@0.21.5':
     optional: true
 
-  '@esbuild/linux-x64@0.21.5':
-    optional: true
+  '@esbuild/linux-x64@0.21.5': {}
 
   '@esbuild/netbsd-x64@0.21.5':
     optional: true
@@ -1260,6 +1270,8 @@ snapshots:
 
   '@rollup/rollup-linux-x64-gnu@4.55.1':
     optional: true
+
+  '@rollup/rollup-linux-x64-gnu@4.57.1': {}
 
   '@rollup/rollup-linux-x64-musl@4.55.1':
     optional: true

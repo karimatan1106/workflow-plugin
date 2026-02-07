@@ -216,6 +216,24 @@ export interface TaskState {
   testBaseline?: TestBaseline;
   /** regression_testフェーズで記録した既知バグ */
   knownBugs?: KnownBug[];
+  /** 影響範囲（REQ-1） */
+  scope?: {
+    /** 影響を受けるファイルのパスリスト */
+    affectedFiles: string[];
+    /** 影響を受けるディレクトリのパスリスト */
+    affectedDirs: string[];
+  };
+  /** テスト結果記録（REQ-2） */
+  testResults?: Array<{
+    /** 実行フェーズ */
+    phase: 'testing' | 'regression_test';
+    /** 終了コード（0=成功、非0=失敗） */
+    exitCode: number;
+    /** 実行日時（ISO 8601形式） */
+    timestamp: string;
+    /** サマリー（オプション） */
+    summary?: string;
+  }>;
 }
 
 // ============================================================================

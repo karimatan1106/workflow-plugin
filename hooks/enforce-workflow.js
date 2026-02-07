@@ -4,9 +4,8 @@
  * 状態ファイルを直接参照してファイル操作をチェック
  * (workflow.sh への依存を排除)
  *
- * 環境変数:
- *   WORKFLOW_STATE_FILE - グローバル状態ファイルのパス
- *                         デフォルト: .claude-workflow-state.json（CWD相対）
+ * REQ-3: .claude-workflow-state.json への依存を廃止し、
+ * ディレクトリスキャン方式に統一。
  */
 
 const HOOK_NAME = 'enforce-workflow.js';
@@ -36,10 +35,7 @@ process.on('unhandledRejection', (reason) => {
 
 const fs = require('fs');
 const path = require('path');
-
-// 設定: 環境変数から読み込み、未設定ならデフォルト値を使用
-const GLOBAL_STATE_FILE = process.env.WORKFLOW_STATE_FILE
-  || path.join(process.cwd(), '.claude-workflow-state.json');
+const { discoverTasks, findTaskByFilePath } = require('./lib/discover-tasks');
 
 // フェーズごとの許可拡張子
 const PHASE_EXTENSIONS = {
@@ -62,9 +58,12 @@ const PHASE_EXTENSIONS = {
   'build_check': ['*'],
   'code_review': ['.md'],
   'testing': ['.md', '.test.ts', '.test.tsx', '.spec.ts', '.spec.tsx'],
+  'regression_test': ['.md', '.test.ts', '.test.tsx', '.spec.ts', '.spec.tsx'],
   'parallel_verification': ['.md'],
   'manual_test': ['.md'],
   'security_scan': ['.md'],
+  'performance_test': ['.md'],
+  'e2e_test': ['.md', '.test.ts', '.test.tsx', '.spec.ts', '.spec.tsx'],
   'commit': [],
   'push': [],
   'deploy': ['.md'],
@@ -76,7 +75,7 @@ const PARALLEL_GROUPS = {
   'parallel_analysis': ['threat_modeling', 'planning'],
   'parallel_design': ['state_machine', 'flowchart', 'ui_design'],
   'parallel_quality': ['build_check', 'code_review'],
-  'parallel_verification': ['manual_test', 'security_scan']
+  'parallel_verification': ['manual_test', 'security_scan', 'performance_test', 'e2e_test']
 };
 
 // フェーズ説明
@@ -100,45 +99,17 @@ const PHASE_DESC = {
   'build_check': 'ビルド確認フェーズ',
   'code_review': 'コードレビュー',
   'testing': 'テスト実行フェーズ',
+  'regression_test': 'リグレッションテストフェーズ',
   'parallel_verification': '並列検証フェーズ',
   'manual_test': '手動確認フェーズ',
   'security_scan': 'セキュリティスキャンフェーズ',
+  'performance_test': 'パフォーマンステストフェーズ',
+  'e2e_test': 'E2Eテストフェーズ',
   'commit': 'コミットフェーズ',
   'push': 'プッシュフェーズ',
   'deploy': 'デプロイフェーズ',
   'completed': '完了'
 };
-
-/**
- * グローバル状態を読み込む
- */
-function readGlobalState() {
-  try {
-    if (fs.existsSync(GLOBAL_STATE_FILE)) {
-      const content = fs.readFileSync(GLOBAL_STATE_FILE, 'utf-8');
-      return JSON.parse(content);
-    }
-  } catch (e) {
-    // エラー時はnull
-  }
-  return null;
-}
-
-/**
- * タスク状態を読み込む
- */
-function readTaskState(workflowDir) {
-  try {
-    const stateFile = path.join(workflowDir, 'workflow-state.json');
-    if (fs.existsSync(stateFile)) {
-      const content = fs.readFileSync(stateFile, 'utf-8');
-      return JSON.parse(content);
-    }
-  } catch (e) {
-    // エラー時はnull
-  }
-  return null;
-}
 
 /**
  * 並列フェーズかどうか
@@ -238,17 +209,11 @@ function main(input) {
       process.exit(0);
     }
 
-    // グローバル状態を読み込む
-    const globalState = readGlobalState();
+    // ★★★ REQ-3: discoverTasks()を使用してアクティブタスクを取得 ★★★
+    const tasks = discoverTasks();
 
-    // 状態ファイルがない場合は許可（開発モード）
-    if (!globalState) {
-      process.exit(0);
-    }
-
-    // アクティブタスクがない場合、ブロック
-    const activeTasks = globalState.activeTasks || [];
-    if (activeTasks.length === 0) {
+    // タスクがない場合、ブロック
+    if (tasks.length === 0) {
       console.log('');
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       console.log('🚫 BLOCKED: タスクが開始されていません');
@@ -264,17 +229,11 @@ function main(input) {
       process.exit(2);
     }
 
-    // 最初のタスク（カレント）を取得
-    const currentTask = activeTasks[0];
-    const workflowDir = currentTask.workflowDir;
+    // ★★★ REQ-3: findTaskByFilePath()を使用してファイルに対応するタスクを検索 ★★★
+    const currentTask = findTaskByFilePath(filePath);
 
-    // タスク状態を読み込む
-    const taskState = readTaskState(workflowDir);
-    if (!taskState) {
-      // タスク状態ファイルがない場合は許可（フォールバック）
-      process.exit(0);
-    }
-
+    // ファイルがどのタスクにも属さない場合は、最初のアクティブタスクを使用
+    const taskState = currentTask || tasks[0];
     const currentPhase = taskState.phase || 'idle';
 
     // idle状態ならブロック

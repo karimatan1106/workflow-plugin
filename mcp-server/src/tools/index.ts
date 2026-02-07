@@ -45,6 +45,15 @@ export {
   getKnownBugsToolDefinition,
 } from './test-tracking.js';
 
+/** 影響範囲設定ツール */
+export { workflowSetScope, setScopeToolDefinition } from './set-scope.js';
+
+/** テスト結果記録ツール */
+export { workflowRecordTestResult, recordTestResultToolDefinition } from './record-test-result.js';
+
+/** 差し戻しツール */
+export { workflowBack, backToolDefinition } from './back.js';
+
 // ============================================================================
 // ツール定義のリスト
 // ============================================================================
@@ -68,4 +77,7 @@ export const allToolDefinitions = [
   { name: 'workflow_get_test_info', module: 'test-tracking' },
   { name: 'workflow_record_known_bug', module: 'test-tracking' },
   { name: 'workflow_get_known_bugs', module: 'test-tracking' },
+  { name: 'workflow_set_scope', module: 'set-scope' },
+  { name: 'workflow_record_test_result', module: 'record-test-result' },
+  { name: 'workflow_back', module: 'back' },
 ] as const;

@@ -39,6 +39,12 @@ import {
   recordKnownBugToolDefinition,
   workflowGetKnownBugs,
   getKnownBugsToolDefinition,
+  workflowSetScope,
+  setScopeToolDefinition,
+  workflowRecordTestResult,
+  recordTestResultToolDefinition,
+  workflowBack,
+  backToolDefinition,
 } from './tools/index.js';
 
 import type { ToolResult } from './state/types.js';
@@ -65,6 +71,9 @@ const TOOL_DEFINITIONS = [
   getTestInfoToolDefinition,
   recordKnownBugToolDefinition,
   getKnownBugsToolDefinition,
+  setScopeToolDefinition,
+  recordTestResultToolDefinition,
+  backToolDefinition,
 ] as const;
 
 // ============================================================================
@@ -102,6 +111,12 @@ interface ToolArguments {
   workflow_record_known_bug: { taskId: string; testName: string; description: string; severity: string; issueUrl?: string; targetPhase?: string };
   /** 既知バグ一覧取得 */
   workflow_get_known_bugs: { taskId: string };
+  /** 影響範囲設定 */
+  workflow_set_scope: { taskId?: string; files?: string[]; dirs?: string[] };
+  /** テスト結果記録 */
+  workflow_record_test_result: { taskId?: string; exitCode?: number; summary?: string };
+  /** 差し戻し */
+  workflow_back: { taskId?: string; targetPhase?: string; reason?: string };
 }
 
 /** ツール名の型 */
@@ -244,6 +259,21 @@ const TOOL_HANDLERS: Record<ToolName, ToolHandler> = {
   workflow_get_known_bugs: (args) => {
     const { taskId } = args as ToolArguments['workflow_get_known_bugs'];
     return workflowGetKnownBugs(taskId);
+  },
+
+  workflow_set_scope: (args) => {
+    const { taskId, files, dirs } = args as ToolArguments['workflow_set_scope'];
+    return workflowSetScope(taskId, files, dirs);
+  },
+
+  workflow_record_test_result: (args) => {
+    const { taskId, exitCode, summary } = args as ToolArguments['workflow_record_test_result'];
+    return workflowRecordTestResult(taskId, exitCode, summary);
+  },
+
+  workflow_back: (args) => {
+    const { taskId, targetPhase, reason } = args as ToolArguments['workflow_back'];
+    return workflowBack(taskId, targetPhase, reason);
   },
 };
 

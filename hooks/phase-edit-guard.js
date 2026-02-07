@@ -1296,6 +1296,107 @@ function getPhaseRule(phase, workflowState) {
 }
 
 /**
+ * スコープ違反チェック
+ * @param {string} filePath - チェック対象ファイルパス
+ * @param {object} workflowState - ワークフロー状態
+ * @returns {{blocked: boolean, reason?: string, allowedFiles?: string[], allowedDirs?: string[]}}
+ */
+function checkScopeViolation(filePath, workflowState) {
+  // workflowStateが存在しない、またはscopeが未設定の場合は許可
+  if (!workflowState || !workflowState.scope) {
+    return { blocked: false };
+  }
+
+  const { affectedFiles, affectedDirs } = workflowState.scope;
+
+  // scopeが空（affectedFiles/affectedDirsともに空配列）の場合は許可
+  if ((!affectedFiles || affectedFiles.length === 0) &&
+      (!affectedDirs || affectedDirs.length === 0)) {
+    return { blocked: false };
+  }
+
+  // docs/配下は常に許可（スコープチェック対象外）
+  const normalizedPath = normalizePath(filePath);
+  if (normalizedPath.startsWith('docs/')) {
+    return { blocked: false };
+  }
+
+  // src/配下のみチェック
+  if (!normalizedPath.startsWith('src/')) {
+    return { blocked: false };
+  }
+
+  // affectedFilesに含まれているか確認
+  if (affectedFiles && affectedFiles.length > 0) {
+    for (const allowedFile of affectedFiles) {
+      const normalizedAllowed = normalizePath(allowedFile);
+      if (normalizedPath === normalizedAllowed) {
+        return { blocked: false };
+      }
+    }
+  }
+
+  // affectedDirsに含まれているか確認
+  if (affectedDirs && affectedDirs.length > 0) {
+    for (const allowedDir of affectedDirs) {
+      const normalizedDir = normalizePath(allowedDir);
+      // ディレクトリプレフィックスマッチ（末尾にスラッシュを追加して正確にマッチ）
+      const dirPrefix = normalizedDir.endsWith('/') ? normalizedDir : normalizedDir + '/';
+      if (normalizedPath.startsWith(dirPrefix)) {
+        return { blocked: false };
+      }
+    }
+  }
+
+  // どちらにも含まれない場合はブロック
+  return {
+    blocked: true,
+    reason: 'このファイルは影響範囲に含まれていません',
+    allowedFiles: affectedFiles || [],
+    allowedDirs: affectedDirs || [],
+  };
+}
+
+/**
+ * スコープ違反メッセージを表示
+ * @param {string} filePath - ファイルパス
+ * @param {object} checkResult - checkScopeViolation()の戻り値
+ */
+function displayScopeViolationMessage(filePath, checkResult) {
+  console.log('');
+  console.log(SEPARATOR_LINE);
+  console.log(' 影響範囲外の編集がブロックされました');
+  console.log(SEPARATOR_LINE);
+  console.log('');
+  console.log(` ファイル: ${filePath}`);
+  console.log(` 理由: ${checkResult.reason}`);
+  console.log('');
+  console.log(' このファイルはタスクの影響範囲に含まれていません。');
+  console.log('');
+  if (checkResult.allowedFiles && checkResult.allowedFiles.length > 0) {
+    console.log(' 許可されたファイル:');
+    for (const file of checkResult.allowedFiles) {
+      console.log(`   - ${file}`);
+    }
+    console.log('');
+  }
+  if (checkResult.allowedDirs && checkResult.allowedDirs.length > 0) {
+    console.log(' 許可されたディレクトリ:');
+    for (const dir of checkResult.allowedDirs) {
+      console.log(`   - ${dir}`);
+    }
+    console.log('');
+  }
+  console.log(' 対処方法:');
+  console.log('   1. researchフェーズに戻り、影響範囲を再定義する');
+  console.log('      → /workflow reset');
+  console.log('   2. または、影響範囲外のファイル編集が必要な場合は');
+  console.log('      別タスクとして実装する');
+  console.log('');
+  console.log(SEPARATOR_LINE);
+}
+
+/**
  * メイン処理
  *
  * PreToolUse フックとして呼び出され、Edit/Write ツールの使用を
@@ -1477,6 +1578,22 @@ function main(input) {
   if (!rule) {
     debugLog('未知のフェーズ：許可');
     process.exit(EXIT_CODES.SUCCESS);
+  }
+
+  // ★★★ REQ-1: implementationフェーズでのスコープチェック ★★★
+  if (phase === 'implementation') {
+    const scopeCheckResult = checkScopeViolation(filePath, workflowState.workflowState);
+    if (scopeCheckResult.blocked) {
+      displayScopeViolationMessage(filePath, scopeCheckResult);
+      logCheck({
+        blocked: true,
+        phase,
+        filePath,
+        reason: 'scope_violation',
+        details: scopeCheckResult,
+      });
+      process.exit(EXIT_CODES.BLOCK);
+    }
   }
 
   // 9. 編集許可チェック

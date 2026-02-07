@@ -100,6 +100,50 @@ export const PARALLEL_GROUPS: Record<string, SubPhaseName[]> = {
   parallel_verification: ['manual_test', 'security_scan', 'performance_test', 'e2e_test'],
 };
 
+/**
+ * サブフェーズ依存関係定義（REQ-6）
+ *
+ * 各並列フェーズ内のサブフェーズ間の依存関係を定義する。
+ * キーはサブフェーズ名、値は依存するサブフェーズ名の配列。
+ *
+ * 例: { flowchart: ['state_machine'] } は、
+ * flowchartを完了するにはstate_machineが先に完了している必要があることを示す。
+ */
+export const SUB_PHASE_DEPENDENCIES: Record<string, Partial<Record<SubPhaseName, SubPhaseName[]>>> = {
+  parallel_design: {
+    state_machine: [], // 依存なし（最初に実行可能）
+    flowchart: ['state_machine'], // state_machine完了後に実行可能
+    ui_design: ['state_machine', 'flowchart'], // state_machine, flowchart完了後に実行可能
+  },
+  parallel_analysis: {
+    threat_modeling: [], // 依存なし
+    planning: [], // 依存なし（独立実行可）
+  },
+  parallel_quality: {
+    build_check: [], // 依存なし
+    code_review: [], // 依存なし（独立実行可）
+  },
+  parallel_verification: {
+    manual_test: [], // 依存なし
+    security_scan: [], // 依存なし
+    performance_test: [], // 依存なし
+    e2e_test: [], // 依存なし（全て独立実行可）
+  },
+};
+
+/**
+ * サブフェーズの依存関係を取得
+ *
+ * @param parentPhase 並列フェーズ名
+ * @param subPhase サブフェーズ名
+ * @returns 依存するサブフェーズの配列
+ */
+export function getSubPhaseDependencies(parentPhase: string, subPhase: string): string[] {
+  const deps = SUB_PHASE_DEPENDENCIES[parentPhase];
+  if (!deps) return [];
+  return deps[subPhase as SubPhaseName] || [];
+}
+
 // ============================================================================
 // フェーズ説明
 // ============================================================================

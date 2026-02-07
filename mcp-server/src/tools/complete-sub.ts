@@ -9,7 +9,7 @@
 
 import { stateManager } from '../state/manager.js';
 import type { CompleteSubResult, SubPhaseName } from '../state/types.js';
-import { isParallelPhase, PARALLEL_GROUPS } from '../phases/definitions.js';
+import { isParallelPhase, PARALLEL_GROUPS, getSubPhaseDependencies } from '../phases/definitions.js';
 import { getTaskByIdOrError, validateRequiredString, safeExecute } from './helpers.js';
 import { MISSING_PARAM_ERRORS, invalidValueError } from '../utils/errors.js';
 
@@ -53,10 +53,26 @@ export function workflowCompleteSub(taskId?: string, subPhase?: string): Complet
     };
   }
 
+  // ★★★ REQ-6: 依存関係チェック ★★★
+  const subPhaseName = validation.value as SubPhaseName;
+  const dependencies = getSubPhaseDependencies(currentPhase, subPhaseName);
+
+  if (dependencies.length > 0) {
+    const currentSubPhases = taskState.subPhases || {};
+    const incompleteDeps = dependencies.filter(
+      dep => currentSubPhases[dep as SubPhaseName] !== 'completed'
+    );
+
+    if (incompleteDeps.length > 0) {
+      return {
+        success: false,
+        message: `${subPhaseName}を完了するには、以下のサブフェーズが先に完了している必要があります: ${incompleteDeps.join(', ')}`,
+      };
+    }
+  }
+
   // サブフェーズ完了処理を実行
   return safeExecute('サブフェーズ完了処理', () => {
-    const subPhaseName = validation.value as SubPhaseName;
-
     // サブフェーズを完了としてマーク
     stateManager.updateSubPhaseStatus(taskState.taskId, subPhaseName, 'completed');
 

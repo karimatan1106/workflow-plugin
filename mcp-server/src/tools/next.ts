@@ -8,7 +8,7 @@
  */
 
 import { stateManager } from '../state/manager.js';
-import type { NextResult, TaskSize } from '../state/types.js';
+import type { NextResult, TaskSize, TaskState } from '../state/types.js';
 import { DEFAULT_TASK_SIZE } from '../state/types.js';
 import {
   requiresApproval,
@@ -95,6 +95,40 @@ export function workflowNext(taskId?: string): NextResult {
     }
   }
 
+  // REQ-2: testing → regression_test 遷移時のテスト結果検証
+  if (currentPhase === 'testing') {
+    const testResult = getLatestTestResult(taskState, 'testing');
+    if (!testResult) {
+      return {
+        success: false,
+        message: 'テスト結果が記録されていません。workflow_record_test_result でテスト結果を記録してください',
+      };
+    }
+    if (testResult.exitCode !== 0) {
+      return {
+        success: false,
+        message: `テストが失敗しています（exitCode: ${testResult.exitCode}）。テストを修正してから次フェーズに進んでください`,
+      };
+    }
+  }
+
+  // REQ-2: regression_test → parallel_verification 遷移時のテスト結果検証
+  if (currentPhase === 'regression_test') {
+    const testResult = getLatestTestResult(taskState, 'regression_test');
+    if (!testResult) {
+      return {
+        success: false,
+        message: 'リグレッションテスト結果が記録されていません。workflow_record_test_result でテスト結果を記録してください',
+      };
+    }
+    if (testResult.exitCode !== 0) {
+      return {
+        success: false,
+        message: `リグレッションテストが失敗しています（exitCode: ${testResult.exitCode}）。テストを修正してから次フェーズに進んでください`,
+      };
+    }
+  }
+
   // 設計-実装整合性チェック（test_impl → implementation 遷移時）
   if (currentPhase === 'test_impl') {
     const docsDir = taskState.docsDir || taskState.workflowDir;
@@ -143,6 +177,26 @@ export function workflowNext(taskId?: string): NextResult {
       },
     };
   }) as NextResult;
+}
+
+/**
+ * 最新のテスト結果を取得
+ *
+ * @param taskState タスク状態
+ * @param phase テストフェーズ（'testing' または 'regression_test'）
+ * @returns 最新のテスト結果、または undefined
+ */
+function getLatestTestResult(
+  taskState: TaskState,
+  phase: 'testing' | 'regression_test'
+): { phase: 'testing' | 'regression_test'; exitCode: number; timestamp: string; summary?: string } | undefined {
+  const results = taskState.testResults || [];
+  const phaseResults = results.filter(r => r.phase === phase);
+  if (phaseResults.length === 0) {
+    return undefined;
+  }
+  // 最新のタイムスタンプのものを返す
+  return phaseResults.sort((a, b) => b.timestamp.localeCompare(a.timestamp))[0];
 }
 
 /**
