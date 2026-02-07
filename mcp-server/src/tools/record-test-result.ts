@@ -2,14 +2,20 @@
  * workflow_record_test_result ツール - テスト結果を記録
  *
  * testing/regression_testフェーズでのテスト実行結果をTaskStateに記録する。
- * REQ-2: outputパラメータ必須化、テストキーワード検証、件数自動抽出。
+ * REQ-1: 整合性検証強化（exitCode と output の矛盾を検出）
  *
- * @spec docs/workflows/ワ-クフロ-大規模対応根本改修/spec.md
+ * @spec docs/workflows/ワ-クフロ-1000万行対応強化/spec.md
  */
 
 import { stateManager } from '../state/manager.js';
 import type { ToolResult } from '../state/types.js';
 import { getTaskByIdOrError, safeExecute } from './helpers.js';
+
+/** テスト出力の最小文字数 */
+const MIN_OUTPUT_LENGTH = 50;
+
+/** テスト出力の保存上限文字数（超過時は末尾のみ保存） */
+const MAX_OUTPUT_LENGTH = 500;
 
 /** テスト出力に含まれるべきキーワード */
 const TEST_KEYWORDS = [
@@ -18,8 +24,119 @@ const TEST_KEYWORDS = [
   'PASS', 'FAIL', 'ok', 'not ok',
 ];
 
-/** 失敗を示すキーワード */
-const FAILURE_KEYWORDS = ['FAIL', 'failed', 'error', 'Error'];
+/** exitCode=0でブロックすべき失敗キーワード（大文字小文字不問） */
+const BLOCKING_FAILURE_KEYWORDS = [
+  'FAIL',
+  'FAILED',
+  'ERROR',
+  'ERRORS',
+  '×',
+  '✗',
+  'failing',
+  'failures',
+  'errored',
+] as const;
+
+/** exitCode≠0でブロックすべき成功キーワード（大文字小文字不問） */
+const BLOCKING_SUCCESS_KEYWORDS = [
+  'all tests passed',
+  'tests passed',
+  'all passed',
+  '100% passed',
+] as const;
+
+/** テストフレームワーク構造を示すパターン（正規表現） */
+const TEST_FRAMEWORK_PATTERNS = [
+  /(\d+)\s+tests?\s+passed/i,                     // "5 tests passed", "1 test passed"
+  /Tests:\s*(\d+)\s+passed/i,                      // "Tests: 5 passed, 5 total" (Jest)
+  /PASS\s+.*\.(test|spec)\.(ts|js|tsx|jsx)/i,     // "PASS  ./user.test.ts"
+  /✓.*test/i,                                      // "✓ should validate input"
+  /Test Suites:\s*(\d+)\s+passed/i,                // "Test Suites: 1 passed, 1 total" (Jest)
+] as const;
+
+/** エラーパターン（警告用） */
+const ERROR_PATTERNS = [
+  /at\s+.*\(.*\.(ts|js|tsx|jsx):\d+:\d+\)/,       // スタックトレース
+  /Expected.*but got/i,                            // Assertion error
+  /(Uncaught|Unhandled)/i,                         // Uncaught exception
+] as const;
+
+/**
+ * テスト出力とexitCodeの整合性を検証（Fail Closed）
+ *
+ * @param exitCode - テスト終了コード
+ * @param output - テスト実行の出力
+ * @returns 検証結果 { valid: boolean, reason?: string }
+ */
+function validateTestOutputConsistency(
+  exitCode: number,
+  output: string
+): { valid: boolean; reason?: string } {
+
+  // AC-1.1: exitCode=0 + FAILキーワード → ブロック
+  if (exitCode === 0) {
+    // Word boundary を使って単語単位でマッチ
+    const hasFailure = BLOCKING_FAILURE_KEYWORDS.some(kw => {
+      // 記号（×、✗）はそのままマッチ
+      if (kw === '×' || kw === '✗') {
+        return output.includes(kw);
+      }
+      // 大文字のキーワード（FAIL, FAILED, ERROR, ERRORS）:
+      // 最初の文字が大文字の場合のみマッチ（"Errors", "ERROR", "Error" はマッチ、"errors" はマッチしない）
+      // 小文字のキーワード（failing, failures, errored）は大文字小文字不問
+      const isUpperCase = kw === kw.toUpperCase();
+      if (isUpperCase) {
+        // First letter capitalized (Error, Errors, ERROR, ERRORS etc.)
+        const firstChar = kw.charAt(0);
+        const rest = kw.slice(1).toLowerCase();
+        const pattern = new RegExp(`\\b${firstChar}${rest}\\b`, 'i');
+        // But only match if the actual matched text starts with uppercase
+        const matches = output.match(new RegExp(`\\b(${firstChar}${rest})\\b`, 'gi')) || [];
+        return matches.some(match => match.charAt(0) === match.charAt(0).toUpperCase());
+      } else {
+        // 小文字のキーワード: 大文字小文字不問でマッチ
+        const pattern = new RegExp(`\\b${kw}\\b`, 'i');
+        return pattern.test(output);
+      }
+    });
+    if (hasFailure) {
+      return {
+        valid: false,
+        reason: 'テスト出力に失敗を示すキーワードが含まれていますが、exitCodeは0（成功）です。出力内容とexitCodeに矛盾があります。',
+      };
+    }
+  }
+
+  // AC-1.2: exitCode≠0 + PASSのみ → ブロック
+  if (exitCode !== 0) {
+    const hasOnlySuccess = BLOCKING_SUCCESS_KEYWORDS.some(kw =>
+      output.toLowerCase().includes(kw.toLowerCase())
+    );
+    const hasFailure = BLOCKING_FAILURE_KEYWORDS.some(kw => {
+      if (kw === '×' || kw === '✗') {
+        return output.includes(kw);
+      }
+      const isUpperCase = kw === kw.toUpperCase();
+      if (isUpperCase) {
+        const firstChar = kw.charAt(0);
+        const rest = kw.slice(1).toLowerCase();
+        const matches = output.match(new RegExp(`\\b(${firstChar}${rest})\\b`, 'gi')) || [];
+        return matches.some(match => match.charAt(0) === match.charAt(0).toUpperCase());
+      } else {
+        const pattern = new RegExp(`\\b${kw}\\b`, 'i');
+        return pattern.test(output);
+      }
+    });
+    if (hasOnlySuccess && !hasFailure) {
+      return {
+        valid: false,
+        reason: 'テスト出力は全テスト成功を示していますが、exitCodeは非ゼロ（失敗）です。出力内容とexitCodeに矛盾があります。',
+      };
+    }
+  }
+
+  return { valid: true };
+}
 
 /**
  * 正規表現マッチから数値を安全に抽出
@@ -41,7 +158,8 @@ function extractTestCounts(output: string): { passedCount?: number; failedCount?
   const patterns = [
     /Tests:\s+(\d+)\s+passed/,   // jest形式: "Tests: 5 passed, 5 total"
     /Tests\s+(\d+)\s+passed/,    // vitest形式: "Tests  42 passed (42)"
-    /(\d+)\s+passed/,            // 汎用形式
+    /(\d+)\s+tests?\s+passed/,   // 汎用形式: "5 tests passed" or "1 test passed"
+    /(\d+)\s+passed/,            // 最小形式: "5 passed"
   ];
 
   const result: { passedCount?: number; failedCount?: number } = {};
@@ -113,28 +231,35 @@ export function workflowRecordTestResult(
     };
   }
 
-  // REQ-2: output最小長チェック（50文字以上）
-  if (output.length < 50) {
+  // REQ-2: output最小長チェック
+  if (output.length < MIN_OUTPUT_LENGTH) {
     return {
       success: false,
-      message: 'outputは50文字以上必要です。テスト実行の完全な出力を指定してください',
+      message: `outputは${MIN_OUTPUT_LENGTH}文字以上必要です。テスト実行の完全な出力を指定してください`,
     };
   }
 
-  // REQ-2: テストキーワード存在チェック（警告のみ）
-  const hasTestKeyword = TEST_KEYWORDS.some(kw =>
-    output.toLowerCase().includes(kw.toLowerCase())
-  );
-  if (!hasTestKeyword) {
-    console.warn('[record-test-result] テスト関連キーワードが見つかりません。テスト実行の出力であることを確認してください');
+  // REQ-1: 整合性検証（Fail Closed）
+  const validation = validateTestOutputConsistency(exitCode, output);
+  if (!validation.valid) {
+    return {
+      success: false,
+      message: validation.reason,
+    };
   }
 
-  // REQ-2: exitCode=0 + 失敗キーワード矛盾チェック（警告のみ）
-  if (exitCode === 0) {
-    const hasFailureKeyword = FAILURE_KEYWORDS.some(kw => output.includes(kw));
-    if (hasFailureKeyword) {
-      console.warn('[record-test-result] exitCode=0ですが、出力に失敗を示すキーワードが含まれています。結果を確認してください');
-    }
+  // AC-1.3: テストフレームワーク構造なし → 警告（ブロックしない）
+  const hasFrameworkStructure = TEST_FRAMEWORK_PATTERNS.some(pattern =>
+    pattern.test(output)
+  );
+  if (!hasFrameworkStructure) {
+    console.warn('[record-test-result] テストフレームワークの構造が検出されませんでした。テスト実行の出力であることを確認してください。');
+  }
+
+  // エラーパターン検出（警告のみ）
+  const hasErrorPattern = ERROR_PATTERNS.some(pattern => pattern.test(output));
+  if (hasErrorPattern) {
+    console.warn('[record-test-result] テスト出力にエラーパターン（スタックトレース等）が含まれています。テスト結果を確認してください。');
   }
 
   // テスト結果記録を実行
@@ -145,8 +270,8 @@ export function workflowRecordTestResult(
     // REQ-2: テスト件数を自動抽出
     const counts = extractTestCounts(output);
 
-    // REQ-2: outputが500文字を超える場合は末尾500文字のみ保存
-    const truncatedOutput = output.length > 500 ? output.slice(-500) : output;
+    // REQ-2: outputが上限を超える場合は末尾のみ保存
+    const truncatedOutput = output.length > MAX_OUTPUT_LENGTH ? output.slice(-MAX_OUTPUT_LENGTH) : output;
 
     // 新しいテスト結果を追加
     const newResult = {

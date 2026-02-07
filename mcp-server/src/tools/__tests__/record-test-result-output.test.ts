@@ -99,23 +99,20 @@ describe('REQ-2: テスト実行の証拠検証', () => {
     const result = workflowRecordTestResult(mockTaskId, 0, 'summary', output) as RecordResult;
 
     expect(result.success).toBe(true);
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('テスト関連キーワード'));
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('テストフレームワーク'));
 
     warnSpy.mockRestore();
   });
 
-  // TC-2.4: exitCode=0 + FAIL含む→警告+成功
-  test('TC-2.4: exitCode=0 + FAIL含む→矛盾警告', () => {
+  // TC-2.4: exitCode=0 + FAIL含む→ブロック（REQ-1強化: 整合性チェック）
+  test('TC-2.4: exitCode=0 + FAIL含む→ブロック', () => {
     vi.mocked(stateManager.getTaskById).mockReturnValue(createTaskState());
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const output = makeOutput('FAIL src/backend/auth/login.test.ts - some test description here with details');
     const result = workflowRecordTestResult(mockTaskId, 0, 'summary', output) as RecordResult;
 
-    expect(result.success).toBe(true);
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('失敗を示すキーワード'));
-
-    warnSpy.mockRestore();
+    expect(result.success).toBe(false);
+    expect(result.message).toBeDefined();
   });
 
   // TC-2.5: テスト件数の抽出（passed+failed）

@@ -25,6 +25,12 @@ vi.mock('../../state/manager.js', () => ({
   },
 }));
 
+// dependency-analyzerをモック化（存在チェック・依存解析をバイパス）
+vi.mock('../../validation/dependency-analyzer.js', () => ({
+  validateScopeExists: vi.fn(() => ({ nonExistentFiles: [], nonExistentDirs: [] })),
+  validateScopeDependencies: vi.fn(() => ({ valid: true, outOfScopeDependencies: [], suggestedAdditions: [] })),
+}));
+
 describe('REQ-1: set-scope フェーズ拡張', () => {
   const mockTaskId = 'test_20260207_130000';
 

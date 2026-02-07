@@ -4,11 +4,18 @@
  * research/requirements/planningフェーズで変更対象ファイル/ディレクトリをTaskStateに記録する。
  *
  * @spec docs/workflows/ワークフロー大規模対応改善/spec.md
+ * @spec docs/workflows/ワ-クフロ-1000万行対応強化/spec.md
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
 import { stateManager } from '../state/manager.js';
 import type { ToolResult } from '../state/types.js';
 import { getTaskByIdOrError, safeExecute } from './helpers.js';
+import {
+  validateScopeExists,
+  validateScopeDependencies,
+} from '../validation/dependency-analyzer.js';
 
 /** スコープ設定が可能なフェーズ */
 const ALLOWED_PHASES = ['research', 'requirements', 'planning'] as const;
@@ -54,6 +61,95 @@ export function workflowSetScope(
     };
   }
 
+  // ★★★ 新規追加: ファイル/ディレクトリの存在チェック ★★★
+  const projectRoot = process.cwd();
+  const absoluteFiles = affectedFiles.map((f) =>
+    path.isAbsolute(f) ? f : path.resolve(projectRoot, f)
+  );
+  const absoluteDirs = affectedDirs.map((d) =>
+    path.isAbsolute(d) ? d : path.resolve(projectRoot, d)
+  );
+
+  // パストラバーサル対策: 相対パスがプロジェクトルート外に解決される場合を拒否
+  // 絶対パスはユーザーが意図的に指定しているため許可
+  const normalizedRoot = path.normalize(projectRoot) + path.sep;
+  const relativePaths = [
+    ...affectedFiles.filter((f) => !path.isAbsolute(f)),
+    ...affectedDirs.filter((d) => !path.isAbsolute(d)),
+  ];
+  const outsidePaths = relativePaths.filter(
+    (p) => !path.normalize(path.resolve(projectRoot, p)).startsWith(normalizedRoot.slice(0, -1))
+  );
+  if (outsidePaths.length > 0) {
+    return {
+      success: false,
+      message: `プロジェクトルート外のパスは指定できません: ${outsidePaths.join(', ')}`,
+    };
+  }
+
+  const existsResult = validateScopeExists(absoluteFiles, absoluteDirs);
+
+  // 存在しないファイル/ディレクトリがあればエラー
+  if (
+    existsResult.nonExistentFiles.length > 0 ||
+    existsResult.nonExistentDirs.length > 0
+  ) {
+    const errors: string[] = [];
+    if (existsResult.nonExistentFiles.length > 0) {
+      const relativeFiles = existsResult.nonExistentFiles.map((f) =>
+        path.relative(projectRoot, f)
+      );
+      errors.push(`存在しないファイル: ${relativeFiles.join(', ')}`);
+    }
+    if (existsResult.nonExistentDirs.length > 0) {
+      const relativeDirs = existsResult.nonExistentDirs.map((d) =>
+        path.relative(projectRoot, d)
+      );
+      errors.push(`存在しないディレクトリ: ${relativeDirs.join(', ')}`);
+    }
+    return {
+      success: false,
+      message: errors.join('\n'),
+    };
+  }
+
+  // ★★★ 新規追加: 依存関係解析 ★★★
+  const depResult = validateScopeDependencies(affectedFiles, projectRoot);
+
+  // スコープ外依存がある場合は警告（ブロックはしない）
+  const warnings: string[] = [];
+  if (depResult.outOfScopeDependencies.length > 0) {
+    warnings.push(
+      `スコープ外依存が${depResult.outOfScopeDependencies.length}件検出されました`
+    );
+
+    // コンソールに詳細を出力
+    const sampleDeps = depResult.outOfScopeDependencies.slice(0, 5);
+    console.warn('[set-scope] スコープ外依存が検出されました:');
+    for (const dep of sampleDeps) {
+      console.warn(`  ${dep.file} → ${dep.dependency}`);
+    }
+    if (depResult.outOfScopeDependencies.length > 5) {
+      console.warn(
+        `  ... 他 ${depResult.outOfScopeDependencies.length - 5} 件`
+      );
+    }
+
+    if (depResult.suggestedAdditions.length > 0) {
+      console.warn('');
+      console.warn('推奨: 以下のファイルをスコープに追加してください:');
+      const sampleSuggestions = depResult.suggestedAdditions.slice(0, 10);
+      for (const suggestion of sampleSuggestions) {
+        console.warn(`  - ${suggestion}`);
+      }
+      if (depResult.suggestedAdditions.length > 10) {
+        console.warn(
+          `  ... 他 ${depResult.suggestedAdditions.length - 10} 件`
+        );
+      }
+    }
+  }
+
   // スコープ設定を実行
   return safeExecute('影響範囲設定', () => {
     // TaskStateにスコープを記録
@@ -75,6 +171,7 @@ export function workflowSetScope(
         affectedDirs,
       },
       message: `影響範囲を設定しました（ファイル: ${affectedFiles.length}件, ディレクトリ: ${affectedDirs.length}件）`,
+      ...(warnings.length > 0 && { warnings }),
     };
   }) as ToolResult;
 }
