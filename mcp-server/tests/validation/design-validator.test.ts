@@ -97,7 +97,7 @@ class DesignValidator {}
   });
 
   describe('UT-5.3: 設計書なし', () => {
-    it('設計書が存在しない場合にwarningsとpassedがtrueになる（スキップ扱い）', () => {
+    it('設計書が存在しない場合にpassedがfalseになる（REQ-3: 厳格モード）', () => {
       // モック設定: workflowDirは存在するが設計書ファイルが全て存在しない
       vi.mocked(fs.existsSync).mockImplementation((path: any) => {
         const p = String(path);
@@ -108,18 +108,19 @@ class DesignValidator {}
       const validator = new DesignValidator('/mock/workflow/dir');
       const result = validator.validateAll();
 
-      // 設計書が全てない場合はスキップ扱い（passed: true, warnings あり）
-      expect(result.passed).toBe(true);
-      expect(result.warnings.length).toBeGreaterThan(0);
+      // REQ-3: 設計書が全てない場合はブロック（passed: false）
+      expect(result.passed).toBe(false);
+      expect(result.missingItems.length).toBeGreaterThan(0);
     });
 
-    it('workflowDirが存在しない場合もpassedがtrueになる（スキップ扱い）', () => {
+    it('workflowDirが存在しない場合もpassedがfalseになる（REQ-3: 厳格モード）', () => {
       vi.mocked(fs.existsSync).mockReturnValue(false);
 
       const validator = new DesignValidator('/nonexistent/dir');
       const result = validator.validateAll();
 
-      expect(result.passed).toBe(true);
+      // REQ-3: workflowDirが存在しない場合もブロック（passed: false）
+      expect(result.passed).toBe(false);
       expect(result.warnings.length).toBeGreaterThan(0);
     });
   });

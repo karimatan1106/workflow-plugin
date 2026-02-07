@@ -157,7 +157,7 @@ describe('E2E: ワークフロー全体の統合テスト', () => {
   });
 
   describe('E2E-3: 設計書なしのワークフロー', () => {
-    it('設計書がない場合はスキップされる', () => {
+    it('設計書がない場合はブロックされる（REQ-3: 厳格モード）', () => {
       // ワークフローディレクトリを作成（設計書なし）
       const workflowDir = path.join(tempDir, 'docs/workflows/legacy-task');
       fs.mkdirSync(workflowDir, { recursive: true });
@@ -166,9 +166,9 @@ describe('E2E: ワークフロー全体の統合テスト', () => {
       const validator = new DesignValidator(workflowDir, tempDir);
       const result = validator.validateAll();
 
-      // 検証結果を確認（スキップは成功扱い）
-      expect(result.passed).toBe(true);
-      expect(result.warnings.length).toBeGreaterThan(0);
+      // REQ-3: 設計書なしの場合はブロック（passed: false）
+      expect(result.passed).toBe(false);
+      expect(result.missingItems.length).toBeGreaterThan(0);
     });
   });
 

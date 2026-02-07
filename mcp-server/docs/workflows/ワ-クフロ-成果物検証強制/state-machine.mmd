@@ -1,0 +1,101 @@
+stateDiagram-v2
+    [*] --> PhaseTransitionRequest: workflow_next or workflow_complete_sub受信
+
+    state PhaseTransitionRequest {
+        [*] --> GetCurrentPhase: 現在フェーズ取得
+        GetCurrentPhase --> CheckPhaseCompletion: フェーズ完了状態チェック
+        CheckPhaseCompletion --> CheckSubPhaseDependencies: サブフェーズ依存関係チェック
+    }
+
+    PhaseTransitionRequest --> CheckSkipFlag: SKIP_ARTIFACT_CHECKフラグ確認
+
+    state CheckSkipFlag {
+        [*] --> IsSkipEnabled: フラグ=true?
+        IsSkipEnabled -->|YES| SkipArtifactCheck: スキップ（検証なし）
+        IsSkipEnabled -->|NO| ValidateArtifacts: 成果物検証実行
+    }
+
+    SkipArtifactCheck --> GetNextPhase
+    ValidateArtifacts --> DetermineArtifactList: フェーズ/サブフェーズに応じた成果物リスト決定
+
+    state DetermineArtifactList {
+        [*] --> IsMainPhase: メインフェーズ?
+        IsMainPhase -->|YES| GetPhaseArtifacts: PHASE_REQUIRED_ARTIFACTS取得
+        IsMainPhase -->|NO| GetSubPhaseArtifacts: SUB_PHASE_REQUIRED_ARTIFACTS取得
+    }
+
+    GetPhaseArtifacts --> CheckArtifactExistence
+    GetSubPhaseArtifacts --> CheckArtifactExistence
+
+    state CheckArtifactExistence {
+        [*] --> IterateArtifacts: 成果物リスト反復処理
+        IterateArtifacts --> CheckFileExists: ファイル存在確認\n(docsDir配下)
+        CheckFileExists --> CollectMissing: 欠落ファイルを記録
+        CollectMissing --> NextArtifact: 次の成果物へ
+        NextArtifact -->|全成果物確認終了| EvaluateResult: 結果判定
+    }
+
+    EvaluateResult --> IsMissingArtifacts: 欠落ファイルあり?
+
+    state IsMissingArtifacts {
+        [*] --> HasMissing: 欠落あり?
+        HasMissing -->|YES| ReturnError
+        HasMissing -->|NO| ReturnSuccess
+    }
+
+    ReturnError --> BuildErrorMessage: エラーメッセージ構築\n「{フェーズ}の必須成果物が未作成です:\n{欠落ファイル一覧}\n出力先: {docsDir}/」
+
+    state BuildErrorMessage {
+        [*] --> FormatMissingList: 欠落ファイル名フォーマット
+        FormatMissingList --> IncludeDocsDir: docsDir情報を付加
+    }
+
+    BuildErrorMessage --> TransitionBlocked: フェーズ遷移BLOCK\nsuccess: false
+
+    state TransitionBlocked {
+        [*] --> LogError: エラーログ記録
+        LogError --> ReturnFailure: 失敗結果を返却
+    }
+
+    ReturnSuccess --> GetNextPhase: 全成果物確認完了\nフェーズ遷移可能
+
+    state GetNextPhase {
+        [*] --> DetermineNext: 次フェーズを決定
+        DetermineNext --> GetNextPhaseInfo: フェーズ情報取得
+    }
+
+    GetNextPhase --> ExecuteTransition: フェーズ遷移実行
+
+    state ExecuteTransition {
+        [*] --> UpdatePhase: 現在フェーズを更新
+        UpdatePhase --> UpdateTimestamp: タイムスタンプ更新
+        UpdateTimestamp --> PersistState: 状態を永続化
+    }
+
+    ExecuteTransition --> ReturnSuccess_State: 成功結果返却\nsuccess: true
+
+    ReturnError --> [*]: エラーレスポンス
+    ReturnFailure --> [*]: 失敗レスポンス
+    ReturnSuccess_State --> [*]: 成功レスポンス
+
+    note right of CheckSkipFlag
+        環境変数 SKIP_ARTIFACT_CHECK=true の場合、
+        成果物検証をスキップして遷移を実行
+        （監査証跡に記録される）
+    end note
+
+    note right of DetermineArtifactList
+        メインフェーズの場合: next.ts の checkPhaseArtifacts() を使用
+        サブフェーズの場合: complete-sub.ts の checkSubPhaseArtifacts() を使用
+    end note
+
+    note right of CheckArtifactExistence
+        成果物パス: docsDir + ファイル名
+        例: /docs/workflows/{taskName}/research.md
+    end note
+
+    note right of TransitionBlocked
+        設計検証（design-validator.ts）との連携:
+        - workflowDir 不存在 → passed: false
+        - 設計書全欠落（3ファイル） → passed: false
+    end note

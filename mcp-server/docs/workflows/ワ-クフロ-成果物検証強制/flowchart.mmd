@@ -1,0 +1,93 @@
+flowchart TD
+    Start([ワークフロー成果物検証開始])
+
+    %% フロー1: workflowNext()の成果物チェック
+    subgraph Flow1["フロー1: workflowNext()の成果物チェック"]
+        direction TD
+        WN_Start([フェーズ遷移リクエスト])
+        WN_Check1{既存チェック<br/>完了済み/承認/サブ}
+        WN_Check1_No["❌ チェック失敗"]
+        WN_Check2{SKIP_ARTIFACT_CHECK<br/>有効か?}
+        WN_Check2_Yes["スキップ → 次へ"]
+        WN_GetList["PHASE_REQUIRED_ARTIFACTS<br/>からリスト取得"]
+        WN_Loop["各ファイルを<br/>fs.existsSync()確認"]
+        WN_Missing{欠落ファイル<br/>あるか?}
+        WN_Error["❌ エラー返却<br/>欠落ファイルリスト表示"]
+        WN_Success["✓ 全ファイル存在"]
+        WN_Next["getNextPhase()"]
+        WN_Transition["フェーズ遷移実行"]
+        WN_End([遷移完了])
+
+        WN_Start --> WN_Check1
+        WN_Check1 -->|失敗| WN_Check1_No
+        WN_Check1 -->|成功| WN_Check2
+        WN_Check2 -->|true| WN_Check2_Yes
+        WN_Check2 -->|false| WN_GetList
+        WN_Check2_Yes --> WN_Next
+        WN_GetList --> WN_Loop
+        WN_Loop --> WN_Missing
+        WN_Missing -->|あり| WN_Error
+        WN_Missing -->|なし| WN_Success
+        WN_Success --> WN_Next
+        WN_Next --> WN_Transition
+        WN_Transition --> WN_End
+        WN_Check1_No --> WN_Error
+    end
+
+    %% フロー2: workflowCompleteSub()の成果物チェック
+    subgraph Flow2["フロー2: workflowCompleteSub()の成果物チェック"]
+        direction TD
+        CS_Start([サブフェーズ完了リクエスト])
+        CS_Check1{既存チェック<br/>並列/依存関係}
+        CS_Check1_No["❌ チェック失敗"]
+        CS_Check2{SKIP_ARTIFACT_CHECK<br/>有効か?}
+        CS_Check2_Yes["スキップ → 完了へ"]
+        CS_GetList["SUB_PHASE_REQUIRED_ARTIFACTS<br/>からリスト取得"]
+        CS_Loop["各ファイルを<br/>fs.existsSync()確認"]
+        CS_Missing{欠落ファイル<br/>あるか?}
+        CS_Error["❌ エラー返却<br/>欠落ファイルリスト表示"]
+        CS_Success["✓ 全ファイル存在"]
+        CS_Update["updateSubPhaseStatus()"]
+        CS_End([サブフェーズ完了])
+
+        CS_Start --> CS_Check1
+        CS_Check1 -->|失敗| CS_Check1_No
+        CS_Check1 -->|成功| CS_Check2
+        CS_Check2 -->|true| CS_Check2_Yes
+        CS_Check2 -->|false| CS_GetList
+        CS_Check2_Yes --> CS_Update
+        CS_GetList --> CS_Loop
+        CS_Loop --> CS_Missing
+        CS_Missing -->|あり| CS_Error
+        CS_Missing -->|なし| CS_Success
+        CS_Success --> CS_Update
+        CS_Update --> CS_End
+        CS_Check1_No --> CS_Error
+    end
+
+    %% エラーハンドリング共通
+    subgraph ErrorHandling["エラーハンドリング（共通）"]
+        direction TD
+        EH_Message["success: false<br/>message: 欠落ファイル情報<br/>出力先: docsDir/"]
+        EH_End([エラー通知ユーザー])
+
+        EH_Message --> EH_End
+    end
+
+    Start -->|フェーズ遷移| Flow1
+    Start -->|サブフェーズ完了| Flow2
+
+    WN_Error --> EH_Message
+    CS_Error --> EH_Message
+    EH_End --> Finish([ワークフロー成果物検証終了])
+    WN_End --> Finish
+    CS_End --> Finish
+
+    style Start fill:#90EE90
+    style Finish fill:#FFB6C6
+    style WN_Error fill:#FFB6C6
+    style CS_Error fill:#FFB6C6
+    style WN_Success fill:#90EE90
+    style CS_Success fill:#90EE90
+    style WN_Check2_Yes fill:#87CEEB
+    style CS_Check2_Yes fill:#87CEEB

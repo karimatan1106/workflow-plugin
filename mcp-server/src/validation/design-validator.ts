@@ -69,8 +69,16 @@ export class DesignValidator {
 
     // ワークフローディレクトリの存在チェック
     if (!fs.existsSync(this.workflowDir)) {
-      result.warnings.push('ワークフローディレクトリが見つかりません - 検証をスキップ');
-      result.passed = true; // ディレクトリがない場合はスキップ
+      result.passed = false;
+      result.missingItems.push({
+        type: 'file',
+        source: 'workflow',
+        name: 'workflowDir',
+        expectedPath: this.workflowDir,
+      });
+      result.summary.total = 1;
+      result.summary.missing = 1;
+      result.warnings.push(`ワークフローディレクトリが見つかりません: ${this.workflowDir}`);
       return result;
     }
 
@@ -90,10 +98,16 @@ export class DesignValidator {
       result.warnings.push('flowchart.mmd が見つかりません');
     }
 
-    // 全て見つからない場合は検証をスキップ（レガシーワークフロー対応）
+    // 全て見つからない場合はブロック
     if (result.warnings.length >= 3) {
-      result.warnings.push('設計書がありません - 検証をスキップ');
-      result.passed = true; // 設計書がない場合はスキップ
+      result.passed = false;
+      result.missingItems.push(
+        { type: 'file', source: 'spec.md', name: 'spec.md', expectedPath: specPath },
+        { type: 'file', source: 'state-machine.mmd', name: 'state-machine.mmd', expectedPath: stateMachinePath },
+        { type: 'file', source: 'flowchart.mmd', name: 'flowchart.mmd', expectedPath: flowchartPath },
+      );
+      result.summary.total = 3;
+      result.summary.missing = 3;
       return result;
     }
 

@@ -34,9 +34,47 @@ vi.mock('../../phases/definitions.js', async (importOriginal) => {
   };
 });
 
+// design-validatorをモック
+vi.mock('../../validation/design-validator.js', () => ({
+  DesignValidator: vi.fn(() => ({
+    validateAll: () => ({
+      passed: true,
+      missingItems: [],
+      warnings: [],
+      summary: { total: 0, implemented: 0, missing: 0 },
+    }),
+  })),
+  formatValidationError: vi.fn(),
+}));
+
+// fsモジュールをモック（成果物チェック用: デフォルトで全てtrue）
+vi.mock('fs', () => ({
+  existsSync: vi.fn(() => true),
+  readFileSync: vi.fn(),
+  writeFileSync: vi.fn(),
+  mkdirSync: vi.fn(),
+}));
+
 import { stateManager } from '../../state/manager.js';
+import { DesignValidator } from '../../validation/design-validator.js';
+import * as fs from 'fs';
 
 const TEST_TASK_ID = '20260117_150000';
+
+/**
+ * 共通モック再設定（vi.clearAllMocksで消えるため毎回再設定）
+ */
+function resetCommonMocks() {
+  vi.mocked(fs.existsSync).mockReturnValue(true);
+  vi.mocked(DesignValidator).mockImplementation(() => ({
+    validateAll: vi.fn().mockReturnValue({
+      passed: true,
+      missingItems: [],
+      warnings: [],
+      summary: { total: 0, implemented: 0, missing: 0 },
+    }),
+  }) as any);
+}
 
 /**
  * テスト用のモックタスク状態を生成
@@ -58,10 +96,7 @@ function createMockTaskState(phase: PhaseName, taskSize?: 'large') {
 describe('next.ts - workflow_next ツールテスト (基本遷移)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-  });
-
-  afterEach(() => {
-    vi.resetAllMocks();
+    resetCommonMocks();
   });
 
   describe('WN-001: research → requirements へ遷移', () => {
@@ -122,10 +157,7 @@ describe('next.ts - workflow_next ツールテスト (基本遷移)', () => {
 describe('next.ts - workflow_next ツールテスト (19フェーズ遷移)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-  });
-
-  afterEach(() => {
-    vi.resetAllMocks();
+    resetCommonMocks();
   });
 
   describe('WN-004: 19フェーズ: 基本フェーズ遷移', () => {
@@ -174,10 +206,7 @@ describe('next.ts - workflow_next ツールテスト (19フェーズ遷移)', ()
 describe('next.ts - workflow_next ツールテスト (Largeタスク)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-  });
-
-  afterEach(() => {
-    vi.resetAllMocks();
+    resetCommonMocks();
   });
 
   describe('WN-005: Largeタスク: 既存動作と同一（19フェーズ）', () => {
@@ -222,10 +251,7 @@ describe('next.ts - workflow_next ツールテスト (Largeタスク)', () => {
 describe('next.ts - workflow_next workflow_context テスト', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-  });
-
-  afterEach(() => {
-    vi.resetAllMocks();
+    resetCommonMocks();
   });
 
   describe('WC-001: workflow_next が workflow_context を返す', () => {
@@ -281,10 +307,7 @@ describe('next.ts - workflow_next workflow_context テスト', () => {
 describe('next.ts - workflow_next エラーケース', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-  });
-
-  afterEach(() => {
-    vi.resetAllMocks();
+    resetCommonMocks();
   });
 
   describe('WN-007: completedからは遷移不可', () => {

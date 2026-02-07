@@ -30,6 +30,16 @@ vi.mock('../../validation/design-validator.js', () => ({
   formatValidationError: vi.fn(() => 'validation error'),
 }));
 
+// fsモジュールをモック（成果物チェック用: デフォルトで全てtrue）
+vi.mock('fs', () => ({
+  existsSync: vi.fn(() => true),
+  readFileSync: vi.fn(),
+  writeFileSync: vi.fn(),
+  mkdirSync: vi.fn(),
+}));
+
+import * as fs from 'fs';
+
 interface NextResult {
   success: boolean;
   message?: string;
@@ -58,6 +68,7 @@ describe('REQ-1: planningフェーズscope必須チェック', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(fs.existsSync).mockReturnValue(true);
     process.env.SKIP_DESIGN_VALIDATION = 'true';
   });
 

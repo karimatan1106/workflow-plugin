@@ -187,11 +187,10 @@ const PHASE_RULES = {
     tddPhase: 'Refactor',
   },
   build_check: {
-    allowed: [],
-    blocked: ['code', 'test', 'spec', 'diagram', 'config', 'env', 'other'],
-    description: 'ビルドチェック中。ファイル編集は禁止です。',
+    allowed: ['code', 'test', 'spec', 'config', 'env'],
+    blocked: ['diagram'],
+    description: 'ビルドチェック中。ビルドエラー修正のためのコード・テスト・仕様書・設定ファイルの編集が許可されます。',
     japaneseName: 'ビルドチェック',
-    readOnly: true,
   },
   code_review: {
     allowed: ['spec', 'config', 'env'],

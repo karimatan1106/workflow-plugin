@@ -7,8 +7,10 @@
  * @spec docs/workflows/ワ-クフロ-並列タスク対応/spec.md
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
 import { stateManager } from '../state/manager.js';
-import type { NextResult, TaskSize, TaskState } from '../state/types.js';
+import type { NextResult, TaskSize, TaskState, PhaseName } from '../state/types.js';
 import { DEFAULT_TASK_SIZE } from '../state/types.js';
 import {
   requiresApproval,
@@ -19,6 +21,35 @@ import {
 import { getTaskByIdOrError, safeExecute } from './helpers.js';
 import { STATE_ERRORS } from '../utils/errors.js';
 import { DesignValidator, formatValidationError } from '../validation/design-validator.js';
+
+/**
+ * フェーズごとの必須成果物マッピング
+ *
+ * @spec docs/workflows/ワ-クフロ-成果物検証強制/spec.md
+ */
+const PHASE_REQUIRED_ARTIFACTS: Partial<Record<PhaseName, string[]>> = {
+  research: ['research.md'],
+  requirements: ['requirements.md'],
+  test_design: ['test-design.md'],
+};
+
+/**
+ * フェーズ遷移時の成果物存在チェック
+ *
+ * @param phase 現在のフェーズ
+ * @param docsDir ドキュメントディレクトリ
+ * @returns 未作成の成果物ファイル名の配列（空なら問題なし）
+ */
+function checkPhaseArtifacts(phase: PhaseName, docsDir: string): string[] {
+  if (process.env.SKIP_ARTIFACT_CHECK === 'true') {
+    return [];
+  }
+  const artifacts = PHASE_REQUIRED_ARTIFACTS[phase];
+  if (!artifacts) {
+    return [];
+  }
+  return artifacts.filter(f => !fs.existsSync(path.join(docsDir, f)));
+}
 
 /**
  * 設計-実装整合性チェックを実行
@@ -156,6 +187,16 @@ export function workflowNext(taskId?: string): NextResult {
     if (validationError) {
       return validationError;
     }
+  }
+
+  // ★★★ 成果物存在チェック ★★★
+  const artifactDocsDir = taskState.docsDir || taskState.workflowDir;
+  const missingArtifacts = checkPhaseArtifacts(currentPhase, artifactDocsDir);
+  if (missingArtifacts.length > 0) {
+    return {
+      success: false,
+      message: `${currentPhase}フェーズの必須成果物が未作成です: ${missingArtifacts.join(', ')}\n出力先: ${artifactDocsDir}/`,
+    };
   }
 
   // タスクサイズを取得（未設定の場合はlargeとして扱う）
