@@ -8,6 +8,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { workflowCompleteSub } from '../complete-sub.js';
 import type { PhaseName, SubPhaseName } from '../../state/types.js';
+import * as path from 'path';
 
 // fs モック
 vi.mock('fs', async () => {
@@ -32,26 +33,44 @@ vi.mock('../../state/manager.js', () => ({
   },
 }));
 
+// helpersをモック（verifySessionToken）
+vi.mock('../helpers.js', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../helpers.js')>();
+  return {
+    ...original,
+    verifySessionToken: vi.fn(() => null),
+  };
+});
+
+// audit/loggerをモック
+vi.mock('../../audit/logger.js', () => ({
+  auditLogger: {
+    log: vi.fn(),
+    countRecentBypasses: vi.fn(() => 0),
+    checkThreshold: vi.fn(() => false),
+  },
+}));
+
 import { stateManager } from '../../state/manager.js';
 
 const MOCK_THREAT_MD = Array.from({length: 25}, (_, i) =>
-  i === 0 ? '# Threat Model' :
-  i === 2 ? '## 脅威' :
-  i === 5 ? '脅威1を記載。' :
-  i === 12 ? '## リスク' :
-  i === 15 ? 'リスク1を記載。' :
-  `内容行${i}`
+  i === 0 ? '# Threat Model脅威モデルドキュメント' :
+  i === 2 ? '## 脅威の特定と分析' :
+  i === 5 ? '脅威1: 認証バイパスの可能性について分析を行いました。' :
+  i === 12 ? '## リスク評価と対策' :
+  i === 15 ? 'リスク1: セキュリティ脆弱性の対策を記載します。' :
+  `脅威モデル分析の詳細内容を記載します。項目番号は${i}です。`
 ).join('\n');
 
 const MOCK_SPEC_MD = Array.from({length: 55}, (_, i) =>
-  i === 0 ? '# Spec' :
-  i === 2 ? '## 概要' :
-  i === 10 ? '要件を記載。' :
-  i === 20 ? '## 実装計画' :
-  i === 30 ? '計画を記載。' :
-  i === 40 ? '## 変更対象ファイル' :
-  i === 43 ? '- src/file.ts' :
-  `内容行${i}`
+  i === 0 ? '# Specification仕様書ドキュメント' :
+  i === 2 ? '## 概要と目的の説明' :
+  i === 10 ? '要件の詳細を記載します。システムの振る舞いを定義します。' :
+  i === 20 ? '## 実装計画の詳細' :
+  i === 30 ? '計画の詳細を記載します。スケジュールとマイルストーン。' :
+  i === 40 ? '## 変更対象ファイル一覧' :
+  i === 43 ? '- src/file.ts（メインの実装ファイル）' :
+  `仕様書の内容を記載します。項目番号は${i}です。詳細な説明。`
 ).join('\n');
 
 /**
@@ -90,7 +109,7 @@ describe('complete-sub.ts - 成果物チェック（REQ-2）', () => {
 
       expect(result.success).toBe(false);
       expect(result.message).toContain('threat-model.md');
-      expect(fs.existsSync).toHaveBeenCalledWith('/path/to/docs/threat-model.md');
+      expect(fs.existsSync).toHaveBeenCalledWith(path.join('/path/to/docs', 'threat-model.md'));
       expect(stateManager.updateSubPhaseStatus).not.toHaveBeenCalled();
     });
   });
@@ -110,7 +129,7 @@ describe('complete-sub.ts - 成果物チェック（REQ-2）', () => {
       const result = workflowCompleteSub('test_task_123', 'threat_modeling');
 
       expect(result.success).toBe(true);
-      expect(fs.existsSync).toHaveBeenCalledWith('/path/to/docs/threat-model.md');
+      expect(fs.existsSync).toHaveBeenCalledWith(path.join('/path/to/docs', 'threat-model.md'));
       expect(stateManager.updateSubPhaseStatus).toHaveBeenCalledWith(
         'test_task_123',
         'threat_modeling',
@@ -132,7 +151,7 @@ describe('complete-sub.ts - 成果物チェック（REQ-2）', () => {
 
       expect(result.success).toBe(false);
       expect(result.message).toContain('spec.md');
-      expect(fs.existsSync).toHaveBeenCalledWith('/path/to/docs/spec.md');
+      expect(fs.existsSync).toHaveBeenCalledWith(path.join('/path/to/docs', 'spec.md'));
       expect(stateManager.updateSubPhaseStatus).not.toHaveBeenCalled();
     });
   });
@@ -150,7 +169,7 @@ describe('complete-sub.ts - 成果物チェック（REQ-2）', () => {
 
       expect(result.success).toBe(false);
       expect(result.message).toContain('state-machine.mmd');
-      expect(fs.existsSync).toHaveBeenCalledWith('/path/to/docs/state-machine.mmd');
+      expect(fs.existsSync).toHaveBeenCalledWith(path.join('/path/to/docs', 'state-machine.mmd'));
       expect(stateManager.updateSubPhaseStatus).not.toHaveBeenCalled();
     });
   });
@@ -169,7 +188,7 @@ describe('complete-sub.ts - 成果物チェック（REQ-2）', () => {
 
       expect(result.success).toBe(false);
       expect(result.message).toContain('flowchart.mmd');
-      expect(fs.existsSync).toHaveBeenCalledWith('/path/to/docs/flowchart.mmd');
+      expect(fs.existsSync).toHaveBeenCalledWith(path.join('/path/to/docs', 'flowchart.mmd'));
       expect(stateManager.updateSubPhaseStatus).not.toHaveBeenCalled();
     });
   });
@@ -189,7 +208,7 @@ describe('complete-sub.ts - 成果物チェック（REQ-2）', () => {
 
       expect(result.success).toBe(false);
       expect(result.message).toContain('ui-design.md');
-      expect(fs.existsSync).toHaveBeenCalledWith('/path/to/docs/ui-design.md');
+      expect(fs.existsSync).toHaveBeenCalledWith(path.join('/path/to/docs', 'ui-design.md'));
       expect(stateManager.updateSubPhaseStatus).not.toHaveBeenCalled();
     });
   });
@@ -207,7 +226,7 @@ describe('complete-sub.ts - 成果物チェック（REQ-2）', () => {
 
       expect(result.success).toBe(false);
       expect(result.message).toContain('code-review.md');
-      expect(fs.existsSync).toHaveBeenCalledWith('/path/to/docs/code-review.md');
+      expect(fs.existsSync).toHaveBeenCalledWith(path.join('/path/to/docs', 'code-review.md'));
       expect(stateManager.updateSubPhaseStatus).not.toHaveBeenCalled();
     });
   });
@@ -280,7 +299,7 @@ describe('complete-sub.ts - 成果物チェック（REQ-2）', () => {
 
       expect(result.success).toBe(false);
       expect(result.message).toContain('manual-test.md');
-      expect(fs.existsSync).toHaveBeenCalledWith('/path/to/docs/manual-test.md');
+      expect(fs.existsSync).toHaveBeenCalledWith(path.join('/path/to/docs', 'manual-test.md'));
       expect(stateManager.updateSubPhaseStatus).not.toHaveBeenCalled();
     });
   });
@@ -298,7 +317,7 @@ describe('complete-sub.ts - 成果物チェック（REQ-2）', () => {
 
       expect(result.success).toBe(false);
       expect(result.message).toContain('security-scan.md');
-      expect(fs.existsSync).toHaveBeenCalledWith('/path/to/docs/security-scan.md');
+      expect(fs.existsSync).toHaveBeenCalledWith(path.join('/path/to/docs', 'security-scan.md'));
       expect(stateManager.updateSubPhaseStatus).not.toHaveBeenCalled();
     });
   });
@@ -316,7 +335,7 @@ describe('complete-sub.ts - 成果物チェック（REQ-2）', () => {
 
       expect(result.success).toBe(false);
       expect(result.message).toContain('performance-test.md');
-      expect(fs.existsSync).toHaveBeenCalledWith('/path/to/docs/performance-test.md');
+      expect(fs.existsSync).toHaveBeenCalledWith(path.join('/path/to/docs', 'performance-test.md'));
       expect(stateManager.updateSubPhaseStatus).not.toHaveBeenCalled();
     });
   });
@@ -334,7 +353,7 @@ describe('complete-sub.ts - 成果物チェック（REQ-2）', () => {
 
       expect(result.success).toBe(false);
       expect(result.message).toContain('e2e-test.md');
-      expect(fs.existsSync).toHaveBeenCalledWith('/path/to/docs/e2e-test.md');
+      expect(fs.existsSync).toHaveBeenCalledWith(path.join('/path/to/docs', 'e2e-test.md'));
       expect(stateManager.updateSubPhaseStatus).not.toHaveBeenCalled();
     });
   });

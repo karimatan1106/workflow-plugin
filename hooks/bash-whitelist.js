@@ -100,12 +100,29 @@ const BASH_BLACKLIST = [
   { pattern: 'sh -c', type: 'contains' },
   { pattern: 'zsh -c', type: 'contains' },
   { pattern: 'eval ', type: 'contains' },
+  // FR-5: パイプ経由のシェル実行
+  { pattern: '| sh', type: 'contains' },
+  { pattern: '| bash', type: 'contains' },
+  { pattern: '| zsh', type: 'contains' },
   // ファイル書き込み系（コマンドとして使われる場合のみ）
   { pattern: '> ', type: 'contains' },
   { pattern: '>> ', type: 'contains' },
   { pattern: 'base64 -d >', type: 'contains' },
   { pattern: 'printf >', type: 'contains' },
   { pattern: 'echo >', type: 'contains' },
+  // FR-5: awk + リダイレクト (prefix チェック後にリダイレクト検出)
+  { pattern: 'awk', type: 'awk-redirect' },
+  // FR-5: curl/wget with output
+  { pattern: 'curl -o', type: 'contains' },
+  { pattern: 'curl --output', type: 'contains' },
+  { pattern: 'wget -O', type: 'contains' },
+  { pattern: 'wget --output', type: 'contains' },
+  // FR-5: ネットワークリスナー
+  { pattern: 'nc -l', type: 'contains' },
+  // FR-5: 低レベルディスク操作
+  { pattern: 'dd ', type: 'prefix' },
+  // FR-5: バイナリダンプ + リダイレクト
+  { pattern: 'xxd', type: 'xxd-redirect' },
   // 危険なコマンド
   { pattern: 'rm -rf', type: 'contains' },
   { pattern: 'chmod +x', type: 'contains' },
@@ -118,6 +135,8 @@ const NODE_E_BLACKLIST = [
   'fs.writeFileSync', 'fs.writeSync', 'fs.appendFileSync',
   'fs.createWriteStream', 'fs.open', 'fs.openSync',
   '.write(', '.writeFile', '.appendFile',
+  // FR-5: child_process 実行
+  'child_process', 'execSync', 'spawnSync',
 ];
 
 /**
@@ -183,6 +202,31 @@ function matchesBlacklistEntry(command, entry) {
     }
     return false;
   }
+
+  // FR-5: awk + リダイレクト検出
+  if (entry.type === 'awk-redirect') {
+    const parts = command.split(/\s*(?:&&|\|\||;)\s*/).filter(p => p.trim().length > 0);
+    for (const part of parts) {
+      const trimmedPart = part.trim();
+      if (trimmedPart.startsWith('awk') && (trimmedPart.includes('>') || trimmedPart.includes('>>'))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // FR-5: xxd + リダイレクト検出
+  if (entry.type === 'xxd-redirect') {
+    const parts = command.split(/\s*(?:&&|\|\||;)\s*/).filter(p => p.trim().length > 0);
+    for (const part of parts) {
+      const trimmedPart = part.trim();
+      if (trimmedPart.startsWith('xxd') && (trimmedPart.includes('>') || trimmedPart.includes('>>'))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   // type === 'contains' の場合は従来通りの部分一致
   return command.includes(entry.pattern);
 }

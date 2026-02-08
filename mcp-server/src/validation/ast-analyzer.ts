@@ -1,11 +1,16 @@
 /**
- * AST解析モジュール（正規表現ベース）
+ * AST解析モジュール（正規表現ベース + TypeScript Compiler API）
  *
  * TypeScript Compiler APIを使わず、正規表現で構造を解析する。
  * 軽量かつ高速で、必要十分な精度を提供する。
  *
+ * FR-6対応: TypeScript Compiler APIによる高精度AST解析を追加
+ *
  * @spec docs/workflows/ワ-クフロ-1000万行対応強化/spec.md
  */
+
+import * as ts from 'typescript';
+import * as fs from 'fs';
 
 /**
  * 構造的問題の種別
@@ -279,4 +284,130 @@ function extractMethodBody(code: string, startIndex: number): string {
   }
 
   return code.substring(startIndex, endIndex - 1);
+}
+
+/**
+ * FR-6: AST解析結果
+ */
+export interface ASTAnalysisResult {
+  classes: string[];
+  functions: string[];
+  variables: string[];
+  exports: string[];
+  factoryPatterns: string[];
+}
+
+/**
+ * FR-6: TypeScript Compiler APIを使用したAST解析
+ *
+ * ファイルを読み込み、TypeScript Compiler APIでASTを解析する。
+ * 正規表現ベースの解析よりも高精度だが、大きなファイルでは遅い可能性がある。
+ *
+ * パフォーマンス目標: 50ms以内（警告ログを出力）
+ *
+ * @param filePath - 解析対象のTypeScriptファイルパス
+ * @returns AST解析結果、またはnull（エラー時）
+ */
+export function analyzeTypeScriptFile(filePath: string): ASTAnalysisResult | null {
+  const startTime = Date.now();
+  const result: ASTAnalysisResult = {
+    classes: [],
+    functions: [],
+    variables: [],
+    exports: [],
+    factoryPatterns: [],
+  };
+
+  try {
+    // ファイル読み込み
+    if (!fs.existsSync(filePath)) {
+      console.warn(`[AST Analyzer] File not found: ${filePath}`);
+      return null;
+    }
+
+    const content = fs.readFileSync(filePath, 'utf-8');
+
+    // TypeScript SourceFile を作成
+    const sourceFile = ts.createSourceFile(
+      filePath,
+      content,
+      ts.ScriptTarget.Latest,
+      true // setParentNodes
+    );
+
+    // AST走査
+    function visit(node: ts.Node) {
+      // クラス宣言
+      if (ts.isClassDeclaration(node) && node.name) {
+        result.classes.push(node.name.text);
+
+        // エクスポートされているかチェック
+        if (node.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword)) {
+          result.exports.push(node.name.text);
+        }
+      }
+
+      // 関数宣言
+      if (ts.isFunctionDeclaration(node) && node.name) {
+        const funcName = node.name.text;
+        result.functions.push(funcName);
+
+        // エクスポートされているかチェック
+        if (node.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword)) {
+          result.exports.push(funcName);
+        }
+
+        // ファクトリーパターン検出
+        if (isFactoryPattern(funcName)) {
+          result.factoryPatterns.push(funcName);
+        }
+      }
+
+      // 変数宣言
+      if (ts.isVariableStatement(node)) {
+        node.declarationList.declarations.forEach(decl => {
+          if (ts.isIdentifier(decl.name)) {
+            const varName = decl.name.text;
+            result.variables.push(varName);
+
+            // エクスポートされているかチェック
+            if (node.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword)) {
+              result.exports.push(varName);
+            }
+
+            // ファクトリーパターン検出（アロー関数）
+            if (decl.initializer && ts.isArrowFunction(decl.initializer) && isFactoryPattern(varName)) {
+              result.factoryPatterns.push(varName);
+            }
+          }
+        });
+      }
+
+      // 再帰的に子ノードを訪問
+      ts.forEachChild(node, visit);
+    }
+
+    visit(sourceFile);
+
+    const elapsed = Date.now() - startTime;
+    if (elapsed > 50) {
+      console.warn(`[AST Analyzer] Performance warning: ${filePath} took ${elapsed}ms (target: <50ms)`);
+    }
+
+    return result;
+  } catch (error) {
+    console.warn(`[AST Analyzer] Syntax error in ${filePath}, falling back to regex:`, error);
+    return null;
+  }
+}
+
+/**
+ * ファクトリーパターン名を検出
+ *
+ * @param name - 関数名または変数名
+ * @returns ファクトリーパターンの場合はtrue
+ */
+function isFactoryPattern(name: string): boolean {
+  const patterns = [/^create/, /^make/, /^build/, /^new/, /Factory$/];
+  return patterns.some(p => p.test(name));
 }

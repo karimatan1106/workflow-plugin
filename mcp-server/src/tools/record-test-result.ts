@@ -11,7 +11,7 @@
 
 import { stateManager } from '../state/manager.js';
 import type { ToolResult } from '../state/types.js';
-import { getTaskByIdOrError, safeExecute } from './helpers.js';
+import { getTaskByIdOrError, safeExecute, verifySessionToken } from './helpers.js';
 import { validateTestAuthenticity } from '../validation/test-authenticity.js';
 
 /** テスト出力の最小文字数 */
@@ -193,13 +193,15 @@ function extractTestCounts(output: string): { passedCount?: number; failedCount?
  * @param exitCode 終了コード（0=成功、非0=失敗）
  * @param summary サマリー（オプション）
  * @param output テスト実行の出力（必須、50文字以上）
+ * @param sessionToken セッショントークン（オプション、REQ-6）
  * @returns 記録結果
  */
 export function workflowRecordTestResult(
   taskId?: string,
   exitCode?: number,
   summary?: string,
-  output?: string
+  output?: string,
+  sessionToken?: string
 ): ToolResult {
   // タスク状態を取得
   const result = getTaskByIdOrError(taskId);
@@ -208,6 +210,10 @@ export function workflowRecordTestResult(
   }
 
   const { taskState } = result;
+
+  // REQ-6: セッショントークン検証
+  const tokenError = verifySessionToken(taskState, sessionToken);
+  if (tokenError) return tokenError as ToolResult;
   const currentPhase = taskState.phase;
 
   // testing または regression_test フェーズでのみ許可
@@ -344,6 +350,10 @@ export const recordTestResultToolDefinition = {
       output: {
         type: 'string',
         description: 'テスト実行の出力（必須、50文字以上）',
+      },
+      sessionToken: {
+        type: 'string',
+        description: 'セッショントークン（REQ-6: Orchestrator認証用）',
       },
     },
     required: ['exitCode', 'output'],

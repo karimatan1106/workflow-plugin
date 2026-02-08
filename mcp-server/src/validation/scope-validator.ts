@@ -1,6 +1,12 @@
 /**
  * スコープ検証モジュール
  * @spec docs/workflows/ワ-クフロ-全問題完全解決/spec.md REQ-5
+ *
+ * FR-8対応:
+ * - SCOPE_DEPTH_MODE環境変数（shallow/normal/deep）
+ * - SCOPE_MAX_DEPTH環境変数（デフォルト: 5）
+ * - 循環依存検出
+ * - 動的import検出（import(), require()）
  */
 
 import * as fs from 'fs';
@@ -49,15 +55,39 @@ export function calculateDepth(dir: string): number {
 }
 
 /**
+ * FR-8: 深度モードの取得
+ *
+ * 環境変数 SCOPE_DEPTH_MODE に基づいて最小深度を決定する。
+ * - shallow: 2
+ * - normal: 3 (デフォルト)
+ * - deep: 5
+ *
+ * @returns 最小深度
+ */
+function getMinDepthFromMode(): number {
+  const mode = process.env.SCOPE_DEPTH_MODE?.toLowerCase();
+  switch (mode) {
+    case 'shallow':
+      return 2;
+    case 'deep':
+      return 5;
+    case 'normal':
+    default:
+      return 3;
+  }
+}
+
+/**
  * ディレクトリ深度の検証
  *
- * REQ-5: affectedDirs の深度が最小深度（3）以上であることを検証
+ * REQ-5: affectedDirs の深度が最小深度以上であることを検証
+ * FR-8: SCOPE_DEPTH_MODE 環境変数に対応
  *
  * @param affectedDirs ディレクトリパスの配列
  * @returns 検証結果
  */
 export function validateScopeDepth(affectedDirs: string[]): ScopeDepthResult {
-  const MIN_DIRECTORY_DEPTH = 3;
+  const MIN_DIRECTORY_DEPTH = getMinDepthFromMode();
   const errors: string[] = [];
 
   for (const dir of affectedDirs) {
@@ -108,7 +138,9 @@ export interface DependencyTrackingResult {
 }
 
 /**
- * REQ-5: ファイルからimport文を抽出
+ * REQ-5 + FR-8: ファイルからimport文を抽出
+ *
+ * FR-8拡張: 動的import（import(), require()）も検出
  *
  * @param content ファイル内容
  * @param filePath ファイルパス（外部パッケージ判定用）
@@ -131,6 +163,15 @@ export function extractImports(content: string, filePath: string): string[] {
   // CommonJS require: require('...')
   const requirePattern = /require\(['"]([^'"]+)['"]\)/g;
   while ((match = requirePattern.exec(content)) !== null) {
+    const importPath = match[1];
+    if (importPath.startsWith('.') || importPath.startsWith('/')) {
+      imports.push(importPath);
+    }
+  }
+
+  // FR-8: 動的import: import('...')
+  const dynamicImportPattern = /import\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
+  while ((match = dynamicImportPattern.exec(content)) !== null) {
     const importPath = match[1];
     if (importPath.startsWith('.') || importPath.startsWith('/')) {
       imports.push(importPath);
@@ -197,7 +238,12 @@ function isFileInScope(filePath: string, affectedDirs: string[]): boolean {
 }
 
 /**
- * REQ-5: 依存関係を追跡
+ * REQ-5 + FR-8: 依存関係を追跡
+ *
+ * FR-8拡張:
+ * - SCOPE_MAX_DEPTH 環境変数サポート
+ * - 循環依存検出
+ * - 追跡サマリーログ出力
  *
  * @param affectedFiles 変更対象ファイルの配列
  * @param affectedDirs スコープディレクトリ（文字列または配列）
@@ -209,19 +255,29 @@ export function trackDependencies(
   affectedDirs: string | string[],
   options: { maxDepth?: number } = {},
 ): DependencyTrackingResult {
-  const maxDepth = options.maxDepth ?? 3;
+  // FR-8: SCOPE_MAX_DEPTH 環境変数サポート
+  const envMaxDepth = process.env.SCOPE_MAX_DEPTH ? parseInt(process.env.SCOPE_MAX_DEPTH, 10) : undefined;
+  const maxDepth = options.maxDepth ?? envMaxDepth ?? 5;
   const dirs = Array.isArray(affectedDirs) ? affectedDirs : [affectedDirs];
 
   const allFiles = new Set<string>(affectedFiles);
   const importedFiles: string[] = [];
   const warnings: string[] = [];
   const visited = new Set<string>();
+  const visitStack = new Set<string>(); // FR-8: 循環依存検出用
 
   // BFS with depth tracking
-  let queue: Array<{ file: string; depth: number }> = affectedFiles.map(f => ({ file: f, depth: 0 }));
+  let queue: Array<{ file: string; depth: number; parent?: string }> =
+    affectedFiles.map(f => ({ file: f, depth: 0 }));
 
   while (queue.length > 0) {
-    const { file, depth } = queue.shift()!;
+    const { file, depth, parent } = queue.shift()!;
+
+    // FR-8: 循環依存検出
+    if (visitStack.has(file)) {
+      warnings.push(`Circular dependency detected: ${parent} -> ${file}`);
+      continue;
+    }
 
     if (visited.has(file)) continue;
     visited.add(file);
@@ -233,6 +289,8 @@ export function trackDependencies(
       if (!fs.existsSync(file)) continue;
       const content = fs.readFileSync(file, 'utf-8');
       const imports = extractImports(content, file);
+
+      visitStack.add(file);
 
       for (const imp of imports) {
         const resolved = resolveImportPath(file, imp);
@@ -249,12 +307,21 @@ export function trackDependencies(
         }
 
         if (!visited.has(resolved)) {
-          queue.push({ file: resolved, depth: depth + 1 });
+          queue.push({ file: resolved, depth: depth + 1, parent: file });
         }
       }
+
+      visitStack.delete(file);
     } catch {
       // File read error - skip
+      visitStack.delete(file);
     }
+  }
+
+  // FR-8: 追跡サマリーログ
+  console.log(`[Scope Tracking] Initial files: ${affectedFiles.length}, Discovered: ${importedFiles.length}, Total: ${allFiles.size}, Max depth: ${maxDepth}`);
+  if (warnings.length > 0) {
+    console.log(`[Scope Tracking] Warnings: ${warnings.length}`);
   }
 
   return {
@@ -346,6 +413,12 @@ export function validateScopePostExecution(
 
     if (outOfScopeFiles.length > 0) {
       warnings.push(`スコープ外のファイルが変更されています: ${outOfScopeFiles.join(', ')}`);
+
+      // REQ-2: SCOPE_STRICT=false の場合は警告のみ（互換モード）
+      const isStrict = process.env.SCOPE_STRICT !== 'false';
+      if (!isStrict) {
+        return { valid: true, outOfScopeFiles, warnings };
+      }
     }
 
     return { valid: outOfScopeFiles.length === 0, outOfScopeFiles, warnings };

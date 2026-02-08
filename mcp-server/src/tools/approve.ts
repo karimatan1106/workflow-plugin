@@ -9,7 +9,7 @@
 import { stateManager } from '../state/manager.js';
 import type { ApproveResult } from '../state/types.js';
 import { APPROVE_TYPE_MAPPING } from '../phases/definitions.js';
-import { getTaskByIdOrError, validateRequiredString, safeExecute } from './helpers.js';
+import { getTaskByIdOrError, validateRequiredString, safeExecute, verifySessionToken } from './helpers.js';
 import { MISSING_PARAM_ERRORS, phaseNotMatchError } from '../utils/errors.js';
 
 /**
@@ -30,25 +30,8 @@ export function workflowApprove(taskId?: string, type?: string, sessionToken?: s
   const { taskState } = taskResult;
 
   // REQ-6: セッショントークン検証
-  const tokenRequired = process.env.SESSION_TOKEN_REQUIRED !== 'false';
-  if (tokenRequired && taskState.sessionToken) {
-    if (!sessionToken) {
-      return {
-        success: false,
-        message: 'sessionTokenが必要です。このAPIはOrchestratorのみ実行可能です。',
-      };
-    }
-    if (sessionToken !== taskState.sessionToken) {
-      return {
-        success: false,
-        message: 'sessionTokenが無効です。',
-      };
-    }
-  }
-  // 既存タスク（sessionTokenなし）は警告のみ
-  if (tokenRequired && !taskState.sessionToken) {
-    console.warn('[approve] 既存タスク（sessionTokenなし）- 警告のみ');
-  }
+  const tokenError = verifySessionToken(taskState, sessionToken);
+  if (tokenError) return tokenError as ApproveResult;
 
   // 承認タイプの検証
   const typeValidation = validateRequiredString(type, MISSING_PARAM_ERRORS.APPROVE_TYPE);
@@ -79,6 +62,12 @@ export function workflowApprove(taskId?: string, type?: string, sessionToken?: s
 
   // 承認処理を実行
   return safeExecute('承認処理', () => {
+    // FR-9: 承認フラグを記録
+    if (!taskState.approvals) taskState.approvals = {};
+    taskState.approvals[typeValidation.value as keyof typeof taskState.approvals] = true;
+    stateManager.writeTaskState(taskState.workflowDir, taskState);
+
+    // フェーズを更新
     stateManager.updateTaskPhase(taskState.taskId, nextPhase);
 
     return {

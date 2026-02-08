@@ -24,6 +24,33 @@ vi.mock('../../state/manager.js', () => ({
   },
 }));
 
+// helpersをモック（verifySessionToken）
+vi.mock('../helpers.js', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../helpers.js')>();
+  return {
+    ...original,
+    verifySessionToken: vi.fn(() => null), // Always return null (success)
+  };
+});
+
+// audit/loggerをモック
+vi.mock('../../audit/logger.js', () => ({
+  auditLogger: {
+    log: vi.fn(),
+    countRecentBypasses: vi.fn(() => 0),
+    checkThreshold: vi.fn(() => false),
+  },
+}));
+
+// validation/scope-validatorをモック
+vi.mock('../../validation/scope-validator.js', () => ({
+  validateScopePostExecution: vi.fn(() => ({
+    valid: true,
+    outOfScopeFiles: [],
+    warnings: [],
+  })),
+}));
+
 // definitionsをモック（部分的に）
 vi.mock('../../phases/definitions.js', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../phases/definitions.js')>();
@@ -95,12 +122,18 @@ const MOCK_RESEARCH_MD = [
   '依存関係を特定しました。',
   'ライブラリ調査を実施しました。',
   'バージョン互換性を確認しました。',
+  'セキュリティ脆弱性をチェックしました。',
+  'ライセンス要件を確認しました。',
+  'アップデート計画を策定しました。',
   '',
   '## 結論',
   '',
   '調査結果をまとめます。',
   '次ステップを明確にします。',
   '優先事項を決定しました。',
+  '実装計画を作成します。',
+  'リスク対策を明確化しました。',
+  'スケジュールを確定しました。',
   '',
 ].join('\n');
 

@@ -46,6 +46,7 @@ process.on('unhandledRejection', (reason) => {
 const fs = require('fs');
 const path = require('path');
 const { checkBashWhitelist } = require('./bash-whitelist');
+const { verifyHMAC } = require('./hmac-verify');
 
 // =============================================================================
 // 定数定義
@@ -198,18 +199,28 @@ const PHASE_RULES = {
     readOnly: true,
   },
   manual_test: {
-    allowed: [],
-    blocked: ['code', 'test', 'spec', 'diagram', 'config', 'env', 'other'],
-    description: '手動テスト中。ファイル編集は禁止です。',
+    allowed: ['spec'],
+    blocked: ['code', 'test', 'diagram', 'config', 'env', 'other'],
+    description: '手動テスト中。仕様書（.md）のみ編集可能。',
     japaneseName: '手動テスト',
-    readOnly: true,
   },
   security_scan: {
-    allowed: [],
-    blocked: ['code', 'test', 'spec', 'diagram', 'config', 'env', 'other'],
-    description: 'セキュリティスキャン中。ファイル編集は禁止です。',
+    allowed: ['spec'],
+    blocked: ['code', 'test', 'diagram', 'config', 'env', 'other'],
+    description: 'セキュリティスキャン中。仕様書（.md）のみ編集可能。',
     japaneseName: 'セキュリティスキャン',
-    readOnly: true,
+  },
+  performance_test: {
+    allowed: ['spec'],
+    blocked: ['code', 'test', 'diagram', 'config', 'env', 'other'],
+    description: 'パフォーマンステスト中。仕様書（.md）のみ編集可能。',
+    japaneseName: 'パフォーマンステスト',
+  },
+  e2e_test: {
+    allowed: ['spec', 'test'],
+    blocked: ['code', 'diagram', 'config', 'env', 'other'],
+    description: 'E2Eテスト中。仕様書とテストファイルの編集が可能。',
+    japaneseName: 'E2Eテスト',
   },
   docs_update: {
     allowed: ['spec', 'config', 'env'],
@@ -239,7 +250,7 @@ const PARALLEL_PHASES = {
   parallel_design: ['state_machine', 'flowchart', 'ui_design'],
   parallel_analysis: ['threat_modeling', 'planning'],
   parallel_quality: ['build_check', 'code_review'],
-  parallel_verification: ['manual_test', 'security_scan'],
+  parallel_verification: ['manual_test', 'security_scan', 'performance_test', 'e2e_test'],
 };
 
 /**
@@ -619,6 +630,11 @@ function discoverTasks() {
         const stateFile = path.join(entryPath, 'workflow-state.json');
         const taskState = safeReadJsonFile(stateFile, `タスク状態(${entry})`);
         if (taskState && taskState.phase !== 'completed') {
+          // ★★★ FR-2: HMAC署名検証 ★★★
+          if (!verifyHMAC(taskState)) {
+            debugLog(`[HMAC] タスク ${taskState.taskId} の署名検証失敗 - スキップ`);
+            continue;
+          }
           tasks.push(taskState);
         }
       } catch {
@@ -1471,6 +1487,7 @@ function main(input) {
 
     // ★★★ REQ-2: Bashコマンドホワイトリストチェック ★★★
     // ワークフロー状態を確認してフェーズを取得
+    let whitelistPassed = false;
     const workflowState = findActiveWorkflowState(null);
     if (workflowState) {
       const phase = workflowState.phase;
@@ -1497,6 +1514,8 @@ function main(input) {
           reason: 'Bash whitelist violation: ' + whitelistResult.reason,
         });
         process.exit(EXIT_CODES.BLOCK);
+      } else {
+        whitelistPassed = true;
       }
     }
 
@@ -1505,6 +1524,13 @@ function main(input) {
     // 明示的に許可されたコマンドは常に許可
     if (analysis.isExplicitlyAllowed) {
       debugLog('Bashコマンド（明示的許可）：許可');
+      process.exit(EXIT_CODES.SUCCESS);
+    }
+
+    // ホワイトリストを通過した非ファイル修正コマンドは許可
+    // （例: npx vitest run がtestingフェーズのホワイトリストを通過した場合）
+    if (whitelistPassed && !analysis.isModifying) {
+      debugLog('Bashコマンド（ホワイトリスト通過・非ファイル修正）：許可');
       process.exit(EXIT_CODES.SUCCESS);
     }
 

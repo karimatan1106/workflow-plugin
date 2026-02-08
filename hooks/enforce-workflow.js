@@ -43,6 +43,7 @@ process.on('unhandledRejection', (reason) => {
 const fs = require('fs');
 const path = require('path');
 const { discoverTasks, findTaskByFilePath } = require('./lib/discover-tasks');
+const { verifyHMAC } = require('./hmac-verify');
 
 // フェーズごとの許可拡張子
 const PHASE_EXTENSIONS = {
@@ -234,6 +235,30 @@ function main(input) {
 
     // ★★★ REQ-3: discoverTasks()を使用してアクティブタスクを取得 ★★★
     const tasks = discoverTasks();
+
+    // ★★★ FR-2: HMAC検証 ★★★
+    // 各タスク状態に対してHMAC署名を検証
+    for (const task of tasks) {
+      if (!verifyHMAC(task)) {
+        console.log('');
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('🚫 BLOCKED: タスク状態の署名検証失敗');
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('');
+        console.log(`タスクID: ${task.taskId}`);
+        console.log(`タスク名: ${task.taskName}`);
+        console.log('');
+        console.log('タスク状態ファイルが改竄されている可能性があります。');
+        console.log('');
+        console.log('対処方法:');
+        console.log('  1. ワークフローディレクトリを確認');
+        console.log('  2. 手動編集した場合は、状態ファイルを削除して再度タスクを開始');
+        console.log('');
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('');
+        process.exit(2);
+      }
+    }
 
     // タスクがない場合、ブロック
     if (tasks.length === 0) {

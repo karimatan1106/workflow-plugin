@@ -9,6 +9,7 @@
 import { stateManager } from '../state/manager.js';
 import type { TaskState, ToolResult } from '../state/types.js';
 import { formatOperationError } from '../utils/errors.js';
+import { auditLogger } from '../audit/logger.js';
 
 // 注: getCurrentTaskOrError と getTaskStateOrError は削除されました。
 // 並列タスク対応により、明示的なtaskId指定ベースの getTaskByIdOrError を使用してください。
@@ -90,5 +91,48 @@ export function safeExecute<T extends ToolResult>(
       message: formatOperationError(operation, error),
     };
   }
+}
+
+/**
+ * REQ-6/FR-10: Verify session token for state-changing tools
+ *
+ * @param taskState タスク状態
+ * @param sessionToken セッショントークン（オプション）
+ * @returns エラーの場合はToolResult、成功の場合はnull
+ */
+export function verifySessionToken(
+  taskState: TaskState,
+  sessionToken?: string
+): ToolResult | null {
+  const tokenRequired = process.env.SESSION_TOKEN_REQUIRED !== 'false';
+
+  if (!tokenRequired) {
+    auditLogger.log({
+      event: 'bypass_enabled',
+      variable: 'SESSION_TOKEN_REQUIRED',
+      taskId: taskState.taskId,
+      phase: taskState.phase,
+    });
+    return null; // bypass
+  }
+
+  if (taskState.sessionToken) {
+    if (!sessionToken) {
+      return {
+        success: false,
+        message: 'sessionTokenが必要です。このAPIはOrchestratorのみ実行可能です。',
+      };
+    }
+    if (sessionToken !== taskState.sessionToken) {
+      return {
+        success: false,
+        message: 'sessionTokenが無効です。',
+      };
+    }
+  } else {
+    console.warn('[verifySessionToken] 既存タスク（sessionTokenなし）- 警告のみ');
+  }
+
+  return null; // success
 }
 

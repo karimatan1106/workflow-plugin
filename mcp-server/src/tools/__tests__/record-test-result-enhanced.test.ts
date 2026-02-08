@@ -27,6 +27,7 @@ vi.mock('../../state/manager.js', () => ({
 vi.mock('../helpers.js', () => ({
   getTaskByIdOrError: vi.fn(),
   safeExecute: vi.fn((label, fn) => fn()),
+  verifySessionToken: vi.fn(() => null),
 }));
 
 // ============================================================================

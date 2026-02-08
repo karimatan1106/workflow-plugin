@@ -11,7 +11,7 @@ import { stateManager } from '../state/manager.js';
 import type { ResetResult, PhaseName, TaskSize } from '../state/types.js';
 import { DEFAULT_TASK_SIZE } from '../state/types.js';
 import { getPhaseIndex, PHASES_BY_SIZE } from '../phases/definitions.js';
-import { getTaskByIdOrError, safeExecute } from './helpers.js';
+import { getTaskByIdOrError, safeExecute, verifySessionToken } from './helpers.js';
 
 /**
  * タスクを指定フェーズに差し戻し
@@ -19,12 +19,14 @@ import { getTaskByIdOrError, safeExecute } from './helpers.js';
  * @param taskId タスクID（必須）
  * @param targetPhase 差し戻し先フェーズ（必須）
  * @param reason 差し戻し理由（オプション）
+ * @param sessionToken セッショントークン（オプション、REQ-6）
  * @returns 差し戻し結果
  */
 export function workflowBack(
   taskId?: string,
   targetPhase?: string,
-  reason?: string
+  reason?: string,
+  sessionToken?: string
 ): ResetResult {
   // タスク状態を取得
   const result = getTaskByIdOrError(taskId);
@@ -33,6 +35,10 @@ export function workflowBack(
   }
 
   const { taskState } = result;
+
+  // REQ-6: セッショントークン検証
+  const tokenError = verifySessionToken(taskState, sessionToken);
+  if (tokenError) return tokenError as ResetResult;
   const fromPhase = taskState.phase;
 
   // targetPhaseの検証
@@ -115,6 +121,10 @@ export const backToolDefinition = {
       reason: {
         type: 'string',
         description: '差し戻し理由（オプション）',
+      },
+      sessionToken: {
+        type: 'string',
+        description: 'セッショントークン（REQ-6: Orchestrator認証用）',
       },
     },
     required: ['targetPhase'],

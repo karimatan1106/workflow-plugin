@@ -11,6 +11,7 @@
 
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
+import * as path from 'path';
 import * as crypto from 'crypto';
 import type { TaskState } from '../types.js';
 
@@ -44,8 +45,47 @@ vi.mock('fs', () => {
     }),
     readdirSync: vi.fn(() => []),
     statSync: vi.fn(() => ({ isDirectory: () => false })),
+    renameSync: vi.fn((oldPath: string, newPath: string) => {
+      const data = writtenDataRef().get(oldPath.toString());
+      if (data) {
+        writtenDataRef().set(newPath.toString(), data);
+        writtenDataRef().delete(oldPath.toString());
+      }
+    }),
+    unlinkSync: vi.fn(() => undefined),
+    openSync: vi.fn(() => 999),
+    writeSync: vi.fn(() => undefined),
+    closeSync: vi.fn(() => undefined),
+    chmodSync: vi.fn(() => undefined),
   };
 });
+
+// Mock lock-utils module (FR-1)
+vi.mock('../lock-utils.js', () => {
+  return {
+    atomicWriteJson: vi.fn((filePath: string, data: any) => {
+      const ref = (globalThis as any).__hmac_test_writtenData as Map<string, string> | undefined;
+      if (ref) {
+        ref.set(filePath.toString(), JSON.stringify(data, null, 2));
+      }
+    }),
+    acquireLock: vi.fn(async () => vi.fn()),
+    logLockEvent: vi.fn(),
+  };
+});
+
+// Mock cache module (FR-11)
+vi.mock('../cache.js', () => ({
+  taskCache: {
+    get: vi.fn(() => null),
+    set: vi.fn(),
+    invalidate: vi.fn(),
+    clear: vi.fn(),
+    getHitRate: vi.fn(() => 0),
+  },
+  isCacheEnabled: vi.fn(() => false),
+  TaskCache: vi.fn(),
+}));
 
 describe('REQ-2: HMAC署名機能', () => {
   beforeEach(() => {
@@ -111,7 +151,7 @@ describe('REQ-2: HMAC署名機能', () => {
 
       stateManager.writeTaskState(taskWorkflowDir, state);
 
-      const writtenContent = writtenData.get('/test/workflow/workflow-state.json');
+      const writtenContent = writtenData.get(path.join('/test/workflow', 'workflow-state.json'));
       expect(writtenContent).toBeDefined();
 
       const parsedState = JSON.parse(writtenContent!);
@@ -128,10 +168,10 @@ describe('REQ-2: HMAC署名機能', () => {
       const state = createSampleState({ taskId: 'task-deterministic' });
 
       stateManager.writeTaskState(taskWorkflowDir, state);
-      const signature1 = JSON.parse(writtenData.get('/test/workflow/workflow-state.json')!).stateIntegrity;
+      const signature1 = JSON.parse(writtenData.get(path.join('/test/workflow', 'workflow-state.json'))!).stateIntegrity;
 
       stateManager.writeTaskState(taskWorkflowDir, state);
-      const signature2 = JSON.parse(writtenData.get('/test/workflow/workflow-state.json')!).stateIntegrity;
+      const signature2 = JSON.parse(writtenData.get(path.join('/test/workflow', 'workflow-state.json'))!).stateIntegrity;
 
       expect(signature1).toBe(signature2);
     });
@@ -145,10 +185,10 @@ describe('REQ-2: HMAC署名機能', () => {
       const state2 = createSampleState({ taskId: 'task-002' });
 
       stateManager.writeTaskState(taskWorkflowDir, state1);
-      const signature1 = JSON.parse(writtenData.get('/test/workflow/workflow-state.json')!).stateIntegrity;
+      const signature1 = JSON.parse(writtenData.get(path.join('/test/workflow', 'workflow-state.json'))!).stateIntegrity;
 
       stateManager.writeTaskState(taskWorkflowDir, state2);
-      const signature2 = JSON.parse(writtenData.get('/test/workflow/workflow-state.json')!).stateIntegrity;
+      const signature2 = JSON.parse(writtenData.get(path.join('/test/workflow', 'workflow-state.json'))!).stateIntegrity;
 
       expect(signature1).not.toBe(signature2);
     });
@@ -172,7 +212,7 @@ describe('REQ-2: HMAC署名機能', () => {
   });
 
   describe('TC-2-5: readTaskState returns null for tampered state', () => {
-    test('改ざんされた状態ファイルは移行期間中は読み込める（REQ-3: 移行期間対応）', async () => {
+    test('改ざんされた状態ファイルはnullを返す（fail-closed設計）', async () => {
       const { stateManager } = await import('../manager.js');
       const taskWorkflowDir = '/test/workflow';
       const originalState = createSampleState({ taskId: 'task-tampered' });
@@ -180,19 +220,18 @@ describe('REQ-2: HMAC署名機能', () => {
       stateManager.writeTaskState(taskWorkflowDir, originalState);
 
       // 改ざん: taskNameを変更
-      const writtenContent = writtenData.get('/test/workflow/workflow-state.json')!;
+      const writtenContent = writtenData.get(path.join('/test/workflow', 'workflow-state.json'))!;
       const parsedState = JSON.parse(writtenContent);
       parsedState.taskName = '改ざんされたタスク';
-      writtenData.set('/test/workflow/workflow-state.json', JSON.stringify(parsedState, null, 2));
+      writtenData.set(path.join('/test/workflow', 'workflow-state.json'), JSON.stringify(parsedState, null, 2));
 
-      // REQ-3: 移行期間中は警告のみで読み込みを許可
+      // fail-closed: 改ざんされた状態はnullを返す
       const readState = stateManager.readTaskState(taskWorkflowDir);
 
-      expect(readState).not.toBeNull();
-      expect(readState?.taskName).toBe('改ざんされたタスク');
+      expect(readState).toBeNull();
     });
 
-    test('不正な署名を持つ状態ファイルは移行期間中は読み込める（REQ-3: 移行期間対応）', async () => {
+    test('不正な署名を持つ状態ファイルはnullを返す（fail-closed設計）', async () => {
       const { stateManager } = await import('../manager.js');
       const taskWorkflowDir = '/test/workflow';
       const originalState = createSampleState({ taskId: 'task-invalid-sig' });
@@ -200,16 +239,15 @@ describe('REQ-2: HMAC署名機能', () => {
       stateManager.writeTaskState(taskWorkflowDir, originalState);
 
       // 改ざん: 署名を無効な値に変更
-      const writtenContent = writtenData.get('/test/workflow/workflow-state.json')!;
+      const writtenContent = writtenData.get(path.join('/test/workflow', 'workflow-state.json'))!;
       const parsedState = JSON.parse(writtenContent);
       parsedState.stateIntegrity = 'aW52YWxpZF9zaWduYXR1cmU=';
-      writtenData.set('/test/workflow/workflow-state.json', JSON.stringify(parsedState, null, 2));
+      writtenData.set(path.join('/test/workflow', 'workflow-state.json'), JSON.stringify(parsedState, null, 2));
 
-      // REQ-3: 移行期間中は警告のみで読み込みを許可
+      // fail-closed: 不正な署名はnullを返す
       const readState = stateManager.readTaskState(taskWorkflowDir);
 
-      expect(readState).not.toBeNull();
-      expect(readState?.taskId).toBe('task-invalid-sig');
+      expect(readState).toBeNull();
     });
   });
 
@@ -220,7 +258,7 @@ describe('REQ-2: HMAC署名機能', () => {
       const unsignedState = createSampleState({ taskId: 'task-unsigned' });
 
       // 署名なし状態ファイルを直接書き込み
-      writtenData.set('/test/workflow/workflow-state.json', JSON.stringify(unsignedState, null, 2));
+      writtenData.set(path.join('/test/workflow', 'workflow-state.json'), JSON.stringify(unsignedState, null, 2));
 
       const readState = stateManager.readTaskState(taskWorkflowDir);
 
@@ -228,7 +266,7 @@ describe('REQ-2: HMAC署名機能', () => {
       expect(readState?.taskId).toBe('task-unsigned');
 
       // 自動移行により署名が追加される
-      const updatedContent = writtenData.get('/test/workflow/workflow-state.json')!;
+      const updatedContent = writtenData.get(path.join('/test/workflow', 'workflow-state.json'))!;
       const updatedState = JSON.parse(updatedContent);
       expect(updatedState).toHaveProperty('stateIntegrity');
     });
@@ -242,7 +280,7 @@ describe('REQ-2: HMAC署名機能', () => {
 
       stateManager.writeTaskState(taskWorkflowDir, state);
 
-      const writtenContent = writtenData.get('/test/workflow/workflow-state.json')!;
+      const writtenContent = writtenData.get(path.join('/test/workflow', 'workflow-state.json'))!;
       const parsedState = JSON.parse(writtenContent);
       const actualSignature = parsedState.stateIntegrity;
 
@@ -256,27 +294,26 @@ describe('REQ-2: HMAC署名機能', () => {
     });
   });
 
-  describe('署名検証の詳細テスト（REQ-3: 移行期間中は警告のみ）', () => {
-    test('phaseの改ざんは移行期間中に検出されるが読み込みは許可', async () => {
+  describe('署名検証の詳細テスト（fail-closed設計）', () => {
+    test('phaseの改ざんはnullを返す', async () => {
       const { stateManager } = await import('../manager.js');
       const taskWorkflowDir = '/test/workflow';
       const originalState = createSampleState({ phase: 'research' });
 
       stateManager.writeTaskState(taskWorkflowDir, originalState);
 
-      const writtenContent = writtenData.get('/test/workflow/workflow-state.json')!;
+      const writtenContent = writtenData.get(path.join('/test/workflow', 'workflow-state.json'))!;
       const parsedState = JSON.parse(writtenContent);
       parsedState.phase = 'implementation';
-      writtenData.set('/test/workflow/workflow-state.json', JSON.stringify(parsedState, null, 2));
+      writtenData.set(path.join('/test/workflow', 'workflow-state.json'), JSON.stringify(parsedState, null, 2));
 
-      // REQ-3: 移行期間中は警告のみで読み込みを許可
+      // fail-closed: 改ざんされた状態はnullを返す
       const readState = stateManager.readTaskState(taskWorkflowDir);
 
-      expect(readState).not.toBeNull();
-      expect(readState?.phase).toBe('implementation');
+      expect(readState).toBeNull();
     });
 
-    test('historyの改ざんは移行期間中に検出されるが読み込みは許可', async () => {
+    test('historyの改ざんはnullを返す', async () => {
       const { stateManager } = await import('../manager.js');
       const taskWorkflowDir = '/test/workflow';
       const originalState = createSampleState({
@@ -287,16 +324,15 @@ describe('REQ-2: HMAC署名機能', () => {
 
       stateManager.writeTaskState(taskWorkflowDir, originalState);
 
-      const writtenContent = writtenData.get('/test/workflow/workflow-state.json')!;
+      const writtenContent = writtenData.get(path.join('/test/workflow', 'workflow-state.json'))!;
       const parsedState = JSON.parse(writtenContent);
       parsedState.history.push({ phase: 'implementation', action: 'skip', timestamp: '2026-02-07T01:00:00Z' });
-      writtenData.set('/test/workflow/workflow-state.json', JSON.stringify(parsedState, null, 2));
+      writtenData.set(path.join('/test/workflow', 'workflow-state.json'), JSON.stringify(parsedState, null, 2));
 
-      // REQ-3: 移行期間中は警告のみで読み込みを許可
+      // fail-closed: 改ざんされた状態はnullを返す
       const readState = stateManager.readTaskState(taskWorkflowDir);
 
-      expect(readState).not.toBeNull();
-      expect(readState?.history).toHaveLength(2);
+      expect(readState).toBeNull();
     });
   });
 

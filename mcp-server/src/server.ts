@@ -114,7 +114,7 @@ interface ToolArguments {
   /** 影響範囲設定 */
   workflow_set_scope: { taskId?: string; files?: string[]; dirs?: string[] };
   /** テスト結果記録 */
-  workflow_record_test_result: { taskId?: string; exitCode?: number; summary?: string };
+  workflow_record_test_result: { taskId?: string; exitCode?: number; summary?: string; output?: string; sessionToken?: string };
   /** 差し戻し */
   workflow_back: { taskId?: string; targetPhase?: string; reason?: string };
 }
@@ -267,8 +267,8 @@ const TOOL_HANDLERS: Record<ToolName, ToolHandler> = {
   },
 
   workflow_record_test_result: (args) => {
-    const { taskId, exitCode, summary } = args as ToolArguments['workflow_record_test_result'];
-    return workflowRecordTestResult(taskId, exitCode, summary);
+    const { taskId, exitCode, summary, output, sessionToken } = args as ToolArguments['workflow_record_test_result'];
+    return workflowRecordTestResult(taskId, exitCode, summary, output, sessionToken);
   },
 
   workflow_back: (args) => {

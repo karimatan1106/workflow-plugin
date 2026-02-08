@@ -24,6 +24,9 @@ import type {
 import { DEFAULT_TASK_SIZE } from './types.js';
 import { PARALLEL_GROUPS } from '../phases/definitions.js';
 import { taskNotFoundError } from '../utils/errors.js';
+import { auditLogger } from '../audit/logger.js';
+import { atomicWriteJson } from './lock-utils.js';
+import { taskCache, isCacheEnabled } from './cache.js';
 
 // ============================================================================
 // 設定（環境変数でオーバーライド可能）
@@ -216,6 +219,12 @@ export function generateStateHmac(state: TaskState): string {
 export function verifyStateHmac(state: TaskState, expectedHmac: string): boolean {
   // 緩和モード（開発・移行時のみ）
   if (process.env.HMAC_STRICT === 'false') {
+    auditLogger.log({
+      event: 'bypass_enabled',
+      variable: 'HMAC_STRICT',
+      taskId: state.taskId,
+      phase: state.phase,
+    });
     return true;
   }
 
@@ -320,7 +329,10 @@ export class WorkflowStateManager {
       stateIntegrity: generateStateHmac(state),
     };
     const stateFile = path.join(taskWorkflowDir, 'workflow-state.json');
-    writeJsonFile(stateFile, stateWithSignature);
+    atomicWriteJson(stateFile, stateWithSignature);
+
+    // FR-11: キャッシュ無効化
+    taskCache.invalidate('task-list');
   }
 
   // ==========================================================================
@@ -336,6 +348,14 @@ export class WorkflowStateManager {
    * @returns 完了していないタスクの配列
    */
   discoverTasks(): TaskState[] {
+    // FR-11: キャッシュチェック
+    if (isCacheEnabled()) {
+      const cached = taskCache.get<TaskState[]>('task-list');
+      if (cached) {
+        return cached;
+      }
+    }
+
     if (!fs.existsSync(this.workflowDir)) {
       return [];
     }
@@ -360,6 +380,11 @@ export class WorkflowStateManager {
           // 個別のエントリでエラーが発生した場合はスキップ
           continue;
         }
+      }
+
+      // FR-11: キャッシュに保存
+      if (isCacheEnabled()) {
+        taskCache.set('task-list', tasks);
       }
 
       return tasks;

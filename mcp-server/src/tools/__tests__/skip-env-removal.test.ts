@@ -27,6 +27,46 @@ vi.mock('fs', async () => {
   };
 });
 
+// helpersをモック（verifySessionToken）
+vi.mock('../helpers.js', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../helpers.js')>();
+  return {
+    ...original,
+    verifySessionToken: vi.fn(() => null), // Always return null (success)
+  };
+});
+
+// audit/loggerをモック
+vi.mock('../../audit/logger.js', () => ({
+  auditLogger: {
+    log: vi.fn(),
+    countRecentBypasses: vi.fn(() => 0),
+    checkThreshold: vi.fn(() => false),
+  },
+}));
+
+// validation/scope-validatorをモック
+vi.mock('../../validation/scope-validator.js', () => ({
+  validateScopePostExecution: vi.fn(() => ({
+    valid: true,
+    outOfScopeFiles: [],
+    warnings: [],
+  })),
+}));
+
+// design-validatorをモック (デフォルトは失敗)
+vi.mock('../../validation/design-validator.js', () => ({
+  DesignValidator: vi.fn(() => ({
+    validateAll: () => ({
+      passed: false, // Default to failure
+      missingItems: ['spec.md'],
+      warnings: [],
+      summary: { total: 1, implemented: 0, missing: 1 },
+    }),
+  })),
+  formatValidationError: vi.fn(() => '設計-実装整合性の検証に失敗しました'),
+}));
+
 // モック用のヘルパー
 const mockTaskState = (phase: PhaseName, overrides?: Partial<TaskState>): TaskState => ({
   taskId: 'test-task-001',
@@ -121,7 +161,7 @@ describe('REQ-1: SKIP_*環境変数の完全除去', () => {
       vi.mocked(fs.existsSync).mockReturnValue(true); // research.md存在
       vi.mocked(fs.statSync).mockReturnValue({ size: 500 } as any); // サイズチェック用
       vi.mocked(fs.readFileSync).mockReturnValue(
-        '# Research\n\n## 調査結果\n\n調査の概要を記載します。\n既存コードの分析を行いました。\n問題点を特定しました。\n課題の優先順位を設定。\n\n## 既存実装の分析\n\n既存のコードベースを詳細に分析しました。\n主要なモジュールの構成を確認。\nアーキテクチャの把握を行った。\nコードカバレッジの確認。\n\n## 依存関係\n\n主要な依存関係を特定しました。\n外部ライブラリの調査。\nバージョン互換性の確認。\n\n## 技術的な制約\n\n制約事項を記載。\nパフォーマンスの考慮。\n\n## 結論\n\n調査結果のまとめ。\n次のステップを定義。\n優先事項の整理。\n'
+        '# Research\n\n## 調査結果\n\n調査の概要を記載します。\n既存コードの分析を行いました。\n問題点を特定しました。\n課題の優先順位を設定。\n対応方針を策定しました。\n\n## 既存実装の分析\n\n既存のコードベースを詳細に分析しました。\n主要なモジュールの構成を確認。\nアーキテクチャの把握を行った。\nコードカバレッジの確認。\n依存関係を整理しました。\nパフォーマンス特性を調査しました。\n\n## 依存関係\n\n主要な依存関係を特定しました。\n外部ライブラリの調査。\nバージョン互換性の確認。\nセキュリティ脆弱性をチェックしました。\nライセンス要件を確認しました。\nアップデート計画を策定しました。\n\n## 技術的な制約\n\n制約事項を記載。\nパフォーマンスの考慮。\nスケーラビリティ要件。\nセキュリティ制約。\nコスト制約の確認。\n\n## 結論\n\n調査結果のまとめ。\n次のステップを定義。\n優先事項の整理。\n実装計画を作成します。\nリスク対策を明確化しました。\nスケジュールを確定しました。\n'
       );
 
       // stateManager.updateTaskPhase をモック
@@ -266,16 +306,16 @@ describe('REQ-1: SKIP_*環境変数の完全除去', () => {
       // spec.md requires minLines: 50, requiredSections: ['## 概要', '## 実装計画', '## 変更対象ファイル']
       const specLines = [
         '# 仕様書', '',
-        '## 概要', '', '仕様の概要を記載。', 'プロジェクトの目的。', 'スコープの定義。', '対象ユーザーの特定。', '',
-        '## 背景', '', '背景情報を記載。', '既存の問題点。', '現状の分析結果。', '',
-        '## 要件', '', 'REQ-1: 要件1の詳細。', 'REQ-2: 要件2の詳細。', 'REQ-3: 要件3の詳細。', 'REQ-4: 要件4の詳細。', 'REQ-5: 要件5の詳細。', '',
-        '## 設計方針', '', '設計の方針を記載。', 'アーキテクチャの選択。', 'パターンの適用。', 'モジュール分割の方針。', '',
+        '## 概要', '', '仕様の概要を記載。', 'プロジェクトの目的。', 'スコープの定義。', '対象ユーザーの特定。', 'システムの全体像を説明。', '',
+        '## 背景', '', '背景情報を記載。', '既存の問題点。', '現状の分析結果。', 'ビジネス要求。', '技術的課題の整理。', '',
+        '## 要件', '', 'REQ-1: 要件1の詳細。', 'REQ-2: 要件2の詳細。', 'REQ-3: 要件3の詳細。', 'REQ-4: 要件4の詳細。', 'REQ-5: 要件5の詳細。', 'REQ-6: 要件6の詳細。', '',
+        '## 設計方針', '', '設計の方針を記載。', 'アーキテクチャの選択。', 'パターンの適用。', 'モジュール分割の方針。', '拡張性の考慮。', '',
         '## 実装計画', '', 'ステップ1: 調査。', 'ステップ2: 設計。', 'ステップ3: 実装。', 'ステップ4: テスト。', 'ステップ5: レビュー。', 'ステップ6: デプロイ。', '',
-        '## 変更対象ファイル', '', '- `src/tools/next.ts`', '- `src/tools/complete-sub.ts`', '- `src/validation/artifact-validator.ts`', '- `hooks/bash-whitelist.js`', '- `hooks/phase-edit-guard.js`', '',
-        '## テスト方針', '', 'テスト方針を記載。', 'ユニットテストの範囲。', '統合テストの範囲。', 'リグレッションテスト計画。', '',
-        '## リスク', '', 'リスク1: 互換性の問題。', 'リスク2: パフォーマンス低下。', 'リスク3: セキュリティ懸念。', '',
-        '## スケジュール', '', 'フェーズ1: 1週間。', 'フェーズ2: 2週間。', 'フェーズ3: 1週間。', 'フェーズ4: レビュー。', '',
-        '## 補足', '', '補足情報1。', '補足情報2。', '補足情報3。', '補足情報4。', '補足情報5。', '',
+        '## 変更対象ファイル', '', '- `src/tools/next.ts`', '- `src/tools/complete-sub.ts`', '- `src/validation/artifact-validator.ts`', '- `hooks/bash-whitelist.js`', '- `hooks/phase-edit-guard.js`', '- `docs/spec.md`', '',
+        '## テスト方針', '', 'テスト方針を記載。', 'ユニットテストの範囲。', '統合テストの範囲。', 'リグレッションテスト計画。', 'E2Eテスト計画。', '',
+        '## リスク', '', 'リスク1: 互換性の問題。', 'リスク2: パフォーマンス低下。', 'リスク3: セキュリティ懸念。', 'リスク4: スケジュール遅延。', 'リスク5: リソース不足。', '',
+        '## スケジュール', '', 'フェーズ1: 1週間。', 'フェーズ2: 2週間。', 'フェーズ3: 1週間。', 'フェーズ4: レビュー。', 'フェーズ5: デプロイ。', '',
+        '## 補足', '', '補足情報1。', '補足情報2。', '補足情報3。', '補足情報4。', '補足情報5。', '補足情報6。', '',
       ];
       vi.mocked(fs.readFileSync).mockReturnValue(specLines.join('\n'));
 

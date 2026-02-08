@@ -24,6 +24,7 @@ vi.mock('../../state/manager.js', () => ({
 vi.mock('../helpers.js', () => ({
   getTaskByIdOrError: vi.fn(),
   safeExecute: vi.fn((_label: string, fn: () => unknown) => fn()),
+  verifySessionToken: vi.fn(() => null),
 }));
 
 // scope-validatorをモック化（REQ-5チェックをバイパスしてvalidateScopeExistsに到達させる）

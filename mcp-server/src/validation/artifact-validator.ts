@@ -23,6 +23,31 @@ export interface ArtifactValidationResult {
 }
 
 /**
+ * 構造要素判定ヘルパー関数
+ *
+ * Markdown文書の構造要素（区切り線、コードフェンス、テーブル区切り）を判定する。
+ *
+ * @param line 判定対象の行（トリム済み）
+ * @returns 構造要素の場合はtrue
+ */
+export function isStructuralLine(line: string): boolean {
+  const trimmed = line.trim();
+  // 区切り線: ---、***、___（3文字以上の繰り返し）
+  if (/^[-*_]{3,}$/.test(trimmed)) return true;
+  // コードフェンス: ```で始まる行
+  if (trimmed.startsWith('```')) return true;
+  // テーブル区切り: |で始まりハイフンを含む（例: |---|---|）
+  if (/^\|[\s\-:|]+\|$/.test(trimmed)) return true;
+  // Markdownラベルパターン: **太字**: のような構造ラベル
+  if (/^\*\*[^*]+\*\*[:：]?\s*$/.test(trimmed)) return true;
+  // リスト先頭のMarkdownラベル: - **太字**: のような構造ラベル
+  if (/^[-*]\s+\*\*[^*]+\*\*[:：]?\s*$/.test(trimmed)) return true;
+  // テーブルデータ行: |で囲まれた行
+  if (/^\|.*\|$/.test(trimmed)) return true;
+  return false;
+}
+
+/**
  * フェーズ別成果物要件定数
  *
  * 各フェーズで必要な成果物の品質基準を定義する。
@@ -130,10 +155,19 @@ export function validateArtifactQuality(
   }
 
   // 7. ダミーテキスト検出（同一行の3回以上繰り返し）
+  // コードフェンス内の行は除外する（コード例は構文上の繰り返しが自然に発生する）
   const lineCountMap = new Map<string, number>();
+  let insideCodeFence = false;
   for (const line of lines) {
     const trimmed = line.trim();
-    if (trimmed.length > 0) {
+    // コードフェンスの開始/終了を追跡
+    if (trimmed.startsWith('```')) {
+      insideCodeFence = !insideCodeFence;
+      continue;
+    }
+    // コードフェンス内の行はスキップ
+    if (insideCodeFence) continue;
+    if (trimmed.length > 0 && !isStructuralLine(trimmed)) {
       lineCountMap.set(trimmed, (lineCountMap.get(trimmed) || 0) + 1);
     }
   }
@@ -163,6 +197,36 @@ export function validateArtifactQuality(
       errors.push(
         `${fileName} に stateDiagram または flowchart キーワードがありません`
       );
+    }
+  }
+
+  // 10. FR-7: セクション密度チェック（定義済みMarkdownファイルのみ）
+  if (filePath.endsWith('.md') && PHASE_ARTIFACT_REQUIREMENTS[fileName]) {
+    const densityResult = checkSectionDensity(content);
+    if (!densityResult.valid) {
+      errors.push(...densityResult.errors);
+    }
+  }
+
+  // 11. FR-7: 短い行の比率チェック（定義済みMarkdownファイルのみ）
+  if (filePath.endsWith('.md') && PHASE_ARTIFACT_REQUIREMENTS[fileName]) {
+    const shortLineResult = checkShortLineRatio(content);
+    if (!shortLineResult.valid) {
+      errors.push(...shortLineResult.errors);
+    }
+  }
+
+  // 12. FR-7: 必須セクションチェック（より詳細）
+  const requiredSectionsResult = checkRequiredSections(fileName, content);
+  if (!requiredSectionsResult.valid) {
+    errors.push(...requiredSectionsResult.errors);
+  }
+
+  // 13. FR-7: コードパス参照チェック（spec.mdのみ）
+  if (fileName === 'spec.md') {
+    const codePathResult = checkCodePathReferences(content);
+    if (!codePathResult.valid) {
+      errors.push(...codePathResult.errors);
     }
   }
 
@@ -373,6 +437,153 @@ export function validateMermaidStructure(
     if (edges < minTransitions) {
       errors.push(`フローチャートのエッジ数が不十分です（${edges}個 < ${minTransitions}個）`);
     }
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
+/**
+ * FR-7: セクション密度の検証
+ *
+ * 各 ## セクションが最低限の実質的な内容を持っているか検証する。
+ *
+ * @param content Markdown内容
+ * @param minSubstantiveLines セクションあたりの最小実質行数（デフォルト: 5）
+ * @returns 検証結果
+ */
+export function checkSectionDensity(
+  content: string,
+  minSubstantiveLines: number = 5
+): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+  // ## で始まるセクションに分割
+  const sections = content.split(/^##\s+/m).slice(1);
+
+  for (const section of sections) {
+    const lines = section.split('\n');
+    const sectionName = lines[0]?.trim() || 'Unknown';
+
+    // 実質的な行をカウント（空白行、ヘッダー、構造要素を除く）
+    const substantiveLines = lines.slice(1).filter(line => {
+      const trimmed = line.trim();
+      if (trimmed.length === 0) return false;
+      if (trimmed.startsWith('#')) return false;
+      if (isStructuralLine(trimmed)) return false;
+      return true;
+    });
+
+    if (substantiveLines.length < minSubstantiveLines) {
+      errors.push(
+        `セクション「${sectionName}」の実質行数が不足（${substantiveLines.length}行 < ${minSubstantiveLines}行）`
+      );
+    }
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
+/**
+ * FR-7: 短い行の比率検証
+ *
+ * 10文字未満の行が全体の50%を超えていないか検証する。
+ *
+ * @param content Markdown内容
+ * @param shortLineThreshold 短い行の閾値（デフォルト: 10文字）
+ * @param maxShortLineRatio 最大短い行比率（デフォルト: 0.5 = 50%）
+ * @returns 検証結果
+ */
+export function checkShortLineRatio(
+  content: string,
+  shortLineThreshold: number = 10,
+  maxShortLineRatio: number = 0.5
+): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+  const lines = content.split('\n').filter(l => l.trim().length > 0);
+
+  if (lines.length === 0) {
+    return { valid: false, errors: ['コンテンツが空です'] };
+  }
+
+  // 短い行をカウント（構造要素は除外）
+  const shortLines = lines.filter(line => {
+    const trimmed = line.trim();
+    if (isStructuralLine(trimmed)) return false;
+    return trimmed.length < shortLineThreshold;
+  });
+
+  const ratio = shortLines.length / lines.length;
+
+  if (ratio > maxShortLineRatio) {
+    errors.push(
+      `短い行（<${shortLineThreshold}文字）の比率が高すぎます（${(ratio * 100).toFixed(1)}% > ${(maxShortLineRatio * 100).toFixed(1)}%）`
+    );
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
+/**
+ * FR-7: ファイルタイプ別の必須セクション検証
+ *
+ * ファイル名に基づいて必須セクションが存在するか検証する。
+ *
+ * @param fileName - ファイル名（例: "spec.md", "requirements.md"）
+ * @param content - ファイル内容
+ * @returns 検証結果
+ */
+export function checkRequiredSections(
+  fileName: string,
+  content: string
+): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+
+  // ファイルタイプ別の必須セクション定義
+  const requirements = PHASE_ARTIFACT_REQUIREMENTS[fileName];
+  if (!requirements) {
+    // 定義されていないファイルはスキップ
+    return { valid: true, errors: [] };
+  }
+
+  // 必須セクションチェック
+  const missingSections = requirements.requiredSections.filter(
+    section => !content.includes(section)
+  );
+
+  if (missingSections.length > 0) {
+    errors.push(
+      `${fileName} に必須セクションがありません: ${missingSections.join(', ')}`
+    );
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
+/**
+ * FR-7: 実装ドキュメントのコードパス参照検証
+ *
+ * spec.md などの実装系ドキュメントがソースコードパスを参照しているか検証する。
+ *
+ * @param content - ファイル内容
+ * @returns 検証結果
+ */
+export function checkCodePathReferences(
+  content: string
+): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+
+  // コードパスのパターン（src/, tests/, etc.）
+  const codePathPatterns = [
+    /src\/[a-zA-Z0-9_/-]+\.[a-zA-Z]+/,  // src/backend/foo.ts
+    /tests?\/[a-zA-Z0-9_/-]+\.[a-zA-Z]+/,  // tests/foo.test.ts
+    /e2e\/[a-zA-Z0-9_/-]+\.[a-zA-Z]+/,  // e2e/foo.spec.ts
+  ];
+
+  const hasCodeReference = codePathPatterns.some(pattern => pattern.test(content));
+
+  if (!hasCodeReference) {
+    errors.push(
+      '実装ドキュメントにソースコードパスへの参照が見つかりません（src/, tests/, e2e/ など）'
+    );
   }
 
   return { valid: errors.length === 0, errors };

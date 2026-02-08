@@ -1,6 +1,8 @@
 /**
  * 設計-実装整合性検証クラス
  * @spec docs/spec/features/design-validator.md
+ *
+ * FR-6対応: TypeScript Compiler APIによるAST解析統合
  */
 
 import * as fs from 'fs';
@@ -14,6 +16,7 @@ import type {
 } from './types.js';
 import { parseSpec } from './parsers/spec-parser.js';
 import { parseStateMachine, parseFlowchart } from './parsers/mermaid-parser.js';
+import { analyzeTypeScriptFile, type ASTAnalysisResult } from './ast-analyzer.js';
 
 /**
  * 設計-実装整合性検証クラス
@@ -31,6 +34,7 @@ import { parseStateMachine, parseFlowchart } from './parsers/mermaid-parser.js';
 export class DesignValidator {
   private workflowDir: string;
   private projectRoot: string;
+  private fileCache: Map<string, { content: string; cleanContent: string }> = new Map();
 
   /**
    * コンストラクタ
@@ -41,6 +45,33 @@ export class DesignValidator {
   constructor(workflowDir: string, projectRoot?: string) {
     this.workflowDir = workflowDir;
     this.projectRoot = projectRoot || process.cwd();
+  }
+
+  /**
+   * ファイルをキャッシュ付きで読み込む（REQ-3）
+   *
+   * @param fullPath 読み込むファイルの絶対パス
+   * @returns ファイル内容とクリーンな内容、またはnull（存在しない/ディレクトリの場合）
+   */
+  private readFileWithCache(fullPath: string): { content: string; cleanContent: string } | null {
+    if (this.fileCache.has(fullPath)) {
+      return this.fileCache.get(fullPath)!;
+    }
+    if (!fs.existsSync(fullPath)) return null;
+    const stat = fs.statSync(fullPath);
+    if (stat.isDirectory()) return null;
+    const content = fs.readFileSync(fullPath, 'utf-8');
+    const cleanContent = this.removeCommentsAndStrings(content);
+    const entry = { content, cleanContent };
+    this.fileCache.set(fullPath, entry);
+    return entry;
+  }
+
+  /**
+   * キャッシュをクリア（REQ-3）
+   */
+  public clearCache(): void {
+    this.fileCache.clear();
   }
 
   /**
@@ -167,21 +198,18 @@ export class DesignValidator {
 
       for (const filePath of specItems.filePaths) {
         const fullPath = path.join(this.projectRoot, filePath);
-        if (fs.existsSync(fullPath)) {
-          const stat = fs.statSync(fullPath);
-          if (!stat.isDirectory()) {
-            const fileContent = fs.readFileSync(fullPath, 'utf-8');
-            const stubs = this.findStubsInContent(fileContent);
+        const cached = this.readFileWithCache(fullPath);
+        if (cached) {
+          const stubs = this.findStubsInContent(cached.content);
 
-            for (const stub of stubs) {
-              result.missingItems.push({
-                type: 'stub',
-                source: filePath,
-                name: stub.name,
-                expectedPath: fullPath,
-              });
-              result.warnings.push(`${stub.reason} in ${filePath}`);
-            }
+          for (const stub of stubs) {
+            result.missingItems.push({
+              type: 'stub',
+              source: filePath,
+              name: stub.name,
+              expectedPath: fullPath,
+            });
+            result.warnings.push(`${stub.reason} in ${filePath}`);
           }
         }
       }
@@ -191,6 +219,9 @@ export class DesignValidator {
     result.summary.missing = result.missingItems.length;
     result.summary.implemented = result.summary.total - result.summary.missing;
     result.passed = result.missingItems.length === 0;
+
+    // キャッシュクリア（REQ-3）
+    this.clearCache();
 
     return result;
   }
@@ -285,15 +316,15 @@ export class DesignValidator {
    */
   private removeCommentsAndStrings(content: string): string {
     return content
-      // ブロックコメント除去 (/* ... */)
+      // ブロックコメント除去 (/* ... */) - 空文字で置換
       .replace(/\/\*[\s\S]*?\*\//g, '')
-      // 行コメント除去 (// ...)
+      // 行コメント除去 (// ...) - 空文字で置換
       .replace(/\/\/.*/g, '')
-      // ダブルクォート文字列
+      // ダブルクォート文字列 - エスケープ対応
       .replace(/"(?:[^"\\]|\\.)*"/g, '""')
-      // シングルクォート文字列
+      // シングルクォート文字列 - エスケープ対応
       .replace(/'(?:[^'\\]|\\.)*'/g, "''")
-      // テンプレートリテラル
+      // テンプレートリテラル - エスケープ対応
       .replace(/`(?:[^`\\]|\\.)*`/g, '``');
   }
 
@@ -310,23 +341,50 @@ export class DesignValidator {
   /**
    * ファイル群からパターンを検索する共通ヘルパー
    *
+   * FR-6対応: TypeScript/JavaScriptファイルの場合、AST解析を優先して使用
+   *
    * コメント・文字列を除去した上で正規表現マッチを行う。
    *
    * @param patterns マッチさせる正規表現の配列（いずれかにマッチすればtrue）
    * @param filePaths 検索対象のファイルパス配列
+   * @param identifierName AST検索時に直接マッチする識別子名（オプション）
    * @returns いずれかのパターンが見つかった場合は true
    */
-  private searchInFiles(patterns: RegExp[], filePaths: string[]): boolean {
+  private searchInFiles(patterns: RegExp[], filePaths: string[], identifierName?: string): boolean {
     for (const filePath of filePaths) {
       const fullPath = path.join(this.projectRoot, filePath);
-      if (fs.existsSync(fullPath)) {
-        const stat = fs.statSync(fullPath);
-        if (stat.isDirectory()) continue;
-        const content = fs.readFileSync(fullPath, 'utf-8');
-        const cleanContent = this.removeCommentsAndStrings(content);
-        if (patterns.some((p) => p.test(cleanContent))) {
-          return true;
+
+      // FR-6: TypeScript/JavaScriptファイルの場合、AST解析を試行
+      if (/\.(ts|tsx|js|jsx)$/.test(fullPath) && identifierName) {
+        const startTime = Date.now();
+        const astResult = analyzeTypeScriptFile(fullPath);
+        const elapsed = Date.now() - startTime;
+
+        if (elapsed > 50) {
+          console.warn(`[Design Validator] AST analysis took ${elapsed}ms for ${filePath}`);
         }
+
+        if (astResult) {
+          // AST解析成功: 識別子が抽出リストに含まれているかチェック
+          const allIdentifiers = [
+            ...astResult.classes,
+            ...astResult.functions,
+            ...astResult.variables,
+            ...astResult.exports,
+          ];
+
+          if (allIdentifiers.includes(identifierName)) {
+            return true;
+          }
+          // AST解析で見つからなかった場合も、フォールバックを試す
+        }
+        // AST解析失敗: フォールバックして正規表現ベースで続行
+      }
+
+      // 正規表現ベースの検索（フォールバック）
+      const cached = this.readFileWithCache(fullPath);
+      if (cached && patterns.some((p) => p.test(cached.cleanContent))) {
+        return true;
       }
     }
     return false;
@@ -346,7 +404,8 @@ export class DesignValidator {
           `\\b(?:export\\s+)?(?:default\\s+)?(?:abstract\\s+)?class\\s+${escapedName}\\s*(?:[{<]|extends|implements)`
         ),
       ],
-      filePaths
+      filePaths,
+      className  // AST検索用の識別子名
     );
   }
 
@@ -366,7 +425,8 @@ export class DesignValidator {
         // アロー関数パターン: const/let/var methodName = (...) =>
         new RegExp(`\\b${escapedName}\\s*=\\s*(?:async\\s+)?\\(`),
       ],
-      filePaths
+      filePaths,
+      methodName  // AST検索用の識別子名
     );
   }
 
@@ -380,7 +440,8 @@ export class DesignValidator {
     const escapedName = this.escapeRegExp(interfaceName);
     return this.searchInFiles(
       [new RegExp(`\\b(?:export\\s+)?interface\\s+${escapedName}\\s*[{<]`)],
-      filePaths
+      filePaths,
+      interfaceName  // AST検索用の識別子名
     );
   }
 
@@ -394,7 +455,8 @@ export class DesignValidator {
     const escapedName = this.escapeRegExp(typeName);
     return this.searchInFiles(
       [new RegExp(`\\b(?:export\\s+)?type\\s+${escapedName}\\s*[=<]`)],
-      filePaths
+      filePaths,
+      typeName  // AST検索用の識別子名
     );
   }
 
@@ -408,7 +470,8 @@ export class DesignValidator {
     const escapedName = this.escapeRegExp(enumName);
     return this.searchInFiles(
       [new RegExp(`\\b(?:export\\s+)?enum\\s+${escapedName}\\s*\\{`)],
-      filePaths
+      filePaths,
+      enumName  // AST検索用の識別子名
     );
   }
 }

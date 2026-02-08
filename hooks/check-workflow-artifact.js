@@ -22,15 +22,15 @@ function logError(type, message, stack) {
   if (stack) console.error(`  スタック: ${stack}`);
 }
 
-// グローバルエラーハンドラ
+// グローバルエラーハンドラ（FR-4: Fail Closed - exit 2）
 process.on('uncaughtException', (err) => {
   logError('未捕捉エラー', err.message, err.stack);
-  process.exit(1);
+  process.exit(2);
 });
 
 process.on('unhandledRejection', (reason) => {
   logError('未処理のPromise拒否', String(reason), null);
-  process.exit(1);
+  process.exit(2);
 });
 
 // テスト用に依存性を注入可能にする
@@ -914,7 +914,9 @@ function main(input) {
     // 警告があれば出力
     printWarnings(result.warnings);
   } catch (e) {
-    // エラー時は許可（安全側に倒す）
+    // FR-4: Fail Closed - エラー時はブロック（安全側に倒す）
+    logError('チェック処理エラー', e.message, e.stack);
+    process.exit(EXIT_CODES.BLOCK);
   }
 
   process.exit(EXIT_CODES.SUCCESS);
@@ -948,7 +950,8 @@ if (require.main === module) {
   process.stdin.on('data', chunk => inputData += chunk);
   process.stdin.on('error', () => {
     clearTimeout(timeout);
-    process.exit(0);
+    // FR-4: Fail Closed
+    process.exit(2);
   });
   process.stdin.on('end', () => {
     clearTimeout(timeout);
@@ -956,7 +959,9 @@ if (require.main === module) {
       const input = JSON.parse(inputData);
       main(input);
     } catch (e) {
-      process.exit(0);
+      // FR-4: Fail Closed - JSONパースエラー時もブロック
+      logError('JSON パースエラー', e.message, e.stack);
+      process.exit(2);
     }
   });
 }

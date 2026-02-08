@@ -18,11 +18,12 @@ import {
   getNextPhase,
   PHASE_DESCRIPTIONS,
 } from '../phases/definitions.js';
-import { getTaskByIdOrError, safeExecute } from './helpers.js';
+import { getTaskByIdOrError, safeExecute, verifySessionToken } from './helpers.js';
 import { STATE_ERRORS } from '../utils/errors.js';
 import { DesignValidator, formatValidationError } from '../validation/design-validator.js';
 import { validateArtifactQuality, PHASE_ARTIFACT_REQUIREMENTS } from '../validation/artifact-validator.js';
 import { validateScopePostExecution } from '../validation/scope-validator.js';
+import { auditLogger } from '../audit/logger.js';
 
 /** スコープサイズ制限（REQ-3） */
 const MAX_SCOPE_FILES = 200;
@@ -125,25 +126,8 @@ export function workflowNext(taskId?: string, sessionToken?: string): NextResult
   const currentPhase = taskState.phase;
 
   // REQ-6: セッショントークン検証
-  const tokenRequired = process.env.SESSION_TOKEN_REQUIRED !== 'false';
-  if (tokenRequired && taskState.sessionToken) {
-    if (!sessionToken) {
-      return {
-        success: false,
-        message: 'sessionTokenが必要です。このAPIはOrchestratorのみ実行可能です。',
-      };
-    }
-    if (sessionToken !== taskState.sessionToken) {
-      return {
-        success: false,
-        message: 'sessionTokenが無効です。',
-      };
-    }
-  }
-  // 既存タスク（sessionTokenなし）は警告のみ
-  if (tokenRequired && !taskState.sessionToken) {
-    console.warn('[next] 既存タスク（sessionTokenなし）- 警告のみ');
-  }
+  const tokenError = verifySessionToken(taskState, sessionToken);
+  if (tokenError) return tokenError as NextResult;
 
   // 完了済みチェック
   if (currentPhase === 'completed') {
@@ -318,13 +302,25 @@ export function workflowNext(taskId?: string, sessionToken?: string): NextResult
       try {
         const scopeResult = validateScopePostExecution(scopeFiles, scopeDirs);
         if (!scopeResult.valid) {
-          if (process.env.SCOPE_STRICT === 'true') {
+          // REQ-2: SCOPE_STRICTはデフォルトtrue（厳格モード）
+          const isStrict = process.env.SCOPE_STRICT !== 'false';
+
+          if (isStrict) {
             return {
               success: false,
-              message: `スコープ外のファイルが変更されています:\n${scopeResult.outOfScopeFiles.map(f => `  - ${f}`).join('\n')}\n\nSCOPE_STRICT=true のためブロックされました。`,
+              message: `スコープ外のファイルが変更されています:\n${scopeResult.outOfScopeFiles.map(f => `  - ${f}`).join('\n')}\n\nSCOPE_STRICT（デフォルト）のためブロックされました。`,
             };
           }
-          // 警告モード（デフォルト）: 警告のみで続行
+
+          // REQ-1c: SCOPE_STRICT=false の監査ログ
+          auditLogger.log({
+            event: 'bypass_enabled',
+            variable: 'SCOPE_STRICT',
+            taskId: taskState.taskId,
+            phase: taskState.phase,
+          });
+
+          // 警告モード: 警告のみで続行
           console.warn(`[scope] スコープ外変更検出（警告モード）: ${scopeResult.outOfScopeFiles.join(', ')}`);
         }
       } catch (e) {

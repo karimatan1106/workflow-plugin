@@ -19,6 +19,31 @@ vi.mock('fs', () => ({
   readFileSync: vi.fn(),
   writeFileSync: vi.fn(),
   mkdirSync: vi.fn(),
+  renameSync: vi.fn(),
+  unlinkSync: vi.fn(),
+  openSync: vi.fn(() => 999),
+  writeSync: vi.fn(),
+  closeSync: vi.fn(),
+}));
+
+// lock-utilsモジュールをモック (FR-1)
+vi.mock('../lock-utils.js', () => ({
+  atomicWriteJson: vi.fn(),
+  acquireLock: vi.fn(async () => vi.fn()),
+  logLockEvent: vi.fn(),
+}));
+
+// cacheモジュールをモック (FR-11)
+vi.mock('../cache.js', () => ({
+  taskCache: {
+    get: vi.fn(() => null),
+    set: vi.fn(),
+    invalidate: vi.fn(),
+    clear: vi.fn(),
+    getHitRate: vi.fn(() => 0),
+  },
+  isCacheEnabled: vi.fn(() => false),
+  TaskCache: vi.fn(),
 }));
 
 // manager.jsを動的インポート（モック後にインポートする必要がある）

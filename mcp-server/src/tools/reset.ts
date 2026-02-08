@@ -9,7 +9,7 @@
 
 import { stateManager } from '../state/manager.js';
 import type { ResetResult } from '../state/types.js';
-import { getTaskByIdOrError, safeExecute } from './helpers.js';
+import { getTaskByIdOrError, safeExecute, verifySessionToken } from './helpers.js';
 
 /**
  * タスクをresearchフェーズにリセット
@@ -29,25 +29,8 @@ export function workflowReset(taskId?: string, reason?: string, sessionToken?: s
   const { taskState } = result;
 
   // REQ-6: セッショントークン検証
-  const tokenRequired = process.env.SESSION_TOKEN_REQUIRED !== 'false';
-  if (tokenRequired && taskState.sessionToken) {
-    if (!sessionToken) {
-      return {
-        success: false,
-        message: 'sessionTokenが必要です。このAPIはOrchestratorのみ実行可能です。',
-      };
-    }
-    if (sessionToken !== taskState.sessionToken) {
-      return {
-        success: false,
-        message: 'sessionTokenが無効です。',
-      };
-    }
-  }
-  // 既存タスク（sessionTokenなし）は警告のみ
-  if (tokenRequired && !taskState.sessionToken) {
-    console.warn('[reset] 既存タスク（sessionTokenなし）- 警告のみ');
-  }
+  const tokenError = verifySessionToken(taskState, sessionToken);
+  if (tokenError) return tokenError as ResetResult;
 
   const fromPhase = taskState.phase;
 

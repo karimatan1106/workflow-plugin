@@ -37,12 +37,14 @@ process.on('unhandledRejection', (reason) => {
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 // 設定
 const SPEC_DIR = process.env.SPEC_DIR || 'docs/spec/features';
 const CODE_DIRS = (process.env.CODE_DIRS || 'src').split(',').map((d) => d.trim());
 const STATE_DIR = process.env.STATE_DIR || path.join(process.cwd(), '.claude', 'state');
 const STATE_FILE = path.join(STATE_DIR, 'spec-guard-state.json');
+const HMAC_KEY_PATH = path.join(STATE_DIR, 'hmac.key');
 
 // 状態ディレクトリを作成
 if (!fs.existsSync(STATE_DIR)) {
@@ -50,27 +52,89 @@ if (!fs.existsSync(STATE_DIR)) {
 }
 
 /**
- * 状態を読み込む
+ * HMAC鍵をロード、または生成（REQ-4）
+ */
+function loadOrGenerateHmacKey() {
+  try {
+    if (fs.existsSync(HMAC_KEY_PATH)) {
+      return fs.readFileSync(HMAC_KEY_PATH, 'utf8').trim();
+    }
+    // 鍵を新規生成（256ビット = 32バイト = 64文字のhex）
+    const key = crypto.randomBytes(32).toString('hex');
+    fs.writeFileSync(HMAC_KEY_PATH, key, 'utf8');
+    return key;
+  } catch (e) {
+    logError('HMAC鍵エラー', e.message, e.stack);
+    process.exit(1);
+  }
+}
+
+/**
+ * 状態のHMAC署名を生成（REQ-4）
+ */
+function generateStateHmac(state) {
+  const key = loadOrGenerateHmacKey();
+  const hmac = crypto.createHmac('sha256', key);
+  const data = JSON.stringify({
+    specUpdated: state.specUpdated,
+    updatedAt: state.updatedAt,
+    files: state.files,
+  });
+  hmac.update(data);
+  return hmac.digest('hex');
+}
+
+/**
+ * 状態のHMAC署名を検証（REQ-4）
+ */
+function verifyStateHmac(state, expectedSignature) {
+  const actualSignature = generateStateHmac(state);
+  return actualSignature === expectedSignature;
+}
+
+/**
+ * 状態を読み込む（REQ-4: HMAC署名検証付き）
  */
 function loadState() {
   try {
     if (fs.existsSync(STATE_FILE)) {
-      return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+      const raw = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+
+      if (raw.signature) {
+        // 署名検証
+        if (!verifyStateHmac(raw, raw.signature)) {
+          // fail-closed: 改ざん検知時は状態ファイルを削除して初期状態に
+          logError('状態ファイル改ざん検知', 'HMAC署名が一致しません。ファイルを初期化します。', null);
+          fs.unlinkSync(STATE_FILE);
+          return { specUpdated: false, updatedAt: null, files: [] };
+        }
+        return raw;
+      } else {
+        // 署名なし旧形式: 署名を追加して保存
+        const state = { specUpdated: raw.specUpdated, updatedAt: raw.updatedAt, files: raw.files };
+        saveState(state);
+        return state;
+      }
     }
   } catch (e) {
-    // エラーは無視
+    logError('状態読み込みエラー', e.message, e.stack);
+    // fail-closed: エラー時は初期状態
+    return { specUpdated: false, updatedAt: null, files: [] };
   }
+  // fail-closed: ファイル不存在時は初期状態
   return { specUpdated: false, updatedAt: null, files: [] };
 }
 
 /**
- * 状態を保存
+ * 状態を保存（REQ-4: HMAC署名付き）
  */
 function saveState(state) {
   try {
-    fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), 'utf8');
+    const signature = generateStateHmac(state);
+    const signedState = { ...state, signature };
+    fs.writeFileSync(STATE_FILE, JSON.stringify(signedState, null, 2), 'utf8');
   } catch (e) {
-    // エラーは無視
+    logError('状態保存エラー', e.message, e.stack);
   }
 }
 

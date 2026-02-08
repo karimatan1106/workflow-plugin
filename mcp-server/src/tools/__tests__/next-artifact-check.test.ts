@@ -28,6 +28,33 @@ vi.mock('../../phases/definitions.js', async (importOriginal) => {
   };
 });
 
+// helpersをモック（verifySessionToken）
+vi.mock('../helpers.js', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../helpers.js')>();
+  return {
+    ...original,
+    verifySessionToken: vi.fn(() => null), // Always return null (success)
+  };
+});
+
+// audit/loggerをモック
+vi.mock('../../audit/logger.js', () => ({
+  auditLogger: {
+    log: vi.fn(),
+    countRecentBypasses: vi.fn(() => 0),
+    checkThreshold: vi.fn(() => false),
+  },
+}));
+
+// validation/scope-validatorをモック
+vi.mock('../../validation/scope-validator.js', () => ({
+  validateScopePostExecution: vi.fn(() => ({
+    valid: true,
+    outOfScopeFiles: [],
+    warnings: [],
+  })),
+}));
+
 // design-validatorをモック
 vi.mock('../../validation/design-validator.js', () => ({
   DesignValidator: vi.fn().mockImplementation(() => ({
@@ -61,25 +88,26 @@ const TEST_TASK_ID = '20260207_100000';
 
 /**
  * 有効なモックコンテンツ（artifact-validator要件を満たす）
+ * 各行は10文字以上必要（短い行の比率チェック対策）
  */
 const MOCK_RESEARCH_MD = Array.from({length: 25}, (_, i) =>
-  i === 0 ? '# Research' :
+  i === 0 ? '# Research調査結果ドキュメント' :
   i === 2 ? '## 調査結果' :
-  i === 5 ? '調査内容。' :
+  i === 5 ? '調査内容の詳細を記載します。既存コードを分析しました。' :
   i === 10 ? '## 既存実装の分析' :
-  i === 13 ? '分析内容。' :
-  `内容行${i}`
+  i === 13 ? '分析内容の詳細を記載します。問題点を特定しました。' :
+  `調査事項の内容を記載します。項目番号は${i}です。詳細な説明文。`
 ).join('\n');
 
 const MOCK_REQUIREMENTS_MD = Array.from({length: 35}, (_, i) =>
-  i === 0 ? '# Requirements' :
-  i === 2 ? '## 背景' :
-  i === 5 ? '背景情報。' :
-  i === 10 ? '## 機能要件' :
-  i === 13 ? 'REQ-1。' :
-  i === 20 ? '## 受入条件' :
-  i === 23 ? 'AC-1。' :
-  `内容行${i}`
+  i === 0 ? '# Requirements要件定義ドキュメント' :
+  i === 2 ? '## 背景と目的' :
+  i === 5 ? '背景情報の詳細を記載します。プロジェクトの目的を説明します。' :
+  i === 10 ? '## 機能要件の詳細' :
+  i === 13 ? 'REQ-1: 機能要件の詳細な記述を行います。' :
+  i === 20 ? '## 受入条件の定義' :
+  i === 23 ? 'AC-1: 受入条件の詳細な記述を行います。' :
+  `要件定義の内容を記載します。項目番号は${i}です。詳細な説明文。`
 ).join('\n');
 
 /**
@@ -129,7 +157,8 @@ describe('next.ts - 成果物チェック (REQ-1)', () => {
 
       expect(result.success).toBe(false);
       expect(result.message).toContain('research.md');
-      expect(result.message).toContain('/path/to/docs');
+      // パス区切り文字は環境依存なので正規表現でチェック
+      expect(result.message).toMatch(/path.to.docs/);
     });
   });
 
@@ -245,22 +274,22 @@ describe('next.ts - 成果物チェック (REQ-1)', () => {
       );
       vi.mocked(stateManager.getIncompleteSubPhases).mockReturnValue([]);
 
-      // research.md が存在しない
-      vi.mocked(fs.existsSync).mockImplementation((path) => {
-        const pathStr = String(path);
+      // research.md が存在しない（パス区切り文字をnormalize）
+      vi.mocked(fs.existsSync).mockImplementation((p) => {
+        const pathStr = String(p).replace(/\\/g, '/');
         // workflowDirをベースにチェックされることを確認
         if (pathStr.includes('/path/to/workflow') && pathStr.includes('research.md')) {
           return false;
         }
-        return true;
+        return false;
       });
 
       const result = workflowNext(TEST_TASK_ID) as NextResult;
 
       expect(result.success).toBe(false);
       expect(result.message).toContain('research.md');
-      // workflowDirが使われていることを確認
-      expect(result.message).toContain('/path/to/workflow');
+      // workflowDirが使われていることを確認（パス区切り文字は環境依存）
+      expect(result.message).toMatch(/path.to.workflow/);
     });
   });
 

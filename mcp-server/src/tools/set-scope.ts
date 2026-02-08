@@ -11,7 +11,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { stateManager } from '../state/manager.js';
 import type { ToolResult } from '../state/types.js';
-import { getTaskByIdOrError, safeExecute } from './helpers.js';
+import { getTaskByIdOrError, safeExecute, verifySessionToken } from './helpers.js';
 import {
   validateScopeExists,
   validateScopeDependencies,
@@ -34,12 +34,14 @@ const MAX_SCOPE_DIRS = 20;
  * @param taskId タスクID（必須）
  * @param files 影響を受けるファイルの配列
  * @param dirs 影響を受けるディレクトリの配列
+ * @param sessionToken セッショントークン（オプション、REQ-6）
  * @returns 設定結果
  */
 export function workflowSetScope(
   taskId?: string,
   files?: string[],
-  dirs?: string[]
+  dirs?: string[],
+  sessionToken?: string
 ): ToolResult {
   // タスク状態を取得
   const result = getTaskByIdOrError(taskId);
@@ -48,6 +50,10 @@ export function workflowSetScope(
   }
 
   const { taskState } = result;
+
+  // REQ-6: セッショントークン検証
+  const tokenError = verifySessionToken(taskState, sessionToken);
+  if (tokenError) return tokenError as ToolResult;
   const currentPhase = taskState.phase;
 
   // research/requirements/planningフェーズでのみ許可
@@ -239,6 +245,10 @@ export const setScopeToolDefinition = {
         type: 'array',
         items: { type: 'string' },
         description: '影響を受けるディレクトリのパスリスト',
+      },
+      sessionToken: {
+        type: 'string',
+        description: 'セッショントークン（REQ-6: Orchestrator認証用）',
       },
     },
     required: [],

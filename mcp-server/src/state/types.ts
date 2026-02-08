@@ -250,6 +250,12 @@ export interface TaskState {
    * @spec docs/workflows/ワークフロー全問題完全解決/spec.md#REQ-6
    */
   sessionToken?: string;
+  /** 承認フラグ（FR-9: 段階的承認ゲート） */
+  approvals?: {
+    requirements?: boolean;
+    design?: boolean;
+    test_design?: boolean;
+  };
 }
 
 // ============================================================================
