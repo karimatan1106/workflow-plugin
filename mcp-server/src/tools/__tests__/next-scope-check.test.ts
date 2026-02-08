@@ -159,7 +159,7 @@ describe('REQ-1: planningフェーズscope必須チェック', () => {
   });
 
   // TC-1.2c: 他フェーズはscopeチェック無し
-  test('TC-1.2c: requirementsフェーズはscopeチェック無し', () => {
+  test('TC-1.2c: requirementsフェーズはscopeチェック無し（ただし承認が必要）', () => {
     const taskState = createTaskState({
       phase: 'requirements',
       scope: undefined,
@@ -168,6 +168,9 @@ describe('REQ-1: planningフェーズscope必須チェック', () => {
 
     const result = workflowNext(mockTaskId) as NextResult;
 
-    expect(result.success).toBe(true);
+    // REQ-2実装済み: requirementsフェーズには承認が必要
+    // scopeチェックはないが、承認ゲートが先に発動する
+    expect(result.success).toBe(false);
+    expect(result.message).toMatch(/承認が必要/);
   });
 });

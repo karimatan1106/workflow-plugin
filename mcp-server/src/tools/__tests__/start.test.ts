@@ -21,6 +21,7 @@ vi.mock('fs', () => ({
 vi.mock('../../state/manager.js', () => ({
   stateManager: {
     createTask: vi.fn(),
+    writeTaskState: vi.fn(),
   },
 }));
 
@@ -36,7 +37,7 @@ describe('start.ts - workflow_start ツールテスト', () => {
   });
 
   describe('タスク開始（常にlargeサイズ）', () => {
-    it('success: true, taskSize: "large" が返る', () => {
+    it('success: true, taskSize: "large", sessionToken が返る', () => {
       vi.mocked(stateManager.createTask).mockReturnValue({
         phase: 'research',
         taskId: '20260117_150000',
@@ -47,12 +48,15 @@ describe('start.ts - workflow_start ツールテスト', () => {
         history: [],
         subPhases: {},
         taskSize: 'large',
+        docsDir: 'docs/workflows/テストタスク',
       });
 
-      const result = workflowStart('テストタスク') as StartResult & { taskSize?: string };
+      const result = workflowStart('テストタスク') as StartResult & { taskSize?: string; sessionToken?: string };
 
       expect(result.success).toBe(true);
       expect(result.taskSize).toBe('large');
+      expect(result.sessionToken).toBeDefined();
+      expect(result.sessionToken).toHaveLength(64); // 32 bytes = 64 hex chars
     });
   });
 
@@ -77,6 +81,7 @@ describe('start.ts - workflow_start ツールテスト', () => {
         history: [],
         subPhases: {},
         taskSize: 'large',
+        docsDir: 'docs/workflows/テストタスク',
       });
 
       const result = workflowStart('テストタスク') as StartResult;
@@ -109,7 +114,7 @@ describe('start.ts - docsDir テスト', () => {
     vi.clearAllMocks();
   });
 
-  it('返却値にdocsDirが含まれる', () => {
+  it('返却値にdocsDirとsessionTokenが含まれる', () => {
     vi.mocked(stateManager.createTask).mockReturnValue({
       phase: 'research',
       taskId: '20260118_090000',
@@ -123,9 +128,10 @@ describe('start.ts - docsDir テスト', () => {
       docsDir: 'docs/workflows/テストタスク',
     });
 
-    const result = workflowStart('テストタスク') as StartResult & { docsDir?: string };
+    const result = workflowStart('テストタスク') as StartResult & { docsDir?: string; sessionToken?: string };
 
     expect(result.docsDir).toBe('docs/workflows/テストタスク');
+    expect(result.sessionToken).toBeDefined();
   });
 
   it('docsDirがdocs/workflows/で始まる', () => {

@@ -197,34 +197,32 @@ describe('next.ts - workflow_next ツールテスト (基本遷移)', () => {
   });
 
   describe('WN-002: requirements → parallel_analysis へ遷移', () => {
-    it('from: "requirements", to: "parallel_analysis" が返る', () => {
-      vi.mocked(stateManager.getTaskById).mockReturnValue(
-        createMockTaskState('requirements', 'large')
-      );
+    it('承認が必要というエラーが返る（REQ-2実装済み）', () => {
+      const taskState = createMockTaskState('requirements', 'large');
+      // REQ-2実装済み: requirementsフェーズには承認が必要
+      vi.mocked(stateManager.getTaskById).mockReturnValue(taskState);
 
       const result = workflowNext(TEST_TASK_ID) as NextResult;
 
-      expect(result.success).toBe(true);
-      expect(result.from).toBe('requirements');
-      // large（19フェーズ）では requirements → parallel_analysis
-      expect(result.to).toBe('parallel_analysis');
+      // requirementsは承認フェーズのため、workflow_approveが必要
+      expect(result.success).toBe(false);
+      expect(result.message).toMatch(/承認が必要/);
     });
   });
 
   describe('WN-003: 基本フェーズ遷移（非並列・非承認フェーズ）', () => {
-    it('test_design → test_impl → implementation → refactoring', () => {
-      // 並列フェーズと承認フェーズを除いた基本遷移をテスト
+    it('test_impl → implementation → refactoring（承認不要フェーズのみ）', () => {
+      // test_designは承認フェーズのため除外
       const basicTransitions: Array<[PhaseName, PhaseName]> = [
-        ['test_design', 'test_impl'],
         ['test_impl', 'implementation'],
         ['implementation', 'refactoring'],
       ];
 
       for (const [currentPhase, nextPhase] of basicTransitions) {
         resetCommonMocks();
-        vi.mocked(stateManager.getTaskById).mockReturnValue(
-          createMockTaskState(currentPhase, 'large')
-        );
+        const taskState = createMockTaskState(currentPhase, 'large');
+
+        vi.mocked(stateManager.getTaskById).mockReturnValue(taskState);
 
         const result = workflowNext(TEST_TASK_ID) as NextResult;
 
@@ -234,6 +232,18 @@ describe('next.ts - workflow_next ツールテスト (基本遷移)', () => {
 
         vi.clearAllMocks();
       }
+    });
+
+    it('test_designは承認が必要', () => {
+      resetCommonMocks();
+      const taskState = createMockTaskState('test_design', 'large');
+      vi.mocked(stateManager.getTaskById).mockReturnValue(taskState);
+
+      const result = workflowNext(TEST_TASK_ID) as NextResult;
+
+      // REQ-2実装済み: test_designは承認フェーズ
+      expect(result.success).toBe(false);
+      expect(result.message).toMatch(/承認が必要/);
     });
   });
 });

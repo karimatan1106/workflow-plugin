@@ -94,19 +94,19 @@ describe('REQ-1: SKIP_*環境変数の完全除去', () => {
       // Arrange
       process.env.SKIP_ARTIFACT_CHECK = '1';
 
-      const taskState = mockTaskState('requirements', {
+      const taskState = mockTaskState('research', {
         docsDir: '/tmp/test-docs-req',
       });
 
       vi.spyOn(stateManager, 'getTaskById').mockReturnValue(taskState);
-      vi.mocked(fs.existsSync).mockReturnValue(false); // requirements.mdなし
+      vi.mocked(fs.existsSync).mockReturnValue(false); // research.mdなし
 
       // Act
       const result = workflowNext('test-task-001');
 
       // Assert
       expect(result.success).toBe(false);
-      expect(result.message).toContain('requirements.md');
+      expect(result.message).toContain('research.md');
     });
 
     it('成果物が存在する場合は正常に遷移すること', () => {

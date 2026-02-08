@@ -22,6 +22,7 @@ import { getTaskByIdOrError, safeExecute } from './helpers.js';
 import { STATE_ERRORS } from '../utils/errors.js';
 import { DesignValidator, formatValidationError } from '../validation/design-validator.js';
 import { validateArtifactQuality, PHASE_ARTIFACT_REQUIREMENTS } from '../validation/artifact-validator.js';
+import { validateScopePostExecution } from '../validation/scope-validator.js';
 
 /** スコープサイズ制限（REQ-3） */
 const MAX_SCOPE_FILES = 200;
@@ -309,6 +310,30 @@ export function workflowNext(taskId?: string, sessionToken?: string): NextResult
     };
   }
 
+  // REQ-5: スコープ事後検証（docs_update→commit遷移時）
+  if (currentPhase === 'docs_update') {
+    const scopeFiles = taskState.scope?.affectedFiles || [];
+    const scopeDirs = taskState.scope?.affectedDirs || [];
+    if (scopeFiles.length > 0 || scopeDirs.length > 0) {
+      try {
+        const scopeResult = validateScopePostExecution(scopeFiles, scopeDirs);
+        if (!scopeResult.valid) {
+          if (process.env.SCOPE_STRICT === 'true') {
+            return {
+              success: false,
+              message: `スコープ外のファイルが変更されています:\n${scopeResult.outOfScopeFiles.map(f => `  - ${f}`).join('\n')}\n\nSCOPE_STRICT=true のためブロックされました。`,
+            };
+          }
+          // 警告モード（デフォルト）: 警告のみで続行
+          console.warn(`[scope] スコープ外変更検出（警告モード）: ${scopeResult.outOfScopeFiles.join(', ')}`);
+        }
+      } catch (e) {
+        // git未初期化等のエラーは無視して続行
+        console.warn('[scope] スコープ事後検証をスキップ:', e);
+      }
+    }
+  }
+
   // タスクサイズを取得（未設定の場合はlargeとして扱う）
   const taskSize: TaskSize = taskState.taskSize || DEFAULT_TASK_SIZE;
 
@@ -351,7 +376,7 @@ export function workflowNext(taskId?: string, sessionToken?: string): NextResult
 function getLatestTestResult(
   taskState: TaskState,
   phase: 'testing' | 'regression_test'
-): { phase: 'testing' | 'regression_test'; exitCode: number; timestamp: string; summary?: string } | undefined {
+): { phase: 'testing' | 'regression_test'; exitCode: number; timestamp: string; summary?: string; passedCount?: number; failedCount?: number } | undefined {
   const results = taskState.testResults || [];
   const phaseResults = results.filter(r => r.phase === phase);
 

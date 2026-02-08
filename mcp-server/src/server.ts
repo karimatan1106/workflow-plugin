@@ -92,11 +92,11 @@ interface ToolArguments {
   /** タスク開始 */
   workflow_start: { taskName: string; size?: string };
   /** 次フェーズ遷移（taskId必須） */
-  workflow_next: { taskId?: string };
+  workflow_next: { taskId?: string; sessionToken?: string };
   /** 承認（taskId必須） */
-  workflow_approve: { taskId?: string; type: string };
+  workflow_approve: { taskId?: string; type: string; sessionToken?: string };
   /** リセット（taskId必須） */
-  workflow_reset: { taskId?: string; reason?: string };
+  workflow_reset: { taskId?: string; reason?: string; sessionToken?: string };
   /** タスク一覧（引数なし） */
   workflow_list: Record<string, never>;
   /** サブフェーズ完了（taskId必須） */
@@ -215,18 +215,18 @@ const TOOL_HANDLERS: Record<ToolName, ToolHandler> = {
   },
 
   workflow_next: (args) => {
-    const { taskId } = args as ToolArguments['workflow_next'];
-    return workflowNext(taskId);
+    const { taskId, sessionToken } = args as ToolArguments['workflow_next'];
+    return workflowNext(taskId, sessionToken);
   },
 
   workflow_approve: (args) => {
-    const { taskId, type } = args as ToolArguments['workflow_approve'];
-    return workflowApprove(taskId, type);
+    const { taskId, type, sessionToken } = args as ToolArguments['workflow_approve'];
+    return workflowApprove(taskId, type, sessionToken);
   },
 
   workflow_reset: (args) => {
-    const { taskId, reason } = args as ToolArguments['workflow_reset'];
-    return workflowReset(taskId, reason);
+    const { taskId, reason, sessionToken } = args as ToolArguments['workflow_reset'];
+    return workflowReset(taskId, reason, sessionToken);
   },
 
   workflow_list: () => workflowList(),

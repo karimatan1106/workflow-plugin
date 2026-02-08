@@ -282,7 +282,7 @@ describe('REQ-3: Scope Size Limits', () => {
       );
     });
 
-    test('TC-3-8: next (requirements→parallel_analysis) with oversized scope → blocked', () => {
+    test('TC-3-8: next (requirements→parallel_analysis) → 承認が必要（承認ゲートが先）', () => {
       const files = Array.from({ length: 201 }, (_, i) => `src/file${i}.ts`);
       const taskState = createTaskState({
         phase: 'requirements',
@@ -296,8 +296,10 @@ describe('REQ-3: Scope Size Limits', () => {
 
       const result = workflowNext('test_20260207');
 
+      // REQ-2実装済み: requirementsフェーズには承認が必要
+      // 承認ゲートが先に発動するため、スコープチェックの前に承認エラーが返る
       expect(result.success).toBe(false);
-      expect(result.message).toContain('スコープが大きすぎます');
+      expect(result.message).toMatch(/承認が必要/);
       expect(stateManager.updateTaskPhase).not.toHaveBeenCalled();
     });
   });
