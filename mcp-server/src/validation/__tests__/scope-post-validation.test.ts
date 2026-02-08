@@ -44,7 +44,7 @@ describe('REQ-5: スコープ事後検証', () => {
       expect(result.valid).toBe(true);
       expect(result.warnings.length).toBe(0);
       expect(vi.mocked(execSync)).toHaveBeenCalledWith(
-        'git diff --name-only HEAD',
+        'git diff --name-only --ignore-submodules HEAD',
         expect.objectContaining({
           cwd: '/test/repo',
           encoding: 'utf-8',
@@ -222,7 +222,7 @@ describe('REQ-5: スコープ事後検証', () => {
       validateScopePostExecution(scopeFiles, scopeDirs, '/test/repo');
 
       expect(vi.mocked(execSync)).toHaveBeenCalledWith(
-        'git diff --name-only HEAD',
+        'git diff --name-only --ignore-submodules HEAD',
         expect.objectContaining({
           cwd: '/test/repo',
           encoding: 'utf-8',

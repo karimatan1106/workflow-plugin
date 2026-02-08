@@ -55,26 +55,8 @@ const BASH_WHITELIST = {
   ],
 
   // ビルド修正（build_check）- REQ-2: ホワイトリスト + ブラックリスト適用
-  build_check: [
-    // パッケージマネージャー
-    'npm install', 'npm ci', 'npm run build', 'npm run',
-    'pnpm install', 'pnpm add', 'pnpm run build', 'pnpm run',
-    'yarn install', 'yarn add', 'yarn build', 'yarn run',
-    // ビルドツール
-    'npx tsc', 'npx webpack', 'npx vite build', 'npx vite',
-    'npx esbuild', 'npx rollup',
-    // 基本コマンド
-    'mkdir', 'mkdir -p',
-    'rm -f',
-    'node',
-    // 読み取り系（readonlyを継承）
-    'ls', 'cat', 'head', 'tail', 'less', 'more', 'wc', 'file',
-    'find', 'grep', 'rg', 'ag',
-    'git status', 'git log', 'git diff', 'git show', 'git branch',
-    'git ls-files', 'git ls-tree', 'git rev-parse',
-    'pwd', 'which', 'whereis', 'date', 'uname', 'whoami',
-    'node -e',
-  ],
+  // 他フェーズで許可されているコマンド + ビルド修正専用コマンド
+  build_check: 'auto', // readonly + testing + implementation + 削除コマンド
 
   // コミット（commit, push）
   git: [
@@ -149,9 +131,14 @@ function getWhitelistForPhase(phase) {
   const readonlyPhases = [
     'research', 'requirements', 'threat_modeling', 'planning',
     'state_machine', 'flowchart', 'ui_design', 'test_design',
-    'design_review', 'code_review', 'manual_test', 'security_scan',
-    'performance_test', 'e2e_test', 'docs_update',
+    'design_review', 'code_review', 'manual_test',
   ];
+
+  // FR-1: docs_updateフェーズ（readonly + gh）
+  const docsUpdatePhases = ['docs_update'];
+
+  // FR-2: parallel_verificationサブフェーズ（readonly + testing + gh）
+  const verificationPhases = ['security_scan', 'performance_test', 'e2e_test'];
 
   const testingPhases = ['testing', 'regression_test'];
   const implementationPhases = ['test_impl', 'implementation', 'refactoring'];
@@ -159,6 +146,12 @@ function getWhitelistForPhase(phase) {
 
   if (readonlyPhases.includes(phase)) {
     return BASH_WHITELIST.readonly;
+  } else if (docsUpdatePhases.includes(phase)) {
+    // FR-1: docs_updateはreadonlyコマンド + ghコマンドを許可
+    return [...BASH_WHITELIST.readonly, 'gh'];
+  } else if (verificationPhases.includes(phase)) {
+    // FR-2: verification系サブフェーズはreadonly + testing + ghを許可
+    return [...BASH_WHITELIST.readonly, ...BASH_WHITELIST.testing, 'gh'];
   } else if (testingPhases.includes(phase)) {
     return [...BASH_WHITELIST.readonly, ...BASH_WHITELIST.testing];
   } else if (implementationPhases.includes(phase)) {
@@ -170,19 +163,38 @@ function getWhitelistForPhase(phase) {
   } else if (gitPhases.includes(phase)) {
     return [...BASH_WHITELIST.readonly, ...BASH_WHITELIST.git];
   } else if (phase === 'build_check') {
-    return BASH_WHITELIST.build_check;  // REQ-2: build_checkもホワイトリスト適用
+    // REQ-2: build_checkはビルド修正に必要なコマンドを全て許可
+    return [
+      ...BASH_WHITELIST.readonly,
+      ...BASH_WHITELIST.testing,
+      ...BASH_WHITELIST.implementation,
+      'rm -f', // 削除コマンド
+    ];
   } else {
     return BASH_WHITELIST.readonly; // デフォルトは読み取りのみ
   }
 }
 
 /**
- * Bashコマンドを解析してホワイトリストに基づき許可/拒否を判定
+ * コマンド文字列を分割（複合コマンド対応）
  *
- * @param {string} command - 実行しようとしているコマンド
- * @param {string} phase - 現在のフェーズ
- * @returns {{allowed: boolean, reason?: string}}
+ * @param {string} command - コマンド文字列
+ * @returns {string[]} 分割されたコマンド部
  */
+function splitCommandParts(command) {
+  return command.split(/\s*(?:&&|\|\||;)\s*/).filter(p => p.trim().length > 0);
+}
+
+/**
+ * コマンド部がリダイレクトを含むかチェック
+ *
+ * @param {string} part - コマンド部
+ * @returns {boolean}
+ */
+function hasRedirection(part) {
+  return part.includes('>') || part.includes('>>');
+}
+
 /**
  * ブラックリストパターンにマッチするかチェック
  *
@@ -191,44 +203,34 @@ function getWhitelistForPhase(phase) {
  * @returns {boolean} マッチした場合 true
  */
 function matchesBlacklistEntry(command, entry) {
-  if (entry.type === 'prefix') {
-    // コマンドの各パートの先頭にマッチ（単語境界を考慮）
-    const parts = command.split(/\s*(?:&&|\|\||;)\s*/).filter(p => p.trim().length > 0);
-    for (const part of parts) {
-      const trimmedPart = part.trim();
-      if (trimmedPart.startsWith(entry.pattern)) {
-        return true;
-      }
-    }
-    return false;
-  }
+  const parts = splitCommandParts(command);
 
-  // FR-5: awk + リダイレクト検出
-  if (entry.type === 'awk-redirect') {
-    const parts = command.split(/\s*(?:&&|\|\||;)\s*/).filter(p => p.trim().length > 0);
-    for (const part of parts) {
-      const trimmedPart = part.trim();
-      if (trimmedPart.startsWith('awk') && (trimmedPart.includes('>') || trimmedPart.includes('>>'))) {
-        return true;
-      }
-    }
-    return false;
-  }
+  switch (entry.type) {
+    case 'prefix':
+      // コマンドの各パートの先頭にマッチ
+      return parts.some(part => part.trim().startsWith(entry.pattern));
 
-  // FR-5: xxd + リダイレクト検出
-  if (entry.type === 'xxd-redirect') {
-    const parts = command.split(/\s*(?:&&|\|\||;)\s*/).filter(p => p.trim().length > 0);
-    for (const part of parts) {
-      const trimmedPart = part.trim();
-      if (trimmedPart.startsWith('xxd') && (trimmedPart.includes('>') || trimmedPart.includes('>>'))) {
-        return true;
-      }
-    }
-    return false;
-  }
+    case 'awk-redirect':
+      // awk + リダイレクト検出
+      return parts.some(part => {
+        const trimmed = part.trim();
+        return trimmed.startsWith('awk') && hasRedirection(trimmed);
+      });
 
-  // type === 'contains' の場合は従来通りの部分一致
-  return command.includes(entry.pattern);
+    case 'xxd-redirect':
+      // xxd + リダイレクト検出
+      return parts.some(part => {
+        const trimmed = part.trim();
+        return trimmed.startsWith('xxd') && hasRedirection(trimmed);
+      });
+
+    case 'contains':
+      // 部分一致（コマンド全体で検査）
+      return command.includes(entry.pattern);
+
+    default:
+      return false;
+  }
 }
 
 /**
@@ -243,20 +245,20 @@ function splitCompoundCommand(command) {
   let processed = command;
 
   // ダブルクォート内の内容を置換
-  processed = processed.replace(/"([^"]*?)"/g, (match, content) => {
+  processed = processed.replace(/"([^"]*?)"/g, (match) => {
     const idx = placeholders.length;
     placeholders.push(match);
     return `__QUOTE_PLACEHOLDER_${idx}__`;
   });
 
   // シングルクォート内の内容を置換
-  processed = processed.replace(/'([^']*?)'/g, (match, content) => {
+  processed = processed.replace(/'([^']*?)'/g, (match) => {
     const idx = placeholders.length;
     placeholders.push(match);
     return `__QUOTE_PLACEHOLDER_${idx}__`;
   });
 
-  // Step 2: プレースホルダー状態で分割
+  // Step 2: プレースホルダー状態で分割（splitCommandParts と同じロジック）
   const parts = processed.split(/\s*(?:&&|\|\||;|\|)\s*/).filter(p => p.trim().length > 0);
 
   // Step 3: プレースホルダーを元に戻す
@@ -272,10 +274,38 @@ function splitCompoundCommand(command) {
 function checkBashWhitelist(command, phase) {
   const trimmed = command.trim();
 
+  // FR-3: commitフェーズでのheredoc許可
+  let commandToCheck = trimmed;
+  const heredocReplacements = [];
+
+  if (phase === 'commit' && /^git\s+commit\s+.*\$\(\s*cat\s+<</.test(trimmed)) {
+    // heredocパターンを検出してプレースホルダに置換
+    commandToCheck = trimmed.replace(/\$\(\s*cat\s+<<'?(\w+)'?\s*([\s\S]*?)\1\s*\)/g, (match, delimiter, content) => {
+      const idx = heredocReplacements.length;
+      heredocReplacements.push(match);
+      return `__HEREDOC_PLACEHOLDER_${idx}__`;
+    });
+
+    // heredoc前後にコマンド連結がないことを確認
+    const parts = commandToCheck.split(/\s*(?:&&|\|\||;)\s*/).filter(p => p.trim().length > 0);
+    if (parts.length > 1) {
+      // heredoc内のgit commitコマンド以外の部分にコマンド連結がある
+      const hasExternalChaining = parts.some(part =>
+        !part.includes('git commit') && part.trim().length > 0
+      );
+      if (hasExternalChaining) {
+        return {
+          allowed: false,
+          reason: 'git commit heredoc前後にコマンド連結が検出されました',
+        };
+      }
+    }
+  }
+
   // REQ-2: build_checkでもブラックリストを適用（早期リターン削除）
   // 1. ブラックリストチェック（全フェーズ共通）
   for (const entry of BASH_BLACKLIST) {
-    if (matchesBlacklistEntry(trimmed, entry)) {
+    if (matchesBlacklistEntry(commandToCheck, entry)) {
       return {
         allowed: false,
         reason: `禁止されたコマンド/パターン: ${entry.pattern}`,
@@ -284,8 +314,8 @@ function checkBashWhitelist(command, phase) {
   }
 
   // 2. node -e の特別チェック
-  if (trimmed.startsWith('node -e') || trimmed.includes('node -e')) {
-    const scriptPart = trimmed.substring(trimmed.indexOf('-e') + 2).trim();
+  if (commandToCheck.startsWith('node -e') || commandToCheck.includes('node -e')) {
+    const scriptPart = commandToCheck.substring(commandToCheck.indexOf('-e') + 2).trim();
     for (const pattern of NODE_E_BLACKLIST) {
       if (scriptPart.includes(pattern)) {
         return {
@@ -300,7 +330,7 @@ function checkBashWhitelist(command, phase) {
   const whitelist = getWhitelistForPhase(phase);
 
   // REQ-9: 複合コマンド（&&, ||, ;）を分割（クォート内保護）
-  const commandParts = splitCompoundCommand(trimmed);
+  const commandParts = splitCompoundCommand(commandToCheck);
 
   for (const part of commandParts) {
     const partTrimmed = part.trim();

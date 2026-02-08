@@ -341,6 +341,87 @@ export interface ScopePostValidationResult {
 }
 
 /**
+ * スコープ検証から除外するパターン（FR-4）
+ *
+ * ドキュメント、設定ファイル、内部状態ファイルは除外
+ */
+const EXCLUDE_PATTERNS = [
+  /\.md$/,                           // Markdownドキュメント
+  /package\.json$/,                  // パッケージ定義
+  /package-lock\.json$/,             // npm ロックファイル
+  /pnpm-lock\.yaml$/,                // pnpm ロックファイル
+  /^\.claude\/state\//,              // ワークフロー内部状態
+  /^docs\/workflows\//,              // ワークフロー成果物
+  /\.claude-phase-guard-log\.json$/, // フェーズガード ログ
+  /\.claude-loop-detector-state\.json$/, // ループ検出 状態
+  /\.claude-hook-errors\.log$/,      // フック エラーログ
+];
+
+/**
+ * ファイルが除外パターンに一致するかチェック
+ *
+ * @param filePath ファイルパス
+ * @returns 除外対象の場合 true
+ */
+function isExcludedFile(filePath: string): boolean {
+  return EXCLUDE_PATTERNS.some(pattern => pattern.test(filePath));
+}
+
+/**
+ * FR-5: gitサブモジュールのパスを取得
+ *
+ * @param projectRoot プロジェクトルート
+ * @returns サブモジュールパスの配列
+ */
+export function getSubmodulePaths(projectRoot: string): string[] {
+  const gitmodulesPath = path.join(projectRoot, '.gitmodules');
+
+  // .gitmodulesが存在しない場合は空配列
+  if (!fs.existsSync(gitmodulesPath)) {
+    return [];
+  }
+
+  try {
+    const content = fs.readFileSync(gitmodulesPath, 'utf-8');
+    const pathPattern = /^\s*path\s*=\s*(.+)$/gm;
+    const paths: string[] = [];
+    let match;
+
+    while ((match = pathPattern.exec(content)) !== null) {
+      const submodulePath = match[1].trim();
+
+      // パストラバーサル対策: .. を含むパスを拒否
+      if (submodulePath.includes('..')) {
+        console.warn(`[scope-validator] Invalid submodule path (contains ..): ${submodulePath}`);
+        continue;
+      }
+
+      paths.push(submodulePath);
+    }
+
+    return paths;
+  } catch (error) {
+    console.warn(`[scope-validator] Failed to read .gitmodules: ${error}`);
+    return [];
+  }
+}
+
+/**
+ * ファイルがサブモジュール内か判定
+ *
+ * @param filePath ファイルパス
+ * @param submodulePaths サブモジュールパスの配列
+ * @returns サブモジュール内の場合 true
+ */
+function isInSubmodule(filePath: string, submodulePaths: string[]): boolean {
+  const normalized = filePath.replace(/\\/g, '/');
+  return submodulePaths.some(subPath => {
+    const normalizedSubPath = subPath.replace(/\\/g, '/');
+    return normalized.startsWith(normalizedSubPath + '/') || normalized === normalizedSubPath;
+  });
+}
+
+/**
  * REQ-5: スコープ事後検証
  *
  * implementation/refactoringフェーズ完了後、実際に変更されたファイルが
@@ -365,8 +446,11 @@ export function validateScopePostExecution(
       return { valid: true, outOfScopeFiles: [], warnings: [] };
     }
 
-    // git diff --name-only HEAD で変更ファイルを取得
-    const diffOutput = execSync('git diff --name-only HEAD', {
+    // FR-5: gitサブモジュールのパスを取得
+    const submodulePaths = getSubmodulePaths(projectRoot);
+
+    // git diff --name-only HEAD で変更ファイルを取得（FR-5: サブモジュール無視）
+    const diffOutput = execSync('git diff --name-only --ignore-submodules HEAD', {
       cwd: projectRoot,
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -378,19 +462,12 @@ export function validateScopePostExecution(
 
     const changedFiles = diffOutput.split('\n').map(f => f.trim()).filter(Boolean);
 
-    // 除外パターン（ドキュメント・依存関係ファイル等）
-    const EXCLUDE_PATTERNS = [
-      /\.md$/,
-      /package\.json$/,
-      /package-lock\.json$/,
-      /pnpm-lock\.yaml$/,
-      /^\.claude\/state\//,
-      /^docs\/workflows\//,
-    ];
-
     for (const changedFile of changedFiles) {
       // 除外パターンに一致する場合はスキップ
-      if (EXCLUDE_PATTERNS.some(p => p.test(changedFile))) continue;
+      if (isExcludedFile(changedFile)) continue;
+
+      // FR-5: gitサブモジュール内のファイルをスキップ
+      if (isInSubmodule(changedFile, submodulePaths)) continue;
 
       const absChanged = path.resolve(projectRoot, changedFile);
 

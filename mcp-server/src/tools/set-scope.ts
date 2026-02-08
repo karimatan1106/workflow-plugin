@@ -21,12 +21,60 @@ import {
   validateScopeFiles,
 } from '../validation/scope-validator.js';
 
-/** スコープ設定が可能なフェーズ */
-const ALLOWED_PHASES = ['research', 'requirements', 'planning'] as const;
+/** FR-6: スコープ設定が可能なフェーズ（拡張対応） */
+const ALLOWED_PHASES = [
+  'research',
+  'requirements',
+  'planning',
+  'implementation',
+  'refactoring',
+  'testing',
+] as const;
 
 /** スコープサイズ制限（REQ-3） */
 const MAX_SCOPE_FILES = 200;
 const MAX_SCOPE_DIRS = 20;
+
+/**
+ * フェーズの許可確認
+ *
+ * @param phase 対象フェーズ
+ * @returns エラーオブジェクト、または null（許可の場合）
+ */
+function validatePhasePermission(phase: string): ToolResult | null {
+  if (!ALLOWED_PHASES.includes(phase as typeof ALLOWED_PHASES[number])) {
+    return {
+      success: false,
+      message: `影響範囲の設定は${ALLOWED_PHASES.join('/')}フェーズでのみ可能です（現在: ${phase}）`,
+    };
+  }
+  return null;
+}
+
+/**
+ * スコープサイズの検証
+ *
+ * @param files ファイルリスト
+ * @param dirs ディレクトリリスト
+ * @returns エラーオブジェクト、または null（OK の場合）
+ */
+function validateScopeSize(files: string[], dirs: string[]): ToolResult | null {
+  if (files.length > MAX_SCOPE_FILES) {
+    return {
+      success: false,
+      message: `スコープが大きすぎます（ファイル: ${files.length}件、上限: ${MAX_SCOPE_FILES}件）。\nタスクを機能単位に分割してください。`,
+    };
+  }
+
+  if (dirs.length > MAX_SCOPE_DIRS) {
+    return {
+      success: false,
+      message: `スコープが大きすぎます（ディレクトリ: ${dirs.length}件、上限: ${MAX_SCOPE_DIRS}件）。\nタスクを機能単位に分割してください。`,
+    };
+  }
+
+  return null;
+}
 
 /**
  * 影響範囲を設定
@@ -54,15 +102,6 @@ export function workflowSetScope(
   // REQ-6: セッショントークン検証
   const tokenError = verifySessionToken(taskState, sessionToken);
   if (tokenError) return tokenError as ToolResult;
-  const currentPhase = taskState.phase;
-
-  // research/requirements/planningフェーズでのみ許可
-  if (!ALLOWED_PHASES.includes(currentPhase as typeof ALLOWED_PHASES[number])) {
-    return {
-      success: false,
-      message: `影響範囲の設定はresearch/requirements/planningフェーズでのみ可能です（現在: ${currentPhase}）`,
-    };
-  }
 
   // 引数検証
   const affectedFiles = Array.isArray(files) ? files : [];
@@ -75,20 +114,13 @@ export function workflowSetScope(
     };
   }
 
-  // REQ-3: スコープサイズ制限チェック
-  if (affectedFiles.length > MAX_SCOPE_FILES) {
-    return {
-      success: false,
-      message: `スコープが大きすぎます（ファイル: ${affectedFiles.length}件、上限: ${MAX_SCOPE_FILES}件）。\nタスクを機能単位に分割してください。`,
-    };
-  }
+  // FR-6: フェーズ許可確認
+  const phaseError = validatePhasePermission(taskState.phase);
+  if (phaseError) return phaseError;
 
-  if (affectedDirs.length > MAX_SCOPE_DIRS) {
-    return {
-      success: false,
-      message: `スコープが大きすぎます（ディレクトリ: ${affectedDirs.length}件、上限: ${MAX_SCOPE_DIRS}件）。\nタスクを機能単位に分割してください。`,
-    };
-  }
+  // REQ-3: スコープサイズ制限チェック
+  const sizeError = validateScopeSize(affectedFiles, affectedDirs);
+  if (sizeError) return sizeError;
 
   // REQ-5: ディレクトリ深度検証
   const depthResult = validateScopeDepth(affectedDirs);

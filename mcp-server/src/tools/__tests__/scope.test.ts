@@ -116,16 +116,16 @@ describe('workflowSetScope', () => {
     expect(result.message).toContain('files または dirs の少なくとも1つを指定してください');
   });
 
-  // TC-1.5: research以外のフェーズでエラー
-  test('should fail when not in research phase', () => {
-    mockTaskState.phase = 'implementation';
+  // TC-1.5: ALLOWED_PHASES以外のフェーズでエラー
+  test('should fail when not in allowed phase', () => {
+    mockTaskState.phase = 'commit';
     vi.mocked(stateManager.getTaskById).mockReturnValue(mockTaskState);
 
     const result = workflowSetScope(mockTaskId, ['src/index.ts'], []);
 
     expect(result.success).toBe(false);
-    expect(result.message).toContain('影響範囲の設定はresearch/requirements/planningフェーズでのみ可能です');
-    expect(result.message).toContain('現在: implementation');
+    expect(result.message).toContain('research/requirements/planning/implementation/refactoring/testing');
+    expect(result.message).toContain('現在: commit');
   });
 
   // タスクIDが指定されていない場合

@@ -86,19 +86,19 @@ describe('REQ-1: set-scope フェーズ拡張', () => {
     expect(result.scope?.affectedDirs).toEqual(['src/backend/']);
   });
 
-  // TC-SS-4: implementationフェーズでscope設定不可
-  test('TC-SS-4: implementationフェーズでscope設定不可', () => {
-    vi.mocked(stateManager.getTaskById).mockReturnValue(createTaskState('implementation'));
+  // TC-SS-4: commitフェーズでscope設定不可
+  test('TC-SS-4: commitフェーズでscope設定不可', () => {
+    vi.mocked(stateManager.getTaskById).mockReturnValue(createTaskState('commit'));
 
     const result = workflowSetScope(mockTaskId, ['src/a.ts'], []) as ScopeResult;
 
     expect(result.success).toBe(false);
-    expect(result.message).toContain('research/requirements/planning');
+    expect(result.message).toContain('research/requirements/planning/implementation/refactoring/testing');
   });
 
-  // TC-SS-5: testingフェーズでscope設定不可
-  test('TC-SS-5: testingフェーズでscope設定不可', () => {
-    vi.mocked(stateManager.getTaskById).mockReturnValue(createTaskState('testing'));
+  // TC-SS-5: docs_updateフェーズでscope設定不可
+  test('TC-SS-5: docs_updateフェーズでscope設定不可', () => {
+    vi.mocked(stateManager.getTaskById).mockReturnValue(createTaskState('docs_update'));
 
     const result = workflowSetScope(mockTaskId, ['src/a.ts'], []) as ScopeResult;
 
