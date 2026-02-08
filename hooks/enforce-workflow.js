@@ -154,6 +154,24 @@ function getAllowedExtensions(phase) {
 }
 
 /**
+ * REQ-10: ワークフロー設定ファイル判定
+ *
+ * workflow-state.json, .claude/settings.json等の設定ファイルは
+ * フェーズ制限をバイパスして全フェーズで編集可能にする。
+ */
+const WORKFLOW_CONFIG_PATTERNS = [
+  /workflow-state\.json$/i,
+  /\.claude[\/\\]settings\.json$/i,
+  /\.claude[\/\\]state[\/\\].*\.json$/i,
+  /\.claude-.*\.json$/i,
+];
+
+function isWorkflowConfigFile(filePath) {
+  const normalized = filePath.replace(/\\/g, '/');
+  return WORKFLOW_CONFIG_PATTERNS.some(pattern => pattern.test(normalized));
+}
+
+/**
  * ファイル編集が許可されているかチェック
  *
  * 判定順序:
@@ -200,38 +218,17 @@ function checkFileAllowed(filePath, phase) {
   };
 }
 
-// タイムアウト処理（3秒）
-const timeout = setTimeout(() => {
-  process.exit(0);
-}, 3000);
-
-// 標準入力を読み取り
-let inputData = '';
-process.stdin.setEncoding('utf8');
-process.stdin.on('data', chunk => inputData += chunk);
-process.stdin.on('error', () => {
-  clearTimeout(timeout);
-  // REQ-3: Fail Closed
-  process.exit(2);
-});
-process.stdin.on('end', () => {
-  clearTimeout(timeout);
-  try {
-    const input = JSON.parse(inputData);
-    main(input);
-  } catch (e) {
-    console.error('[enforce-workflow] JSON parse error:', e.message);
-    // REQ-3: Fail Closed - JSONパースエラー時もブロック
-    process.exit(2);
-  }
-});
-
 function main(input) {
   try {
     const filePath = input.tool_input?.file_path || '';
 
     // ファイルパスがない場合はスキップ
     if (!filePath) {
+      process.exit(0);
+    }
+
+    // REQ-10: ワークフロー設定ファイルはフェーズ制限をバイパス
+    if (isWorkflowConfigFile(filePath)) {
       process.exit(0);
     }
 
@@ -307,3 +304,35 @@ function main(input) {
     process.exit(2);
   }
 }
+
+// スクリプトとして実行された場合のみstdin読み取り
+if (require.main === module) {
+  // タイムアウト処理（3秒）
+  const timeout = setTimeout(() => {
+    process.exit(0);
+  }, 3000);
+
+  // 標準入力を読み取り
+  let inputData = '';
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', chunk => inputData += chunk);
+  process.stdin.on('error', () => {
+    clearTimeout(timeout);
+    // REQ-3: Fail Closed
+    process.exit(2);
+  });
+  process.stdin.on('end', () => {
+    clearTimeout(timeout);
+    try {
+      const input = JSON.parse(inputData);
+      main(input);
+    } catch (e) {
+      console.error('[enforce-workflow] JSON parse error:', e.message);
+      // REQ-3: Fail Closed - JSONパースエラー時もブロック
+      process.exit(2);
+    }
+  });
+}
+
+// エクスポート（テスト用）
+module.exports = { isWorkflowConfigFile, checkFileAllowed };

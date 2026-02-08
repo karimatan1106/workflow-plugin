@@ -861,8 +861,8 @@ function identifyActiveSubPhase(workflowState, subPhases) {
 /**
  * 指定フェーズでファイルタイプの編集が許可されるか判定
  *
- * 判定ロジック:
- * 1. フェーズが不明な場合は許可（安全側）
+ * 判定ロジック (REQ-1: fail-closed):
+ * 1. フェーズが不明な場合はブロック（fail-closed）
  * 2. allowed に含まれていれば許可
  * 3. blocked に含まれていれば禁止
  * 4. どちらにも含まれない場合は許可（安全側）
@@ -872,15 +872,15 @@ function identifyActiveSubPhase(workflowState, subPhases) {
  * @returns {boolean} 編集が許可される場合 true
  */
 function canEditInPhase(phase, fileType) {
-  // null/undefined/空文字フェーズは許可（安全側）
+  // REQ-1: null/undefined/空文字フェーズはブロック（fail-closed）
   if (!phase) {
-    return true;
+    return false;
   }
 
-  // 未知のフェーズは許可（安全側）
+  // REQ-1: 未知のフェーズはブロック（fail-closed）
   const isKnownPhase = PHASE_RULES[phase] || PARALLEL_PHASES[phase];
   if (!isKnownPhase) {
-    return true;
+    return false;
   }
 
   // フェーズルールを取得
@@ -1262,11 +1262,28 @@ function splitCompoundCommand(command) {
  * BashコマンドがファイルMを修正するかどうか判定
  *
  * @param {string} command - Bashコマンド
- * @returns {{isModifying: boolean, filePath: string | null}} 修正の有無とファイルパス
+ * @returns {{isModifying: boolean, filePath: string | null, isExplicitlyAllowed: boolean}} 修正の有無とファイルパス
  */
 function analyzeBashCommand(command) {
   if (!command || typeof command !== 'string') {
     return { isModifying: false, filePath: null, isExplicitlyAllowed: false };
+  }
+
+  // REQ-8: ホワイトリストチェック（フェーズ不要な読み取り専用コマンド）
+  // bash-whitelist.js の readonly リストと同等のチェック
+  const readonlyPatterns = [
+    /^\s*(ls|cat|head|tail|less|more|wc|file)\s/i,
+    /^\s*(find|grep|rg|ag)\s/i,
+    /^\s*git\s+(status|log|diff|show|branch|ls-files|ls-tree|rev-parse)\b/i,
+    /^\s*(pwd|which|whereis|date|uname|whoami)\s/i,
+    /^\s*node\s+-e\s+["']/i,  // node -e with quoted string
+  ];
+
+  for (const pattern of readonlyPatterns) {
+    if (pattern.test(command)) {
+      debugLog('REQ-8: 明示的に許可されたコマンド（ホワイトリスト）:', command.substring(0, 50));
+      return { isModifying: false, filePath: null, isExplicitlyAllowed: true };
+    }
   }
 
   // REQ-4: 複合コマンドを分割してチェック

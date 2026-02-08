@@ -4,6 +4,7 @@
  */
 
 import * as fs from 'fs';
+import * as path from 'path';
 
 /**
  * スコープ深度検証結果
@@ -93,5 +94,171 @@ export function validateScopeFiles(affectedFiles: string[]): ScopeFileResult {
   return {
     valid: errors.length === 0,
     errors,
+  };
+}
+
+/**
+ * REQ-5: 依存関係追跡結果
+ */
+export interface DependencyTrackingResult {
+  allFiles: string[];
+  importedFiles: string[];
+  warnings: string[];
+}
+
+/**
+ * REQ-5: ファイルからimport文を抽出
+ *
+ * @param content ファイル内容
+ * @param filePath ファイルパス（外部パッケージ判定用）
+ * @returns import先パスの配列（相対パスのみ、外部パッケージ除外）
+ */
+export function extractImports(content: string, filePath: string): string[] {
+  const imports: string[] = [];
+
+  // ES6 import: import ... from '...'
+  const es6Pattern = /import\s+(?:[\w\s{},*]+\s+from\s+)?['"]([^'"]+)['"]/g;
+  let match;
+  while ((match = es6Pattern.exec(content)) !== null) {
+    const importPath = match[1];
+    // 外部パッケージ（相対パスでないもの）を除外
+    if (importPath.startsWith('.') || importPath.startsWith('/')) {
+      imports.push(importPath);
+    }
+  }
+
+  // CommonJS require: require('...')
+  const requirePattern = /require\(['"]([^'"]+)['"]\)/g;
+  while ((match = requirePattern.exec(content)) !== null) {
+    const importPath = match[1];
+    if (importPath.startsWith('.') || importPath.startsWith('/')) {
+      imports.push(importPath);
+    }
+  }
+
+  return imports;
+}
+
+/**
+ * REQ-5: 相対importパスを解決
+ *
+ * @param baseFile importを含むファイルのパス
+ * @param importPath import文のパス
+ * @returns 解決された絶対パス、またはnull
+ */
+export function resolveImportPath(baseFile: string, importPath: string): string | null {
+  // 外部パッケージはスキップ
+  if (!importPath.startsWith('.') && !importPath.startsWith('/')) {
+    return null;
+  }
+
+  const baseDir = path.dirname(baseFile);
+  const resolved = path.join(baseDir, importPath);
+  // Normalize path separators
+  const normalized = resolved.replace(/\\/g, '/');
+
+  // 拡張子がある場合、そのまま返す
+  const ext = path.extname(importPath);
+  if (ext) {
+    return normalized;
+  }
+
+  // 拡張子なし: .ts, .tsx, .js, .jsx を順番に試す
+  const extensions = ['.ts', '.tsx', '.js', '.jsx'];
+  for (const tryExt of extensions) {
+    const tryPath = normalized + tryExt;
+    if (fs.existsSync(tryPath)) {
+      return tryPath;
+    }
+  }
+
+  // index.ts 等も試す
+  for (const tryExt of extensions) {
+    const indexPath = path.join(normalized, `index${tryExt}`).replace(/\\/g, '/');
+    if (fs.existsSync(indexPath)) {
+      return indexPath;
+    }
+  }
+
+  // デフォルトは .ts
+  return normalized + '.ts';
+}
+
+/**
+ * ファイルがスコープ内か判定
+ */
+function isFileInScope(filePath: string, affectedDirs: string[]): boolean {
+  const normalized = filePath.replace(/\\/g, '/');
+  return affectedDirs.some(dir => {
+    const normalizedDir = dir.replace(/\\/g, '/');
+    return normalized.startsWith(normalizedDir);
+  });
+}
+
+/**
+ * REQ-5: 依存関係を追跡
+ *
+ * @param affectedFiles 変更対象ファイルの配列
+ * @param affectedDirs スコープディレクトリ（文字列または配列）
+ * @param options オプション（maxDepth等）
+ * @returns 追跡結果
+ */
+export function trackDependencies(
+  affectedFiles: string[],
+  affectedDirs: string | string[],
+  options: { maxDepth?: number } = {},
+): DependencyTrackingResult {
+  const maxDepth = options.maxDepth ?? 3;
+  const dirs = Array.isArray(affectedDirs) ? affectedDirs : [affectedDirs];
+
+  const allFiles = new Set<string>(affectedFiles);
+  const importedFiles: string[] = [];
+  const warnings: string[] = [];
+  const visited = new Set<string>();
+
+  // BFS with depth tracking
+  let queue: Array<{ file: string; depth: number }> = affectedFiles.map(f => ({ file: f, depth: 0 }));
+
+  while (queue.length > 0) {
+    const { file, depth } = queue.shift()!;
+
+    if (visited.has(file)) continue;
+    visited.add(file);
+
+    if (depth >= maxDepth) continue;
+
+    // Read file and extract imports
+    try {
+      if (!fs.existsSync(file)) continue;
+      const content = fs.readFileSync(file, 'utf-8');
+      const imports = extractImports(content, file);
+
+      for (const imp of imports) {
+        const resolved = resolveImportPath(file, imp);
+        if (!resolved) continue;
+
+        if (!allFiles.has(resolved)) {
+          allFiles.add(resolved);
+          importedFiles.push(resolved);
+
+          // Check if in scope
+          if (!isFileInScope(resolved, dirs)) {
+            warnings.push(`${resolved} out of scope (imported from ${file})`);
+          }
+        }
+
+        if (!visited.has(resolved)) {
+          queue.push({ file: resolved, depth: depth + 1 });
+        }
+      }
+    } catch {
+      // File read error - skip
+    }
+  }
+
+  return {
+    allFiles: Array.from(allFiles),
+    importedFiles,
+    warnings,
   };
 }

@@ -25,6 +25,8 @@ const BASH_WHITELIST = {
     'git ls-files', 'git ls-tree', 'git rev-parse',
     // その他
     'pwd', 'which', 'whereis', 'date', 'uname', 'whoami',
+    // 出力（リダイレクトなしならOK - ブラックリストで > 検出）
+    'echo',
     // node -e（読み取り系のみ - 後述の検証が必要）
     'node -e',
   ],
@@ -52,9 +54,26 @@ const BASH_WHITELIST = {
     'mkdir', 'mkdir -p',
   ],
 
-  // ビルド修正（build_check）
+  // ビルド修正（build_check）- REQ-2: ホワイトリスト + ブラックリスト適用
   build_check: [
-    // 全コマンド許可（フックでチェックしない）
+    // パッケージマネージャー
+    'npm install', 'npm ci', 'npm run build', 'npm run',
+    'pnpm install', 'pnpm add', 'pnpm run build', 'pnpm run',
+    'yarn install', 'yarn add', 'yarn build', 'yarn run',
+    // ビルドツール
+    'npx tsc', 'npx webpack', 'npx vite build', 'npx vite',
+    'npx esbuild', 'npx rollup',
+    // 基本コマンド
+    'mkdir', 'mkdir -p',
+    'rm -f',
+    'node',
+    // 読み取り系（readonlyを継承）
+    'ls', 'cat', 'head', 'tail', 'less', 'more', 'wc', 'file',
+    'find', 'grep', 'rg', 'ag',
+    'git status', 'git log', 'git diff', 'git show', 'git branch',
+    'git ls-files', 'git ls-tree', 'git rev-parse',
+    'pwd', 'which', 'whereis', 'date', 'uname', 'whoami',
+    'node -e',
   ],
 
   // コミット（commit, push）
@@ -132,7 +151,7 @@ function getWhitelistForPhase(phase) {
   } else if (gitPhases.includes(phase)) {
     return [...BASH_WHITELIST.readonly, ...BASH_WHITELIST.git];
   } else if (phase === 'build_check') {
-    return []; // build_checkは全コマンド許可（ホワイトリスト不要）
+    return BASH_WHITELIST.build_check;  // REQ-2: build_checkもホワイトリスト適用
   } else {
     return BASH_WHITELIST.readonly; // デフォルトは読み取りのみ
   }
@@ -168,15 +187,49 @@ function matchesBlacklistEntry(command, entry) {
   return command.includes(entry.pattern);
 }
 
+/**
+ * REQ-9: 複合コマンドを分割（クォート内のセミコロンを保護）
+ *
+ * node -e "var a=1;console.log(a)" のクォート内セミコロンを
+ * Bashのコマンド区切りとして誤解析しないよう保護する。
+ */
+function splitCompoundCommand(command) {
+  // Step 1: クォート内容をプレースホルダーに置換
+  const placeholders = [];
+  let processed = command;
+
+  // ダブルクォート内の内容を置換
+  processed = processed.replace(/"([^"]*?)"/g, (match, content) => {
+    const idx = placeholders.length;
+    placeholders.push(match);
+    return `__QUOTE_PLACEHOLDER_${idx}__`;
+  });
+
+  // シングルクォート内の内容を置換
+  processed = processed.replace(/'([^']*?)'/g, (match, content) => {
+    const idx = placeholders.length;
+    placeholders.push(match);
+    return `__QUOTE_PLACEHOLDER_${idx}__`;
+  });
+
+  // Step 2: プレースホルダー状態で分割
+  const parts = processed.split(/\s*(?:&&|\|\||;|\|)\s*/).filter(p => p.trim().length > 0);
+
+  // Step 3: プレースホルダーを元に戻す
+  return parts.map(part => {
+    let restored = part;
+    for (let i = 0; i < placeholders.length; i++) {
+      restored = restored.replace(`__QUOTE_PLACEHOLDER_${i}__`, placeholders[i]);
+    }
+    return restored.trim();
+  });
+}
+
 function checkBashWhitelist(command, phase) {
   const trimmed = command.trim();
 
-  // build_check フェーズは全コマンド許可（ブラックリストチェックもスキップ）
-  if (phase === 'build_check') {
-    return { allowed: true };
-  }
-
-  // 1. ブラックリストチェック（全フェーズ共通、build_check以外）
+  // REQ-2: build_checkでもブラックリストを適用（早期リターン削除）
+  // 1. ブラックリストチェック（全フェーズ共通）
   for (const entry of BASH_BLACKLIST) {
     if (matchesBlacklistEntry(trimmed, entry)) {
       return {
@@ -202,8 +255,8 @@ function checkBashWhitelist(command, phase) {
   // 3. フェーズ別ホワイトリストチェック
   const whitelist = getWhitelistForPhase(phase);
 
-  // 複合コマンド（&&, ||, ;）を分割して各パートをチェック
-  const commandParts = trimmed.split(/\s*(?:&&|\|\||;)\s*/).filter(p => p.trim().length > 0);
+  // REQ-9: 複合コマンド（&&, ||, ;）を分割（クォート内保護）
+  const commandParts = splitCompoundCommand(trimmed);
 
   for (const part of commandParts) {
     const partTrimmed = part.trim();
@@ -237,6 +290,7 @@ function checkBashWhitelist(command, phase) {
 module.exports = {
   checkBashWhitelist,
   getWhitelistForPhase,
+  splitCompoundCommand,  // REQ-9: テスト用にエクスポート
   BASH_WHITELIST,
   BASH_BLACKLIST,
   NODE_E_BLACKLIST,

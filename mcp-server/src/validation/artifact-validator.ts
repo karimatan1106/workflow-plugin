@@ -171,3 +171,72 @@ export function validateArtifactQuality(
     errors,
   };
 }
+
+/**
+ * REQ-4: トレーサビリティ検証結果
+ */
+export interface TraceabilityValidationResult {
+  passed: boolean;
+  missingTraces: string[];
+  errors: string[];
+}
+
+/**
+ * REQ-4: 要件→テストのトレーサビリティ検証
+ *
+ * requirements.mdのREQ-IDがtest-design.mdで参照されているか検証する。
+ *
+ * @param docsDir ワークフロー成果物ディレクトリ
+ * @returns トレーサビリティ検証結果
+ */
+export function validateTraceability(docsDir: string): TraceabilityValidationResult {
+  const requirementsPath = path.join(docsDir, 'requirements.md');
+  const testDesignPath = path.join(docsDir, 'test-design.md');
+  const errors: string[] = [];
+  const missingTraces: string[] = [];
+
+  // ファイル存在チェック
+  if (!fs.existsSync(requirementsPath)) {
+    return { passed: false, missingTraces: [], errors: ['requirements.md not found'] };
+  }
+  if (!fs.existsSync(testDesignPath)) {
+    return { passed: false, missingTraces: [], errors: ['test-design.md not found'] };
+  }
+
+  // requirements.mdからREQ-ID抽出
+  const reqContent = fs.readFileSync(requirementsPath, 'utf-8');
+  const reqIds = new Set<string>();
+  const reqPattern = /REQ-(\d+)/g;
+  let match;
+  while ((match = reqPattern.exec(reqContent)) !== null) {
+    reqIds.add(`REQ-${match[1]}`);
+  }
+
+  // REQ-IDが0件の場合、検証スキップ
+  if (reqIds.size === 0) {
+    return { passed: true, missingTraces: [], errors: [] };
+  }
+
+  // test-design.mdからREQ-ID参照を抽出
+  const testContent = fs.readFileSync(testDesignPath, 'utf-8');
+  const coveredReqs = new Set<string>();
+
+  // TC-X-Y: REQ-N 形式
+  const tcReqPattern = /REQ-(\d+)/g;
+  while ((match = tcReqPattern.exec(testContent)) !== null) {
+    coveredReqs.add(`REQ-${match[1]}`);
+  }
+
+  // カバーされていないREQ-IDを検出
+  for (const reqId of reqIds) {
+    if (!coveredReqs.has(reqId)) {
+      missingTraces.push(reqId);
+    }
+  }
+
+  return {
+    passed: missingTraces.length === 0,
+    missingTraces,
+    errors,
+  };
+}

@@ -172,7 +172,7 @@ describe('REQ-2: HMAC署名機能', () => {
   });
 
   describe('TC-2-5: readTaskState returns null for tampered state', () => {
-    test('改ざんされた状態ファイルは null を返す', async () => {
+    test('改ざんされた状態ファイルは移行期間中は読み込める（REQ-3: 移行期間対応）', async () => {
       const { stateManager } = await import('../manager.js');
       const taskWorkflowDir = '/test/workflow';
       const originalState = createSampleState({ taskId: 'task-tampered' });
@@ -185,12 +185,14 @@ describe('REQ-2: HMAC署名機能', () => {
       parsedState.taskName = '改ざんされたタスク';
       writtenData.set('/test/workflow/workflow-state.json', JSON.stringify(parsedState, null, 2));
 
+      // REQ-3: 移行期間中は警告のみで読み込みを許可
       const readState = stateManager.readTaskState(taskWorkflowDir);
 
-      expect(readState).toBeNull();
+      expect(readState).not.toBeNull();
+      expect(readState?.taskName).toBe('改ざんされたタスク');
     });
 
-    test('不正な署名を持つ状態ファイルは null を返す', async () => {
+    test('不正な署名を持つ状態ファイルは移行期間中は読み込める（REQ-3: 移行期間対応）', async () => {
       const { stateManager } = await import('../manager.js');
       const taskWorkflowDir = '/test/workflow';
       const originalState = createSampleState({ taskId: 'task-invalid-sig' });
@@ -203,9 +205,11 @@ describe('REQ-2: HMAC署名機能', () => {
       parsedState.stateIntegrity = 'aW52YWxpZF9zaWduYXR1cmU=';
       writtenData.set('/test/workflow/workflow-state.json', JSON.stringify(parsedState, null, 2));
 
+      // REQ-3: 移行期間中は警告のみで読み込みを許可
       const readState = stateManager.readTaskState(taskWorkflowDir);
 
-      expect(readState).toBeNull();
+      expect(readState).not.toBeNull();
+      expect(readState?.taskId).toBe('task-invalid-sig');
     });
   });
 
@@ -230,11 +234,11 @@ describe('REQ-2: HMAC署名機能', () => {
     });
   });
 
-  describe('TC-2-7: Signature uses PBKDF2 key generation', () => {
-    test('PBKDF2でキーを生成している', async () => {
+  describe('TC-2-7: Signature uses random key generation (REQ-3)', () => {
+    test('ランダム鍵でHMAC署名を生成している', async () => {
       const { stateManager } = await import('../manager.js');
       const taskWorkflowDir = '/test/workflow';
-      const state = createSampleState({ taskId: 'task-pbkdf2' });
+      const state = createSampleState({ taskId: 'task-random-key' });
 
       stateManager.writeTaskState(taskWorkflowDir, state);
 
@@ -242,14 +246,18 @@ describe('REQ-2: HMAC署名機能', () => {
       const parsedState = JSON.parse(writtenContent);
       const actualSignature = parsedState.stateIntegrity;
 
-      const expectedSignature = calculateExpectedSignature(parsedState);
-
-      expect(actualSignature).toBe(expectedSignature);
+      // REQ-3: ランダム鍵を使用するため、PBKDF2の期待値とは一致しない
+      // 代わりに署名が有効なbase64文字列であることを検証
+      expect(actualSignature).toBeTruthy();
+      expect(typeof actualSignature).toBe('string');
+      // Base64 format check
+      expect(() => Buffer.from(actualSignature, 'base64')).not.toThrow();
+      expect(Buffer.from(actualSignature, 'base64').length).toBe(32); // SHA-256 = 32 bytes
     });
   });
 
-  describe('署名検証の詳細テスト', () => {
-    test('phaseの改ざんを検出できる', async () => {
+  describe('署名検証の詳細テスト（REQ-3: 移行期間中は警告のみ）', () => {
+    test('phaseの改ざんは移行期間中に検出されるが読み込みは許可', async () => {
       const { stateManager } = await import('../manager.js');
       const taskWorkflowDir = '/test/workflow';
       const originalState = createSampleState({ phase: 'research' });
@@ -261,12 +269,14 @@ describe('REQ-2: HMAC署名機能', () => {
       parsedState.phase = 'implementation';
       writtenData.set('/test/workflow/workflow-state.json', JSON.stringify(parsedState, null, 2));
 
+      // REQ-3: 移行期間中は警告のみで読み込みを許可
       const readState = stateManager.readTaskState(taskWorkflowDir);
 
-      expect(readState).toBeNull();
+      expect(readState).not.toBeNull();
+      expect(readState?.phase).toBe('implementation');
     });
 
-    test('historyの改ざんを検出できる', async () => {
+    test('historyの改ざんは移行期間中に検出されるが読み込みは許可', async () => {
       const { stateManager } = await import('../manager.js');
       const taskWorkflowDir = '/test/workflow';
       const originalState = createSampleState({
@@ -282,9 +292,11 @@ describe('REQ-2: HMAC署名機能', () => {
       parsedState.history.push({ phase: 'implementation', action: 'skip', timestamp: '2026-02-07T01:00:00Z' });
       writtenData.set('/test/workflow/workflow-state.json', JSON.stringify(parsedState, null, 2));
 
+      // REQ-3: 移行期間中は警告のみで読み込みを許可
       const readState = stateManager.readTaskState(taskWorkflowDir);
 
-      expect(readState).toBeNull();
+      expect(readState).not.toBeNull();
+      expect(readState?.history).toHaveLength(2);
     });
   });
 

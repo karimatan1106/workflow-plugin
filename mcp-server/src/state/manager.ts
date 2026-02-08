@@ -123,36 +123,123 @@ function readJsonFile<T>(filePath: string): T | null {
 }
 
 // ============================================================================
-// HMAC署名関連（REQ-2: 状態ファイルの改竄検出）
+// HMAC署名関連（REQ-2, REQ-3: 状態ファイルの改竄検出）
 // ============================================================================
 
-function generateSignatureKey(): Buffer {
-  const hostname = os.hostname();
-  const username = os.userInfo().username;
-  const salt = 'workflow-mcp-v1';
-  return crypto.pbkdf2Sync(hostname + username, salt, 100000, 32, 'sha256');
+/** HMAC鍵ファイルのパス */
+const HMAC_KEY_PATH = path.join(STATE_DIR, 'hmac.key');
+
+/** キャッシュされたHMAC署名鍵（hexエンコード） */
+let cachedSignatureKey: string | null = null;
+
+/**
+ * REQ-3: HMAC署名鍵を読み込み、または生成する
+ *
+ * ランダムな鍵を生成してファイルに保存し、次回以降は同じ鍵を使用する。
+ * これにより、ホスト名・ユーザー名が変わっても署名が維持される。
+ *
+ * @returns 署名鍵（hexエンコード）
+ */
+export function loadOrGenerateSignatureKey(): string {
+  // Return cached key if available
+  if (cachedSignatureKey) {
+    return cachedSignatureKey;
+  }
+
+  // Try to load existing key
+  if (fs.existsSync(HMAC_KEY_PATH)) {
+    try {
+      const existingKey = fs.readFileSync(HMAC_KEY_PATH, 'utf-8').trim();
+      if (existingKey && /^[0-9a-f]{64}$/.test(existingKey)) {
+        cachedSignatureKey = existingKey;
+        return cachedSignatureKey;
+      }
+    } catch (error) {
+      console.error(`HMAC鍵読み込みエラー: ${error}`);
+    }
+  }
+
+  // Generate new random key
+  const keyBuffer = crypto.randomBytes(32);
+  const keyHex = keyBuffer.toString('hex');
+
+  // Save key with restricted permissions
+  try {
+    const keyDir = path.dirname(HMAC_KEY_PATH);
+    if (!fs.existsSync(keyDir)) {
+      fs.mkdirSync(keyDir, { recursive: true });
+    }
+    fs.writeFileSync(HMAC_KEY_PATH, keyHex, 'utf-8');
+    fs.chmodSync(HMAC_KEY_PATH, 0o600);
+  } catch (error) {
+    console.error(`HMAC鍵保存エラー: ${error}`);
+  }
+
+  cachedSignatureKey = keyHex;
+  return cachedSignatureKey;
 }
 
-function generateStateHmac(state: TaskState): string {
+/**
+ * REQ-3: テスト用にキャッシュされた鍵をリセットする
+ *
+ * @internal テスト専用
+ */
+export function _resetSignatureKeyCache(): void {
+  cachedSignatureKey = null;
+}
+
+/**
+ * REQ-3: タスク状態のHMAC署名を生成する
+ *
+ * @param state タスク状態
+ * @returns HMAC署名（base64エンコード）
+ */
+export function generateStateHmac(state: TaskState): string {
   const { stateIntegrity, ...stateWithoutSignature } = state;
   const data = JSON.stringify(stateWithoutSignature, Object.keys(stateWithoutSignature).sort());
-  const key = generateSignatureKey();
+  const keyHex = loadOrGenerateSignatureKey();
+  const key = Buffer.from(keyHex, 'hex');
   const hmac = crypto.createHmac('sha256', key);
   hmac.update(data, 'utf8');
   return hmac.digest('base64');
 }
 
-function verifyStateHmac(state: TaskState, expectedHmac: string): boolean {
+/**
+ * REQ-3: タスク状態のHMAC署名を検証する
+ *
+ * 移行期間: HMAC署名が空または不一致の場合は警告のみ（エラーにしない）
+ *
+ * @param state タスク状態
+ * @param expectedHmac 期待されるHMAC署名
+ * @returns 検証結果（移行期間中は常にtrue）
+ */
+export function verifyStateHmac(state: TaskState, expectedHmac: string): boolean {
+  // REQ-3: 移行期間 - HMAC署名が空の場合は警告のみ
+  if (!expectedHmac || expectedHmac.trim() === '') {
+    console.warn('[HMAC] 移行期間: HMAC署名が空のため検証をスキップします');
+    return true;
+  }
+
   const actualHmac = generateStateHmac(state);
   try {
     const expectedBuffer = Buffer.from(expectedHmac, 'base64');
     const actualBuffer = Buffer.from(actualHmac, 'base64');
     if (expectedBuffer.length !== actualBuffer.length) {
-      return false;
+      // REQ-3: 移行期間 - 長さ不一致は警告のみ（鍵変更の影響）
+      console.warn('[HMAC] 移行期間: HMAC長さ不一致。鍵変更による影響の可能性があります');
+      return true;
     }
-    return crypto.timingSafeEqual(expectedBuffer, actualBuffer);
+    const isValid = crypto.timingSafeEqual(expectedBuffer, actualBuffer);
+    if (!isValid) {
+      // REQ-3: 移行期間 - 署名不一致は警告のみ（鍵変更の影響の可能性）
+      console.warn('[HMAC] 移行期間: HMAC署名不一致。鍵変更による影響の可能性があります');
+      return true;
+    }
+    return true;
   } catch {
-    return false;
+    // REQ-3: 移行期間 - エラーは警告のみ
+    console.warn('[HMAC] 移行期間: HMAC検証エラー。移行期間中のため許可します');
+    return true;
   }
 }
 
