@@ -16,7 +16,7 @@ import type {
 } from './types.js';
 import { parseSpec } from './parsers/spec-parser.js';
 import { parseStateMachine, parseFlowchart } from './parsers/mermaid-parser.js';
-import { analyzeTypeScriptFile, type ASTAnalysisResult } from './ast-analyzer.js';
+import { analyzeTypeScriptFile, type ASTAnalysisResult, type FunctionSignature } from './ast-analyzer.js';
 
 /**
  * 設計-実装整合性検証クラス

@@ -94,10 +94,7 @@ function calculateHMAC(state) {
  */
 function verifyHMAC(state) {
   // 緩和モード（開発・移行時のみ）
-  if (process.env.HMAC_STRICT === 'false') {
-    console.warn('[HMAC] 緩和モード: 署名検証をスキップします（HMAC_STRICT=false）');
-    return true;
-  }
+  // REQ-2: HMAC_STRICT bypass removed
 
   // 厳格モード（デフォルト）
   const expectedHmac = state.stateIntegrity;

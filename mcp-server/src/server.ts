@@ -77,6 +77,69 @@ const TOOL_DEFINITIONS = [
 ] as const;
 
 // ============================================================================
+// REQ-7: ネイティブバリデーション（Zod不要）
+/**
+ * ツール引数の型検証
+ * @param toolName ツール名
+ * @param args 引数オブジェクト
+ * @returns {{ valid: boolean; error?: string }}
+ */
+function validateToolArgs(toolName: string, args: Record<string, unknown>): { valid: boolean; error?: string } {
+  // 必須パラメータチェック
+  const requiredParams: Record<string, string[]> = {
+    workflow_start: ['taskName'],
+    workflow_next: [],
+    workflow_approve: ['type'],
+    workflow_reset: [],
+    workflow_status: [],
+    workflow_list: [],
+    workflow_complete_sub: ['subPhase'],
+    workflow_set_scope: [],
+    workflow_record_test: ['taskId', 'testFile'],
+    workflow_capture_baseline: ['taskId', 'totalTests', 'passedTests', 'failedTests'],
+    workflow_get_test_info: ['taskId'],
+    workflow_record_test_result: ['taskId', 'exitCode', 'output'],
+    workflow_record_known_bug: ['taskId', 'testName', 'description', 'severity'],
+    workflow_get_known_bugs: ['taskId'],
+    workflow_back: ['targetPhase'],
+  };
+
+  const required = requiredParams[toolName];
+  if (!required) {
+    return { valid: true }; // 未知のツールは許可
+  }
+
+  for (const param of required) {
+    if (args[param] === undefined || args[param] === null) {
+      return { valid: false, error: `Missing required parameter: ${param}` };
+    }
+  }
+
+  // 型チェック
+  if (args.taskName !== undefined && typeof args.taskName !== 'string') {
+    return { valid: false, error: 'taskName must be a string' };
+  }
+  if (args.type !== undefined && !['requirements', 'design', 'test_design'].includes(String(args.type))) {
+    return { valid: false, error: 'type must be one of: requirements, design, test_design' };
+  }
+  if (args.severity !== undefined && !['low', 'medium', 'high', 'critical'].includes(String(args.severity))) {
+    return { valid: false, error: 'severity must be one of: low, medium, high, critical' };
+  }
+  if (args.exitCode !== undefined && typeof args.exitCode !== 'number') {
+    return { valid: false, error: 'exitCode must be a number' };
+  }
+  if (args.totalTests !== undefined && typeof args.totalTests !== 'number') {
+    return { valid: false, error: 'totalTests must be a number' };
+  }
+  if (args.output !== undefined && typeof args.output !== 'string') {
+    return { valid: false, error: 'output must be a string' };
+  }
+
+  return { valid: true };
+}
+
+
+// ============================================================================
 // 型定義
 // ============================================================================
 
@@ -100,7 +163,7 @@ interface ToolArguments {
   /** タスク一覧（引数なし） */
   workflow_list: Record<string, never>;
   /** サブフェーズ完了（taskId必須） */
-  workflow_complete_sub: { taskId?: string; subPhase: string };
+  workflow_complete_sub: { taskId?: string; subPhase: string; sessionToken?: string };
   /** テストファイル記録 */
   workflow_record_test: { taskId: string; testFile: string };
   /** ベースライン記録 */
@@ -112,11 +175,11 @@ interface ToolArguments {
   /** 既知バグ一覧取得 */
   workflow_get_known_bugs: { taskId: string };
   /** 影響範囲設定 */
-  workflow_set_scope: { taskId?: string; files?: string[]; dirs?: string[] };
+  workflow_set_scope: { taskId?: string; files?: string[]; dirs?: string[]; sessionToken?: string };
   /** テスト結果記録 */
   workflow_record_test_result: { taskId?: string; exitCode?: number; summary?: string; output?: string; sessionToken?: string };
   /** 差し戻し */
-  workflow_back: { taskId?: string; targetPhase?: string; reason?: string };
+  workflow_back: { taskId?: string; targetPhase?: string; reason?: string; sessionToken?: string };
 }
 
 /** ツール名の型 */
@@ -232,8 +295,8 @@ const TOOL_HANDLERS: Record<ToolName, ToolHandler> = {
   workflow_list: () => workflowList(),
 
   workflow_complete_sub: (args) => {
-    const { taskId, subPhase } = args as ToolArguments['workflow_complete_sub'];
-    return workflowCompleteSub(taskId, subPhase);
+    const { taskId, subPhase, sessionToken } = args as ToolArguments['workflow_complete_sub'];
+    return workflowCompleteSub(taskId, subPhase, sessionToken);
   },
 
   workflow_record_test: (args) => {
@@ -262,8 +325,8 @@ const TOOL_HANDLERS: Record<ToolName, ToolHandler> = {
   },
 
   workflow_set_scope: (args) => {
-    const { taskId, files, dirs } = args as ToolArguments['workflow_set_scope'];
-    return workflowSetScope(taskId, files, dirs);
+    const { taskId, files, dirs, sessionToken } = args as ToolArguments['workflow_set_scope'];
+    return workflowSetScope(taskId, files, dirs, sessionToken);
   },
 
   workflow_record_test_result: (args) => {
@@ -272,8 +335,8 @@ const TOOL_HANDLERS: Record<ToolName, ToolHandler> = {
   },
 
   workflow_back: (args) => {
-    const { taskId, targetPhase, reason } = args as ToolArguments['workflow_back'];
-    return workflowBack(taskId, targetPhase, reason);
+    const { taskId, targetPhase, reason, sessionToken } = args as ToolArguments['workflow_back'];
+    return workflowBack(taskId, targetPhase, reason, sessionToken);
   },
 };
 
@@ -292,6 +355,13 @@ function executeToolCall(name: string, args: Record<string, unknown>): ToolResul
   if (!handler) {
     return { success: false, message: `不明なツール: ${name}` };
   }
+
+  // REQ-7: ネイティブバリデーション
+  const validation = validateToolArgs(name, args);
+  if (!validation.valid) {
+    return { success: false, message: `パラメータバリデーションエラー: ${validation.error}` };
+  }
+
   return handler(args);
 }
 

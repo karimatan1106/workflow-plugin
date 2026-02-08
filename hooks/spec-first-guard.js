@@ -103,10 +103,9 @@ function loadState() {
       if (raw.signature) {
         // 署名検証
         if (!verifyStateHmac(raw, raw.signature)) {
-          // fail-closed: 改ざん検知時は状態ファイルを削除して初期状態に
-          logError('状態ファイル改ざん検知', 'HMAC署名が一致しません。ファイルを初期化します。', null);
-          fs.unlinkSync(STATE_FILE);
-          return { specUpdated: false, updatedAt: null, files: [] };
+    console.error('Workflow state integrity check failed');
+    process.exit(1);
+  };
         }
         return raw;
       } else {

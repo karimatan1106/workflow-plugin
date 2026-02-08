@@ -28,6 +28,47 @@ import { auditLogger } from '../audit/logger.js';
 import { atomicWriteJson } from './lock-utils.js';
 import { taskCache, isCacheEnabled } from './cache.js';
 
+
+
+import { getCurrentKey, verifyWithAnyKey, signWithCurrentKey } from './hmac.js';
+/**
+ * REQ-1: 同期的ファイルロック取得
+ * acquireLockはasyncのため、同期APIに合わせた簡易ロック実装
+ */
+function acquireLockSync(filePath: string, maxRetries = 10, retryDelay = 100): () => void {
+  const lockFile = filePath + '.lock';
+  let attempt = 0;
+  while (attempt < maxRetries) {
+    try {
+      const fd = fs.openSync(lockFile, 'wx');
+      const lockData = JSON.stringify({ pid: process.pid, timestamp: Date.now() });
+      fs.writeSync(fd, lockData);
+      fs.closeSync(fd);
+      return () => {
+        try { fs.unlinkSync(lockFile); } catch { /* ignore */ }
+      };
+    } catch (e: unknown) {
+      const err = e as NodeJS.ErrnoException;
+      if (err.code === 'EEXIST') {
+        // Check for stale lock (> 10s old)
+        try {
+          const stat = fs.statSync(lockFile);
+          if (Date.now() - stat.mtimeMs > 10000) {
+            fs.unlinkSync(lockFile);
+            continue;
+          }
+        } catch { /* ignore */ }
+        attempt++;
+        // Busy-wait with small delay (sync context)
+        const waitUntil = Date.now() + retryDelay;
+        while (Date.now() < waitUntil) { /* spin */ }
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw new Error(`ロック取得タイムアウト: ${filePath} (試行回数: ${maxRetries})`);
+}
 // ============================================================================
 // 設定（環境変数でオーバーライド可能）
 // ============================================================================
@@ -324,12 +365,18 @@ export class WorkflowStateManager {
    * @param state 保存するタスク状態
    */
   writeTaskState(taskWorkflowDir: string, state: TaskState): void {
-    const stateWithSignature = {
-      ...state,
-      stateIntegrity: generateStateHmac(state),
-    };
     const stateFile = path.join(taskWorkflowDir, 'workflow-state.json');
-    atomicWriteJson(stateFile, stateWithSignature);
+    // REQ-1: ロックを取得してアトミックに書き込む
+    const releaseLock = acquireLockSync(stateFile);
+    try {
+      const stateWithSignature = {
+        ...state,
+        stateIntegrity: generateStateHmac(state),
+      };
+      atomicWriteJson(stateFile, stateWithSignature);
+    } finally {
+      releaseLock();
+    }
 
     // FR-11: キャッシュ無効化
     taskCache.invalidate('task-list');
@@ -575,11 +622,25 @@ export class WorkflowStateManager {
       throw new Error(taskNotFoundError(taskId));
     }
 
-    // タスク状態を更新
-    taskState.phase = phase;
-    // 並列フェーズの場合、サブフェーズを初期化
-    taskState.subPhases = this.initializeSubPhases(phase);
-    this.writeTaskState(taskState.workflowDir, taskState);
+    // REQ-1: Read-Modify-Write全体でロック取得（writeTaskState内のロックと二重にならないよう直接書き込む）
+    const stateFile = path.join(taskState.workflowDir, 'workflow-state.json');
+    const releaseLock = acquireLockSync(stateFile);
+    try {
+      // タスク状態を更新
+      taskState.phase = phase;
+      // 並列フェーズの場合、サブフェーズを初期化
+      taskState.subPhases = this.initializeSubPhases(phase);
+      const stateWithSignature = {
+        ...taskState,
+        stateIntegrity: generateStateHmac(taskState),
+      };
+      atomicWriteJson(stateFile, stateWithSignature);
+    } finally {
+      releaseLock();
+    }
+
+    // FR-11: キャッシュ無効化
+    taskCache.invalidate('task-list');
   }
 
   /**

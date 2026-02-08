@@ -48,6 +48,10 @@ const path = require('path');
 const { checkBashWhitelist } = require('./bash-whitelist');
 const { verifyHMAC } = require('./hmac-verify');
 
+
+// REQ-5: タスク探索ロジック統一 - discover-tasks.jsのshared実装を使用
+const { discoverTasks: sharedDiscoverTasks, findTaskByFilePath: sharedFindTaskByFilePath } = require('./lib/discover-tasks');
+
 // =============================================================================
 // 定数定義
 // =============================================================================
@@ -192,11 +196,11 @@ const PHASE_RULES = {
     japaneseName: 'コードレビュー',
   },
   testing: {
-    allowed: [],
-    blocked: ['code', 'test', 'spec', 'diagram', 'config', 'env', 'other'],
-    description: 'テスト実行中。ファイル編集は禁止です。',
+    readOnly: false,
+    allowed: ['spec', 'test'],
+    blocked: ['code', 'diagram', 'config', 'env', 'other'],
+    description: 'テスト結果ドキュメントとテストファイルの編集が可能',
     japaneseName: 'テスト実行',
-    readOnly: true,
   },
   manual_test: {
     allowed: ['spec'],
@@ -608,9 +612,19 @@ function safeReadJsonFile(filePath, logLabel) {
  * ディレクトリスキャンでアクティブタスクを発見
  *
  * 注意: このロジックは mcp-server/src/state/manager.ts の
- * WorkflowStateManager.discoverTasks() と同期を保つ必要がある。
+ * WorkflowStateManager.discoverTasksUnified() と同期を保つ必要がある。
  */
-function discoverTasks() {
+// REQ-5: Shared実装にデリゲート（インライン実装はフォールバック用に保持）
+function discoverTasksUnified() {
+  try {
+    return sharedDiscoverTasks();
+  } catch (e) {
+    // フォールバック: インライン実装を使用
+    return discoverTasksInline();
+  }
+}
+
+function discoverTasksInline() {
   if (!fs.existsSync(WORKFLOW_DIR)) {
     return [];
   }
@@ -655,20 +669,36 @@ function discoverTasks() {
  * 指定されたファイルパスがどのタスクに属するかを推論する。
  *
  * 注意: このロジックは mcp-server/src/state/manager.ts の
- * WorkflowStateManager.findTaskByFilePath() と同期を保つ必要がある。
+ * WorkflowStateManager.findTaskByFilePathUnified() と同期を保つ必要がある。
  * docsDirまたはworkflowDirのプレフィックスマッチで判定し、
  * 複数マッチする場合は最長一致のタスクを返す。
  *
  * @param {string} filePath 推論対象のファイルパス
  * @returns {{taskId: string, taskName: string, workflowDir: string, phase: string}|null}
  */
-function findTaskByFilePath(filePath) {
-  const tasks = discoverTasks();
+// REQ-5: Shared実装にデリゲート
+function findTaskByFilePathUnified(filePath) {
+  try {
+    return sharedFindTaskByFilePath(filePath);
+  } catch (e) {
+    return findTaskByFilePathInline(filePath);
+  }
+}
+
+function findTaskByFilePathInline(filePath) {
+  const tasks = discoverTasksUnified();
   let bestMatch = null;
   let bestMatchLength = 0;
 
   // パスを正規化（バックスラッシュをスラッシュに統一）
   const normalizedFilePath = filePath.replace(/\\/g, '/');
+
+  // プロジェクトルートからの相対パスを取得
+  const cwd = process.cwd().replace(/\\/g, '/');
+  const cwdPrefix = cwd.endsWith('/') ? cwd : cwd + '/';
+  const relativeFilePath = normalizedFilePath.startsWith(cwdPrefix)
+    ? normalizedFilePath.substring(cwdPrefix.length)
+    : normalizedFilePath;
 
   for (const task of tasks) {
     // docsDirチェック（最長一致）
@@ -690,6 +720,32 @@ function findTaskByFilePath(filePath) {
         bestMatchLength = normalizedWorkflowDir.length;
       }
     }
+
+    // scopeチェック（影響範囲に基づくタスクマッチング）
+    if (task.scope) {
+      // affectedFilesの完全一致チェック
+      if (task.scope.affectedFiles) {
+        for (const af of task.scope.affectedFiles) {
+          const normalizedAf = af.replace(/\\/g, '/');
+          if (relativeFilePath === normalizedAf || normalizedFilePath.endsWith('/' + normalizedAf)) {
+            return task; // 完全一致は最高優先度
+          }
+        }
+      }
+      // affectedDirsのプレフィックスチェック
+      if (task.scope.affectedDirs) {
+        for (const ad of task.scope.affectedDirs) {
+          const normalizedAd = ad.replace(/\\/g, '/');
+          const dirPrefix = normalizedAd.endsWith('/') ? normalizedAd : normalizedAd + '/';
+          if (relativeFilePath.startsWith(dirPrefix) || normalizedFilePath.endsWith('/' + dirPrefix.slice(0, -1) + '/' + relativeFilePath.split('/').pop())) {
+            if (dirPrefix.length > bestMatchLength) {
+              bestMatch = task;
+              bestMatchLength = dirPrefix.length;
+            }
+          }
+        }
+      }
+    }
   }
 
   return bestMatch;
@@ -707,14 +763,14 @@ function findTaskByFilePath(filePath) {
 function findActiveWorkflowTask(filePath) {
   // ファイルパスが指定されている場合は、そのファイルに関連するタスクを推論
   if (filePath) {
-    const matchedTask = findTaskByFilePath(filePath);
+    const matchedTask = findTaskByFilePathUnified(filePath);
     if (matchedTask) {
       return matchedTask;
     }
   }
 
   // ファイルパスからタスクを特定できない場合は、最初のアクティブタスクを返す
-  const tasks = discoverTasks();
+  const tasks = discoverTasksUnified();
   return tasks[0] || null;
 }
 
@@ -1285,6 +1341,11 @@ function analyzeBashCommand(command) {
     return { isModifying: false, filePath: null, isExplicitlyAllowed: false };
   }
 
+  // B-2: git commitのHeredoc形式を誤検出から除外
+  if (/^git\s+commit\s+.*\$\(\s*cat\s+<</.test(command)) {
+    return { isModifying: false, filePath: null, isExplicitlyAllowed: true };
+  }
+
   // REQ-8: ホワイトリストチェック（フェーズ不要な読み取り専用コマンド）
   // bash-whitelist.js の readonly リストと同等のチェック
   const readonlyPatterns = [
@@ -1527,10 +1588,10 @@ function main(input) {
       process.exit(EXIT_CODES.SUCCESS);
     }
 
-    // ホワイトリストを通過した非ファイル修正コマンドは許可
-    // （例: npx vitest run がtestingフェーズのホワイトリストを通過した場合）
-    if (whitelistPassed && !analysis.isModifying) {
-      debugLog('Bashコマンド（ホワイトリスト通過・非ファイル修正）：許可');
+    // B-3: ホワイトリストを通過したコマンドは無条件で許可
+    // ファイル修正の有無に関わらず、ホワイトリスト通過済みなら許可
+    if (whitelistPassed) {
+      debugLog('Bashコマンド（ホワイトリスト通過）：許可');
       process.exit(EXIT_CODES.SUCCESS);
     }
 
@@ -1590,7 +1651,8 @@ function main(input) {
       if (workflowState) {
         const phase = workflowState.phase;
         const rule = getPhaseRule(phase, workflowState.workflowState);
-        if (rule && rule.readOnly) {
+        // B-7: allowedが定義されているフェーズではreadOnlyブロックを回避
+        if (rule && rule.readOnly && (!rule.allowed || rule.allowed.length === 0)) {
           console.log('');
           console.log(SEPARATOR_LINE);
           console.log(' Bashによるファイル操作がブロックされました');
@@ -1754,8 +1816,8 @@ if (require.main === module) {
 } else {
   // テストから使用される場合
   module.exports = {
-    discoverTasks,
-    findTaskByFilePath,
+    discoverTasks: discoverTasksUnified,
+    findTaskByFilePath: findTaskByFilePathUnified,
     findActiveWorkflowTask,
     getFileType,
     isConfigFile,

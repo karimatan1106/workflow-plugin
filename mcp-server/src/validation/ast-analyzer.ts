@@ -287,6 +287,16 @@ function extractMethodBody(code: string, startIndex: number): string {
 }
 
 /**
+ * REQ-4: 関数シグネチャ情報
+ */
+export interface FunctionSignature {
+  name: string;
+  parameters: Array<{ name: string; type: string }>;
+  returnType: string;
+  isAsync: boolean;
+}
+
+/**
  * FR-6: AST解析結果
  */
 export interface ASTAnalysisResult {
@@ -295,6 +305,8 @@ export interface ASTAnalysisResult {
   variables: string[];
   exports: string[];
   factoryPatterns: string[];
+  /** REQ-4: 関数シグネチャ一覧 */
+  signatures: FunctionSignature[];
 }
 
 /**
@@ -316,6 +328,7 @@ export function analyzeTypeScriptFile(filePath: string): ASTAnalysisResult | nul
     variables: [],
     exports: [],
     factoryPatterns: [],
+    signatures: [],
   };
 
   try {
@@ -361,6 +374,12 @@ export function analyzeTypeScriptFile(filePath: string): ASTAnalysisResult | nul
         if (isFactoryPattern(funcName)) {
           result.factoryPatterns.push(funcName);
         }
+
+        // REQ-4: 関数シグネチャ抽出
+        const funcSig = extractFunctionSignature(node, sourceFile);
+        if (funcSig) {
+          result.signatures.push(funcSig);
+        }
       }
 
       // 変数宣言
@@ -383,6 +402,14 @@ export function analyzeTypeScriptFile(filePath: string): ASTAnalysisResult | nul
         });
       }
 
+      // REQ-4: メソッド宣言のシグネチャも抽出
+      if (ts.isMethodDeclaration(node) && node.name && ts.isIdentifier(node.name)) {
+        const methodSig = extractFunctionSignature(node, sourceFile);
+        if (methodSig) {
+          result.signatures.push(methodSig);
+        }
+      }
+
       // 再帰的に子ノードを訪問
       ts.forEachChild(node, visit);
     }
@@ -397,6 +424,32 @@ export function analyzeTypeScriptFile(filePath: string): ASTAnalysisResult | nul
     return result;
   } catch (error) {
     console.warn(`[AST Analyzer] Syntax error in ${filePath}, falling back to regex:`, error);
+    return null;
+  }
+}
+
+
+/**
+ * REQ-4: 関数/メソッドからシグネチャを抽出
+ */
+function extractFunctionSignature(
+  node: ts.FunctionDeclaration | ts.MethodDeclaration,
+  sourceFile: ts.SourceFile
+): { name: string; parameters: Array<{ name: string; type: string }>; returnType: string; isAsync: boolean } | null {
+  try {
+    const name = node.name && ts.isIdentifier(node.name) ? node.name.text : '';
+    if (!name) return null;
+
+    const parameters = node.parameters.map(param => ({
+      name: ts.isIdentifier(param.name) ? param.name.text : param.name.getText(sourceFile),
+      type: param.type ? param.type.getText(sourceFile) : 'any',
+    }));
+
+    const returnType = node.type ? node.type.getText(sourceFile) : 'void';
+    const isAsync = node.modifiers?.some(m => m.kind === ts.SyntaxKind.AsyncKeyword) || false;
+
+    return { name, parameters, returnType, isAsync };
+  } catch {
     return null;
   }
 }

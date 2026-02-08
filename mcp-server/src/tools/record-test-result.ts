@@ -40,6 +40,8 @@ const BLOCKING_FAILURE_KEYWORDS = [
   'errored',
 ] as const;
 
+const NEGATION_WORDS = ['0', 'no', 'zero', 'without'] as const;
+
 /** exitCode≠0でブロックすべき成功キーワード（大文字小文字不問） */
 const BLOCKING_SUCCESS_KEYWORDS = [
   'all tests passed',
@@ -63,6 +65,12 @@ const ERROR_PATTERNS = [
   /Expected.*but got/i,                            // Assertion error
   /(Uncaught|Unhandled)/i,                         // Uncaught exception
 ] as const;
+
+function isKeywordNegated(output: string, keyword: string): boolean {
+  const negationPattern = `\\b(${NEGATION_WORDS.join('|')})\\s+${keyword}\\b`;
+  const regex = new RegExp(negationPattern, 'i');
+  return regex.test(output);
+}
 
 /**
  * テスト出力とexitCodeの整合性を検証（Fail Closed）
@@ -97,7 +105,10 @@ function validateTestOutputConsistency(
         const matches = output.match(new RegExp(`\\b(${firstChar}${rest})\\b`, 'gi')) || [];
         return matches.some(match => match.charAt(0) === match.charAt(0).toUpperCase());
       } else {
-        // 小文字のキーワード: 大文字小文字不問でマッチ
+        // 小文字のキーワード: 否定語コンテキスト判定後にマッチ
+        if (isKeywordNegated(output, kw)) {
+          return false;
+        }
         const pattern = new RegExp(`\\b${kw}\\b`, 'i');
         return pattern.test(output);
       }
@@ -126,6 +137,9 @@ function validateTestOutputConsistency(
         const matches = output.match(new RegExp(`\\b(${firstChar}${rest})\\b`, 'gi')) || [];
         return matches.some(match => match.charAt(0) === match.charAt(0).toUpperCase());
       } else {
+        if (isKeywordNegated(output, kw)) {
+          return false;
+        }
         const pattern = new RegExp(`\\b${kw}\\b`, 'i');
         return pattern.test(output);
       }
@@ -356,6 +370,6 @@ export const recordTestResultToolDefinition = {
         description: 'セッショントークン（REQ-6: Orchestrator認証用）',
       },
     },
-    required: ['exitCode', 'output'],
+    required: ['taskId', 'exitCode', 'output'],
   },
 };

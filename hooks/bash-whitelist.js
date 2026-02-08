@@ -22,7 +22,7 @@ const BASH_WHITELIST = {
     'find', 'grep', 'rg', 'ag',
     // Git（読み取りのみ）
     'git status', 'git log', 'git diff', 'git show', 'git branch',
-    'git ls-files', 'git ls-tree', 'git rev-parse',
+    'git ls-files', 'git ls-tree', 'git rev-parse', 'git remote',
     // その他
     'pwd', 'which', 'whereis', 'date', 'uname', 'whoami',
     // 出力（リダイレクトなしならOK - ブラックリストで > 検出）
@@ -113,6 +113,56 @@ const BASH_BLACKLIST = [
 /**
  * node -e で禁止されるパターン
  */
+
+/**
+ * REQ-3: AST解析による識別子抽出
+ * 文字列連結（例: fs['write' + 'FileSync']）を解決して最終的な識別子を取得
+ */
+function extractIdentifiersFromAST(code) {
+  try {
+    // Use Function constructor to parse (lightweight, no external deps)
+    const identifiers = new Set();
+
+    // 文字列連結パターンを検出: obj['str1' + 'str2'] or obj["str1" + "str2"]
+    const concatPattern = /\[\s*(['"])(\w+)\1\s*\+\s*(['"])(\w+)\3\s*\]/g;
+    let match;
+    while ((match = concatPattern.exec(code)) !== null) {
+      identifiers.add(match[2] + match[4]);
+    }
+
+    // テンプレートリテラルパターン: `${prefix}FileSync`
+    const templatePattern = /\`[^\x60]*\$\{([^}]+)\}[^\x60]*\`/g;
+    while ((match = templatePattern.exec(code)) !== null) {
+      // テンプレートリテラル使用自体を危険とみなす
+      identifiers.add('TEMPLATE_LITERAL_DETECTED');
+    }
+
+    // eval()パターン検出
+    if (code.includes('eval(') || code.includes('eval (')) {
+      // eval内の文字列を展開して解析
+      const evalContentMatch = code.match(/eval\s*\(\s*(['"])(.*?)\1\s*\)/);
+      if (evalContentMatch) {
+        const evalContent = evalContentMatch[2];
+        const innerIds = extractIdentifiersFromAST(evalContent);
+        innerIds.forEach(id => identifiers.add(id));
+      }
+      // eval + require + readFileSync パターン
+      if (code.includes('require') && code.includes('readFileSync')) {
+        identifiers.add('EVAL_FILE_EXECUTION');
+      }
+    }
+
+    // Function constructorパターン
+    if (code.includes('Function(') || code.includes('new Function')) {
+      identifiers.add('FUNCTION_CONSTRUCTOR');
+    }
+
+    return identifiers;
+  } catch (e) {
+    return new Set();
+  }
+}
+
 const NODE_E_BLACKLIST = [
   'fs.writeFileSync', 'fs.writeSync', 'fs.appendFileSync',
   'fs.createWriteStream', 'fs.open', 'fs.openSync',
@@ -162,7 +212,7 @@ function getWhitelistForPhase(phase) {
     ];
   } else if (gitPhases.includes(phase)) {
     return [...BASH_WHITELIST.readonly, ...BASH_WHITELIST.git];
-  } else if (phase === 'build_check') {
+  } else if (phase === 'build_check' || phase === 'parallel_quality') {
     // REQ-2: build_checkはビルド修正に必要なコマンドを全て許可
     return [
       ...BASH_WHITELIST.readonly,

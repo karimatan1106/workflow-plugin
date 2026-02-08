@@ -83,6 +83,31 @@ export const PHASE_ARTIFACT_REQUIREMENTS: Record<string, ArtifactRequirement> = 
     minLines: 5,
     requiredSections: ['flowchart'],
   },
+  'ui-design.md': {
+    minLines: 50,
+    requiredSections: ['サマリー', 'CLIインターフェース設計', 'エラーメッセージ設計', 'APIレスポンス設計', '設定ファイル設計'],
+  },
+  'code-review.md': {
+    minLines: 30,
+    requiredSections: ['設計-実装整合性', 'コード品質', 'セキュリティ', 'パフォーマンス'],
+  },
+  'manual-test.md': {
+    minLines: 20,
+    requiredSections: ['テストシナリオ', 'テスト結果'],
+  },
+  'security-scan.md': {
+    minLines: 20,
+    requiredSections: ['脆弱性スキャン結果', '検出された問題'],
+  },
+  'performance-test.md': {
+    minLines: 20,
+    requiredSections: ['パフォーマンス計測結果', 'ボトルネック分析'],
+  },
+  'e2e-test.md': {
+    minLines: 20,
+    requiredSections: ['E2Eテストシナリオ', 'テスト実行結果'],
+  },
+
 };
 
 /**
