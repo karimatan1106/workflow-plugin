@@ -110,9 +110,10 @@ function performDesignValidation(docsDir: string): NextResult | null {
  * 次のフェーズへ遷移
  *
  * @param taskId タスクID
+ * @param sessionToken セッショントークン（オプション、REQ-6）
  * @returns 遷移結果
  */
-export function workflowNext(taskId?: string): NextResult {
+export function workflowNext(taskId?: string, sessionToken?: string): NextResult {
   // タスク状態を取得
   const result = getTaskByIdOrError(taskId);
   if ('error' in result) {
@@ -121,6 +122,27 @@ export function workflowNext(taskId?: string): NextResult {
 
   const taskState = result.taskState;
   const currentPhase = taskState.phase;
+
+  // REQ-6: セッショントークン検証
+  const tokenRequired = process.env.SESSION_TOKEN_REQUIRED !== 'false';
+  if (tokenRequired && taskState.sessionToken) {
+    if (!sessionToken) {
+      return {
+        success: false,
+        message: 'sessionTokenが必要です。このAPIはOrchestratorのみ実行可能です。',
+      };
+    }
+    if (sessionToken !== taskState.sessionToken) {
+      return {
+        success: false,
+        message: 'sessionTokenが無効です。',
+      };
+    }
+  }
+  // 既存タスク（sessionTokenなし）は警告のみ
+  if (tokenRequired && !taskState.sessionToken) {
+    console.warn('[next] 既存タスク（sessionTokenなし）- 警告のみ');
+  }
 
   // 完了済みチェック
   if (currentPhase === 'completed') {
@@ -198,6 +220,23 @@ export function workflowNext(taskId?: string): NextResult {
         message: `テストが失敗しています（exitCode: ${testResult.exitCode}）。テストを修正してから次フェーズに進んでください`,
       };
     }
+
+    // REQ-4: testing通過時にtestBaselineを自動設定
+    if (testResult.passedCount !== undefined || testResult.failedCount !== undefined) {
+      const totalCount = (testResult.passedCount || 0) + (testResult.failedCount || 0);
+      if (totalCount > 0) {
+        const updatedState = {
+          ...taskState,
+          testBaseline: {
+            capturedAt: new Date().toISOString(),
+            totalTests: totalCount,
+            passedTests: testResult.passedCount || 0,
+            failedTests: [],
+          },
+        };
+        stateManager.writeTaskState(taskState.workflowDir, updatedState);
+      }
+    }
   }
 
   // REQ-2: regression_test → parallel_verification 遷移時のテスト結果検証
@@ -213,6 +252,31 @@ export function workflowNext(taskId?: string): NextResult {
       return {
         success: false,
         message: `リグレッションテストが失敗しています（exitCode: ${testResult.exitCode}）。テストを修正してから次フェーズに進んでください`,
+      };
+    }
+
+    // REQ-4: testBaseline必須チェック
+    if (!taskState.testBaseline) {
+      return {
+        success: false,
+        message: 'テストベースラインが設定されていません。testingフェーズでテスト結果を記録してください。',
+      };
+    }
+
+    // REQ-4: テスト総数の回帰チェック
+    const currentTotal = (testResult.passedCount || 0) + (testResult.failedCount || 0);
+    if (currentTotal > 0 && currentTotal < taskState.testBaseline.totalTests) {
+      return {
+        success: false,
+        message: `テスト総数が減少しています（baseline: ${taskState.testBaseline.totalTests}, 現在: ${currentTotal}）。テストの削除は禁止です。`,
+      };
+    }
+
+    // REQ-4: パスしたテスト数の回帰チェック
+    if (testResult.passedCount !== undefined && testResult.passedCount < taskState.testBaseline.passedTests) {
+      return {
+        success: false,
+        message: `パスしたテスト数が減少しています（baseline: ${taskState.testBaseline.passedTests}, 現在: ${testResult.passedCount}）。`,
       };
     }
   }
@@ -311,6 +375,10 @@ export const nextToolDefinition = {
       taskId: {
         type: 'string',
         description: 'タスクID（必須）',
+      },
+      sessionToken: {
+        type: 'string',
+        description: 'セッショントークン（REQ-6: Orchestrator認証用）',
       },
     },
     required: [],

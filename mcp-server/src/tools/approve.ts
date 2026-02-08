@@ -17,13 +17,37 @@ import { MISSING_PARAM_ERRORS, phaseNotMatchError } from '../utils/errors.js';
  *
  * @param taskId タスクID（必須）
  * @param type 承認タイプ（'design'など）
+ * @param sessionToken セッショントークン（オプション、REQ-6）
  * @returns 承認結果
  */
-export function workflowApprove(taskId?: string, type?: string): ApproveResult {
+export function workflowApprove(taskId?: string, type?: string, sessionToken?: string): ApproveResult {
   // タスク状態を取得
   const taskResult = getTaskByIdOrError(taskId);
   if ('error' in taskResult) {
     return taskResult.error as ApproveResult;
+  }
+
+  const { taskState } = taskResult;
+
+  // REQ-6: セッショントークン検証
+  const tokenRequired = process.env.SESSION_TOKEN_REQUIRED !== 'false';
+  if (tokenRequired && taskState.sessionToken) {
+    if (!sessionToken) {
+      return {
+        success: false,
+        message: 'sessionTokenが必要です。このAPIはOrchestratorのみ実行可能です。',
+      };
+    }
+    if (sessionToken !== taskState.sessionToken) {
+      return {
+        success: false,
+        message: 'sessionTokenが無効です。',
+      };
+    }
+  }
+  // 既存タスク（sessionTokenなし）は警告のみ
+  if (tokenRequired && !taskState.sessionToken) {
+    console.warn('[approve] 既存タスク（sessionTokenなし）- 警告のみ');
   }
 
   // 承認タイプの検証
@@ -42,7 +66,6 @@ export function workflowApprove(taskId?: string, type?: string): ApproveResult {
     };
   }
 
-  const { taskState } = taskResult;
   const currentPhase = taskState.phase;
   const { expectedPhase, nextPhase } = approveMapping;
 
@@ -75,7 +98,7 @@ export function workflowApprove(taskId?: string, type?: string): ApproveResult {
  */
 export const approveToolDefinition = {
   name: 'workflow_approve',
-  description: '指定されたタスクのレビューフェーズを承認します。design_reviewフェーズでは "design" を指定します。',
+  description: '指定されたタスクのレビューフェーズを承認します。requirementsフェーズでは "requirements"、design_reviewフェーズでは "design"、test_designフェーズでは "test_design" を指定します。',
   inputSchema: {
     type: 'object',
     properties: {
@@ -85,8 +108,12 @@ export const approveToolDefinition = {
       },
       type: {
         type: 'string',
-        description: '承認タイプ（design）',
-        enum: ['design'],
+        description: '承認タイプ（requirements, design, test_design）',
+        enum: ['requirements', 'design', 'test_design'],
+      },
+      sessionToken: {
+        type: 'string',
+        description: 'セッショントークン（REQ-6: Orchestrator認証用）',
       },
     },
     required: ['type'],

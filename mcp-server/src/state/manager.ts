@@ -207,39 +207,44 @@ export function generateStateHmac(state: TaskState): string {
 /**
  * REQ-3: タスク状態のHMAC署名を検証する
  *
- * 移行期間: HMAC署名が空または不一致の場合は警告のみ（エラーにしない）
+ * デフォルトで厳格モード: HMAC_STRICT=false の場合のみ緩和モード
  *
  * @param state タスク状態
  * @param expectedHmac 期待されるHMAC署名
- * @returns 検証結果（移行期間中は常にtrue）
+ * @returns 検証結果
  */
 export function verifyStateHmac(state: TaskState, expectedHmac: string): boolean {
-  // REQ-3: 移行期間 - HMAC署名が空の場合は警告のみ
-  if (!expectedHmac || expectedHmac.trim() === '') {
-    console.warn('[HMAC] 移行期間: HMAC署名が空のため検証をスキップします');
+  // 緩和モード（開発・移行時のみ）
+  if (process.env.HMAC_STRICT === 'false') {
     return true;
+  }
+
+  // 厳格モード（デフォルト）
+  if (!expectedHmac || expectedHmac.trim() === '') {
+    console.warn('[HMAC] 署名なし - 拒否');
+    return false;
   }
 
   const actualHmac = generateStateHmac(state);
   try {
     const expectedBuffer = Buffer.from(expectedHmac, 'base64');
     const actualBuffer = Buffer.from(actualHmac, 'base64');
+
     if (expectedBuffer.length !== actualBuffer.length) {
-      // REQ-3: 移行期間 - 長さ不一致は警告のみ（鍵変更の影響）
-      console.warn('[HMAC] 移行期間: HMAC長さ不一致。鍵変更による影響の可能性があります');
-      return true;
+      console.warn('[HMAC] 署名長さ不一致 - 拒否');
+      return false;
     }
+
     const isValid = crypto.timingSafeEqual(expectedBuffer, actualBuffer);
     if (!isValid) {
-      // REQ-3: 移行期間 - 署名不一致は警告のみ（鍵変更の影響の可能性）
-      console.warn('[HMAC] 移行期間: HMAC署名不一致。鍵変更による影響の可能性があります');
-      return true;
+      console.warn('[HMAC] 署名不一致 - 拒否');
+      return false;
     }
+
     return true;
-  } catch {
-    // REQ-3: 移行期間 - エラーは警告のみ
-    console.warn('[HMAC] 移行期間: HMAC検証エラー。移行期間中のため許可します');
-    return true;
+  } catch (error) {
+    console.error('[HMAC] 検証エラー - 拒否:', error);
+    return false;
   }
 }
 

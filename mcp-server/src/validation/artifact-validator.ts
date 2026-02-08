@@ -240,3 +240,140 @@ export function validateTraceability(docsDir: string): TraceabilityValidationRes
     errors,
   };
 }
+
+/**
+ * REQ-3: セクション本文の品質検証
+ *
+ * 各セクションの本文が十分な内容を持っているか検証する。
+ *
+ * @param content Markdown内容
+ * @param minChars セクションあたりの最小文字数（デフォルト: 50）
+ * @returns 検証結果
+ */
+export function validateSectionContent(
+  content: string,
+  minChars: number = 50
+): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+  // ## で始まるセクションに分割
+  const sections = content.split(/^##\s+/m).slice(1);
+
+  for (const section of sections) {
+    const lines = section.split('\n');
+    const sectionName = lines[0]?.trim() || 'Unknown';
+    // ヘッダー行以外を本文として結合
+    const bodyText = lines.slice(1)
+      .filter(l => l.trim().length > 0)
+      .filter(l => !l.trim().startsWith('#'))
+      .filter(l => !l.trim().startsWith('|'))
+      .filter(l => !l.trim().startsWith('-'))
+      .join(' ');
+
+    if (bodyText.length < minChars) {
+      errors.push(`セクション「${sectionName}」の本文が不十分です（${bodyText.length}文字 < ${minChars}文字）`);
+    }
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
+/**
+ * REQ-3: 本文比率の検証
+ *
+ * ヘッダーや構造要素ではなく、実際の本文がどれだけあるかを検証する。
+ *
+ * @param content Markdown内容
+ * @param minRatio 最小本文比率（デフォルト: 0.6 = 60%）
+ * @returns 検証結果
+ */
+export function validateContentRatio(
+  content: string,
+  minRatio: number = 0.6
+): { valid: boolean; ratio: number; errors: string[] } {
+  const errors: string[] = [];
+  const lines = content.split('\n').filter(l => l.trim().length > 0);
+
+  if (lines.length === 0) {
+    return { valid: false, ratio: 0, errors: ['コンテンツが空です'] };
+  }
+
+  // ヘッダー系の行をカウント
+  const structuralLines = lines.filter(l => {
+    const trimmed = l.trim();
+    return trimmed.startsWith('#') ||
+           trimmed.startsWith('|') ||
+           trimmed.startsWith('-') ||
+           trimmed.startsWith('>') ||
+           trimmed.startsWith('*') ||
+           trimmed.startsWith('```');
+  });
+
+  const bodyLines = lines.length - structuralLines.length;
+  const ratio = bodyLines / lines.length;
+
+  if (ratio < minRatio) {
+    errors.push(`本文の比率が低すぎます（${(ratio * 100).toFixed(1)}% < ${(minRatio * 100).toFixed(1)}%）`);
+  }
+
+  return { valid: errors.length === 0, ratio, errors };
+}
+
+/**
+ * REQ-3: Mermaid図の構造検証
+ *
+ * ステートマシン図やフローチャートが十分な要素を持っているか検証する。
+ *
+ * @param content Mermaid図の内容
+ * @param minStates 最小状態/ノード数（デフォルト: 3）
+ * @param minTransitions 最小遷移/エッジ数（デフォルト: 2）
+ * @returns 検証結果
+ */
+export function validateMermaidStructure(
+  content: string,
+  minStates: number = 3,
+  minTransitions: number = 2
+): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+
+  if (content.includes('stateDiagram')) {
+    // 遷移カウント（-->）
+    const transitions = (content.match(/-->/g) || []).length;
+    // 状態カウント（[*]以外の --> の前後にある識別子）
+    const stateNames = new Set<string>();
+    const transitionPattern = /(\w+)\s*-->/g;
+    let match;
+    while ((match = transitionPattern.exec(content)) !== null) {
+      if (match[1] !== '[*]') stateNames.add(match[1]);
+    }
+    const reversePattern = /-->\s*(\w+)/g;
+    while ((match = reversePattern.exec(content)) !== null) {
+      if (match[1] !== '[*]') stateNames.add(match[1]);
+    }
+
+    if (stateNames.size < minStates) {
+      errors.push(`ステートマシン図の状態数が不十分です（${stateNames.size}個 < ${minStates}個）`);
+    }
+    if (transitions < minTransitions) {
+      errors.push(`ステートマシン図の遷移数が不十分です（${transitions}個 < ${minTransitions}個）`);
+    }
+  }
+
+  if (content.includes('flowchart')) {
+    const nodes = new Set<string>();
+    const nodePattern = /(\w+)[\[\(\{]/g;
+    let match;
+    while ((match = nodePattern.exec(content)) !== null) {
+      nodes.add(match[1]);
+    }
+    const edges = (content.match(/-->/g) || []).length;
+
+    if (nodes.size < minStates) {
+      errors.push(`フローチャートのノード数が不十分です（${nodes.size}個 < ${minStates}個）`);
+    }
+    if (edges < minTransitions) {
+      errors.push(`フローチャートのエッジ数が不十分です（${edges}個 < ${minTransitions}個）`);
+    }
+  }
+
+  return { valid: errors.length === 0, errors };
+}

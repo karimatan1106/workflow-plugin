@@ -6,6 +6,7 @@
  * @spec docs/spec/features/workflow-mcp-server.md
  */
 
+import * as crypto from 'crypto';
 import { stateManager } from '../state/manager.js';
 import type { StartResult } from '../state/types.js';
 import { DEFAULT_TASK_SIZE } from '../state/types.js';
@@ -31,6 +32,11 @@ export function workflowStart(taskName: string): StartResult {
   return safeExecute('タスク開始', () => {
     const taskState = stateManager.createTask(nameValidation.value, DEFAULT_TASK_SIZE);
 
+    // REQ-6: セッショントークン生成
+    const sessionToken = crypto.randomBytes(32).toString('hex');
+    taskState.sessionToken = sessionToken;
+    stateManager.writeTaskState(taskState.workflowDir, taskState);
+
     return {
       success: true,
       taskId: taskState.taskId,
@@ -39,6 +45,7 @@ export function workflowStart(taskName: string): StartResult {
       workflowDir: taskState.workflowDir,
       docsDir: taskState.docsDir,
       taskSize: taskState.taskSize,
+      sessionToken,
       message: `タスク「${taskState.taskName}」を開始しました。フェーズ: research、サイズ: large`,
     };
   }) as StartResult;

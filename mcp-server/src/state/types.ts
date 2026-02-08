@@ -245,6 +245,11 @@ export interface TaskState {
    * @spec docs/workflows/ワ-クフロ-プラグイン大規模対応根本改修/spec.md#REQ-2
    */
   stateIntegrity?: string;
+  /**
+   * セッショントークン（workflow_startで生成、フェーズ遷移APIで検証）
+   * @spec docs/workflows/ワークフロー全問題完全解決/spec.md#REQ-6
+   */
+  sessionToken?: string;
 }
 
 // ============================================================================
@@ -365,6 +370,8 @@ export interface StartResult extends ToolResult {
   docsDir?: string;
   /** タスクサイズ */
   taskSize?: TaskSize;
+  /** セッショントークン */
+  sessionToken?: string;
 }
 
 /**

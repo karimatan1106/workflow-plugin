@@ -257,7 +257,7 @@ export const SUB_PHASE_EXTENSIONS: Record<SubPhaseName, string> = {
  * これらのフェーズでは、workflow_approveコマンドで
  * 明示的に承認を得ないと次のフェーズに進めない。
  */
-export const REVIEW_PHASES: PhaseName[] = ['design_review'];
+export const REVIEW_PHASES: PhaseName[] = ['requirements', 'design_review', 'test_design'];
 
 /**
  * 承認タイプとフェーズのマッピング
@@ -266,7 +266,9 @@ export const REVIEW_PHASES: PhaseName[] = ['design_review'];
  * その承認が有効なフェーズと遷移先フェーズを値として保持する。
  */
 export const APPROVE_TYPE_MAPPING: Record<string, { expectedPhase: PhaseName; nextPhase: PhaseName }> = {
+  requirements: { expectedPhase: 'requirements', nextPhase: 'parallel_analysis' },
   design: { expectedPhase: 'design_review', nextPhase: 'test_design' },
+  test_design: { expectedPhase: 'test_design', nextPhase: 'test_impl' },
 };
 
 // ============================================================================

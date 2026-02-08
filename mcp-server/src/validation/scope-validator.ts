@@ -5,6 +5,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { execSync } from 'child_process';
 
 /**
  * スコープ深度検証結果
@@ -261,4 +262,95 @@ export function trackDependencies(
     importedFiles,
     warnings,
   };
+}
+
+/**
+ * REQ-5: スコープ事後検証結果
+ */
+export interface ScopePostValidationResult {
+  valid: boolean;
+  outOfScopeFiles: string[];
+  warnings: string[];
+}
+
+/**
+ * REQ-5: スコープ事後検証
+ *
+ * implementation/refactoringフェーズ完了後、実際に変更されたファイルが
+ * スコープ内に収まっているか検証する。
+ *
+ * @param scopeFiles スコープファイルリスト
+ * @param scopeDirs スコープディレクトリリスト
+ * @param projectRoot プロジェクトルートディレクトリ（デフォルト: process.cwd()）
+ * @returns 検証結果
+ */
+export function validateScopePostExecution(
+  scopeFiles: string[],
+  scopeDirs: string[],
+  projectRoot: string = process.cwd()
+): ScopePostValidationResult {
+  const warnings: string[] = [];
+  const outOfScopeFiles: string[] = [];
+
+  try {
+    // .gitディレクトリが存在しない場合はスキップ
+    if (!fs.existsSync(path.join(projectRoot, '.git'))) {
+      return { valid: true, outOfScopeFiles: [], warnings: [] };
+    }
+
+    // git diff --name-only HEAD で変更ファイルを取得
+    const diffOutput = execSync('git diff --name-only HEAD', {
+      cwd: projectRoot,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim();
+
+    if (!diffOutput) {
+      return { valid: true, outOfScopeFiles: [], warnings: [] };
+    }
+
+    const changedFiles = diffOutput.split('\n').map(f => f.trim()).filter(Boolean);
+
+    // 除外パターン（ドキュメント・依存関係ファイル等）
+    const EXCLUDE_PATTERNS = [
+      /\.md$/,
+      /package\.json$/,
+      /package-lock\.json$/,
+      /pnpm-lock\.yaml$/,
+      /^\.claude\/state\//,
+      /^docs\/workflows\//,
+    ];
+
+    for (const changedFile of changedFiles) {
+      // 除外パターンに一致する場合はスキップ
+      if (EXCLUDE_PATTERNS.some(p => p.test(changedFile))) continue;
+
+      const absChanged = path.resolve(projectRoot, changedFile);
+
+      // scopeFilesに含まれるか確認
+      const inScopeFiles = scopeFiles.some(sf => {
+        const absSf = path.isAbsolute(sf) ? sf : path.resolve(projectRoot, sf);
+        return absChanged === absSf;
+      });
+
+      // scopeDirsに含まれるか確認
+      const inScopeDirs = scopeDirs.some(sd => {
+        const absSd = path.isAbsolute(sd) ? sd : path.resolve(projectRoot, sd);
+        return absChanged.replace(/\\/g, '/').startsWith(absSd.replace(/\\/g, '/'));
+      });
+
+      if (!inScopeFiles && !inScopeDirs) {
+        outOfScopeFiles.push(changedFile);
+      }
+    }
+
+    if (outOfScopeFiles.length > 0) {
+      warnings.push(`スコープ外のファイルが変更されています: ${outOfScopeFiles.join(', ')}`);
+    }
+
+    return { valid: outOfScopeFiles.length === 0, outOfScopeFiles, warnings };
+  } catch (error) {
+    // git diffでエラーが発生した場合（例: gitリポジトリでない）
+    return { valid: true, outOfScopeFiles: [], warnings: [`git diff検証エラー: ${error}`] };
+  }
 }
