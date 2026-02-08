@@ -1,0 +1,20 @@
+flowchart TD
+    A["🎯 タスク開始<br/>SKILL.md更新タスク"] --> B["1️⃣ SKILL.md読み込み<br/>現在の18フェーズ構成を確認"]
+    B --> C["2️⃣ フェーズ構成更新<br/>18フェーズ → 19フェーズ<br/>regression_test追加"]
+    C --> D["3️⃣ Orchestratorパターン追加<br/>フェーズ構成セクション直後に配置"]
+    D --> E["4️⃣ subagent設定テーブル追加<br/>フェーズ別設定・起動テンプレート・<br/>並列実行例・コンテキスト引き継ぎ"]
+    E --> F["5️⃣ 禁止行為セクション更新<br/>subagent委譲強制ルール追加"]
+    F --> G["6️⃣ 必須成果物テーブル更新<br/>regression-test.md追加"]
+    G --> H["7️⃣ README.md全文置換<br/>19フェーズ対応・フェーズ順序図"]
+    H --> I["8️⃣ 整合性検証<br/>SKILL.md / README.md /<br/>CLAUDE.md / definitions.ts"]
+    I --> J["✅ フローチャート出力<br/>flowchart.mmd"]
+
+    style A fill:#4CAF50,color:#fff
+    style J fill:#2196F3,color:#fff
+    style C fill:#FF9800
+    style D fill:#FF9800
+    style E fill:#FF9800
+    style F fill:#FF9800
+    style G fill:#FF9800
+    style H fill:#FF9800
+    style I fill:#9C27B0,color:#fff

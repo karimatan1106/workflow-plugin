@@ -1,0 +1,34 @@
+stateDiagram-v2
+    [*] --> DirectExecution: タスク開始（旧状態）
+
+    DirectExecution: 直接実行モード（subagent委譲なし）
+    NoPattern: SKILL.mdにOrchestrator指示なし
+    ContextBloat: コンテキスト肥大化（12000行以上）
+    CompactingOccurs: Compacting発生で前フェーズ詳細消失
+
+    DirectExecution --> NoPattern: メインClaudeが全フェーズ直接実行
+    NoPattern --> ContextBloat: research/requirements/planning蓄積
+    ContextBloat --> CompactingOccurs: コンテキスト上限到達
+
+    CompactingOccurs --> SkillMdUpdate: 本タスクでSKILL.md更新開始
+
+    SkillMdUpdate: SKILL.md更新（Orchestratorパターン追加）
+    Phase19Update: フェーズ構成19化（regression_test追加）
+    SubagentTableAdd: subagent設定テーブル追加（25行）
+    ReadmeMdReplace: README.md全文置換（19フェーズ対応）
+    ConsistencyVerify: CLAUDE.md/SKILL.md/README.md整合性確認
+
+    SkillMdUpdate --> Phase19Update: フェーズ構成セクション更新
+    Phase19Update --> SubagentTableAdd: 設定テーブル挿入
+    SubagentTableAdd --> ReadmeMdReplace: README.md置換
+    ReadmeMdReplace --> ConsistencyVerify: 3ファイル間検証
+
+    ConsistencyVerify --> OrchestratorActive: 全ドキュメント更新完了
+
+    OrchestratorActive: Orchestratorパターン有効（新状態）
+    SubagentDelegation: 各フェーズをTask toolでsubagent委譲
+    ContextOptimized: コンテキスト最適化（サマリーのみ500行）
+
+    OrchestratorActive --> SubagentDelegation: ワークフロー実行開始
+    SubagentDelegation --> ContextOptimized: subagent成果物をファイル経由引き継ぎ
+    ContextOptimized --> [*]: completedフェーズ到達（Compactingなし）
