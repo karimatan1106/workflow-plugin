@@ -42,6 +42,7 @@ const BASH_WHITELIST = {
     'npx eslint', 'npx prettier --check',
     // その他
     'npm run lint', 'npm run type-check',
+    'node ',
   ],
 
   // 実装コマンド（implementation, refactoring）
@@ -52,6 +53,7 @@ const BASH_WHITELIST = {
     'npm run build', 'npx tsc', 'npx webpack', 'npx vite build',
     // ディレクトリ作成
     'mkdir', 'mkdir -p',
+    'node ',
   ],
 
   // ビルド修正（build_check）- REQ-2: ホワイトリスト + ブラックリスト適用
@@ -163,6 +165,12 @@ function extractIdentifiersFromAST(code) {
   }
 }
 
+/**
+ * D-3: シェル組み込みコマンド定義
+ * splitCompoundCommand分割後、これらはホワイトリスト検証をスキップする
+ */
+const SHELL_BUILTINS = new Set(['true', 'false', 'exit', 'set', 'unset', 'export', 'test', ':']);
+
 const NODE_E_BLACKLIST = [
   'fs.writeFileSync', 'fs.writeSync', 'fs.appendFileSync',
   'fs.createWriteStream', 'fs.open', 'fs.openSync',
@@ -188,10 +196,11 @@ function getWhitelistForPhase(phase) {
   const docsUpdatePhases = ['docs_update'];
 
   // FR-2: parallel_verificationサブフェーズ（readonly + testing + gh）
-  const verificationPhases = ['security_scan', 'performance_test', 'e2e_test'];
+  const verificationPhases = ['security_scan', 'performance_test', 'e2e_test', 'ci_verification'];
 
   const testingPhases = ['testing', 'regression_test'];
   const implementationPhases = ['test_impl', 'implementation', 'refactoring'];
+  const deployPhases = ['deploy'];
   const gitPhases = ['commit', 'push'];
 
   if (readonlyPhases.includes(phase)) {
@@ -210,6 +219,9 @@ function getWhitelistForPhase(phase) {
       ...BASH_WHITELIST.testing,
       ...BASH_WHITELIST.implementation,
     ];
+  } else if (deployPhases.includes(phase)) {
+    // D-2: deployフェーズはreadonly + implementation + deploy用コマンドを許可
+    return [...BASH_WHITELIST.readonly, ...BASH_WHITELIST.implementation, 'docker', 'kubectl', 'ssh', 'helm', 'gh'];
   } else if (gitPhases.includes(phase)) {
     return [...BASH_WHITELIST.readonly, ...BASH_WHITELIST.git];
   } else if (phase === 'build_check' || phase === 'parallel_quality') {
@@ -324,6 +336,18 @@ function splitCompoundCommand(command) {
   });
 }
 
+/**
+ * D-6: git -C オプションを正規化
+ * git -C /path/to/dir status → git status に変換
+ * @param {string} cmd - コマンド文字列
+ * @returns {string} 正規化されたコマンド
+ */
+function normalizeGitCommand(cmd) {
+  if (!cmd.startsWith('git ')) return cmd;
+  // -C <path> ペアを全て除去
+  return cmd.replace(/\s+-C\s+\S+/g, '').replace(/\s+/g, ' ').trim();
+}
+
 function checkBashWhitelist(command, phase) {
   const trimmed = command.trim();
 
@@ -393,10 +417,18 @@ function checkBashWhitelist(command, phase) {
       continue;
     }
 
+    // D-3: シェル組み込みコマンドはホワイトリスト検証をスキップ
+    const shellCmd = partTrimmed.split(/\s+/)[0];
+    if (SHELL_BUILTINS.has(shellCmd)) {
+      continue;
+    }
+
     // ホワイトリストに含まれるかチェック
+    // D-6: git -C オプションを正規化してからマッチング
+    const normalizedPart = normalizeGitCommand(partTrimmed);
     let partAllowed = false;
     for (const allowedCommand of whitelist) {
-      if (partTrimmed.startsWith(allowedCommand)) {
+      if (normalizedPart.startsWith(allowedCommand)) {
         partAllowed = true;
         break;
       }

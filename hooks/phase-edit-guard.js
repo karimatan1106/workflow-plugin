@@ -301,8 +301,10 @@ const FILE_TYPE_NAMES = {
 const PHASE_ORDER = [
   'research',
   'requirements',
+  'parallel_analysis',
   'threat_modeling',
   'planning',
+  'parallel_design',
   'state_machine',
   'flowchart',
   'ui_design',
@@ -311,13 +313,21 @@ const PHASE_ORDER = [
   'test_impl',
   'implementation',
   'refactoring',
+  'parallel_quality',
   'build_check',
   'code_review',
   'testing',
+  'regression_test',
+  'parallel_verification',
   'manual_test',
   'security_scan',
+  'performance_test',
+  'e2e_test',
   'docs_update',
   'commit',
+  'push',
+  'ci_verification',
+  'deploy',
   'completed',
 ];
 
@@ -1034,12 +1044,12 @@ function displayTddCycleInfo(currentTddPhase) {
     { phase: 'Refactor', name: 'refactoring', description: 'コード品質を改善' },
   ];
 
-  console.log(' TDD サイクル:');
+  console.error(' TDD サイクル:');
   tddPhases.forEach((item, index) => {
     const marker = item.phase === currentTddPhase ? ' ← 現在地' : '';
-    console.log(`   ${index + 1}. ${item.phase} フェーズ（${item.name}）: ${item.description}${marker}`);
+    console.error(`   ${index + 1}. ${item.phase} フェーズ（${item.name}）: ${item.description}${marker}`);
   });
-  console.log('');
+  console.error('');
 }
 
 /**
@@ -1048,17 +1058,17 @@ function displayTddCycleInfo(currentTddPhase) {
  * @param {string[]} allowedTypes - 許可されるファイルタイプの配列
  */
 function displayAllowedFiles(allowedTypes) {
-  console.log(' 許可されるファイル:');
+  console.error(' 許可されるファイル:');
   if (allowedTypes.length === 0) {
-    console.log('   - なし（読み取り専用）');
+    console.error('   - なし（読み取り専用）');
   } else {
     for (const type of allowedTypes) {
       const typeName = FILE_TYPE_NAMES[type] || type;
       const examples = getFileTypeExamples(type);
-      console.log(`   - ${typeName}: ${examples}`);
+      console.error(`   - ${typeName}: ${examples}`);
     }
   }
-  console.log('');
+  console.error('');
 }
 
 /**
@@ -1072,35 +1082,35 @@ function displayAllowedFiles(allowedTypes) {
  * @param {string} [fileType] - ブロックされたファイルタイプ
  */
 function displayNextSteps(rule, phase, fileType) {
-  console.log(' 次のステップ:');
+  console.error(' 次のステップ:');
 
   // ブロックされたファイルタイプに基づいて移行先フェーズを案内
   if (phase && fileType) {
     const nextPhase = findNextPhaseForFileType(phase, fileType);
     if (nextPhase) {
       const fileTypeName = FILE_TYPE_NAMES[fileType] || fileType;
-      console.log(`   → /workflow next で ${nextPhase.phase}（${nextPhase.japaneseName}）`);
-      console.log(`     フェーズへ進むと${fileTypeName}の編集が可能になります`);
-      console.log('');
+      console.error(`   → /workflow next で ${nextPhase.phase}（${nextPhase.japaneseName}）`);
+      console.error(`     フェーズへ進むと${fileTypeName}の編集が可能になります`);
+      console.error('');
       return;
     }
   }
 
   // フォールバック: 一般的な案内
   if (rule.readOnly) {
-    console.log('   1. このフェーズの作業を完了してください');
-    console.log('   2. /workflow next で次フェーズへ進んでください');
+    console.error('   1. このフェーズの作業を完了してください');
+    console.error('   2. /workflow next で次フェーズへ進んでください');
   } else if (rule.tddPhase === 'Red') {
-    console.log('   1. テストコード（.test.ts, .spec.ts）を作成してください');
-    console.log('   2. テスト作成が完了したら /workflow next で次フェーズへ');
+    console.error('   1. テストコード（.test.ts, .spec.ts）を作成してください');
+    console.error('   2. テスト作成が完了したら /workflow next で次フェーズへ');
   } else if (rule.tddPhase === 'Green') {
-    console.log('   1. ソースコードを実装してテストをパスさせてください');
-    console.log('   2. 実装完了後 /workflow next で次フェーズへ');
+    console.error('   1. ソースコードを実装してテストをパスさせてください');
+    console.error('   2. 実装完了後 /workflow next で次フェーズへ');
   } else {
-    console.log('   1. 許可されたファイルを編集してください');
-    console.log('   2. 作業完了後 /workflow next で次フェーズへ');
+    console.error('   1. 許可されたファイルを編集してください');
+    console.error('   2. 作業完了後 /workflow next で次フェーズへ');
   }
-  console.log('');
+  console.error('');
 }
 
 /**
@@ -1116,19 +1126,19 @@ function displayNextSteps(rule, phase, fileType) {
  */
 function displayBlockMessage(phase, filePath, fileType, rule) {
   // ヘッダー
-  console.log('');
-  console.log(SEPARATOR_LINE);
-  console.log(' フェーズ別編集制限違反');
-  console.log(SEPARATOR_LINE);
-  console.log('');
+  console.error('');
+  console.error(SEPARATOR_LINE);
+  console.error(' フェーズ別編集制限違反');
+  console.error(SEPARATOR_LINE);
+  console.error('');
 
   // 基本情報
-  console.log(` フェーズ: ${phase}（${rule.japaneseName || phase}）`);
-  console.log(` ファイル: ${filePath}`);
-  console.log(` ファイルタイプ: ${fileType}（${FILE_TYPE_NAMES[fileType] || fileType}）`);
-  console.log('');
-  console.log(` 理由: ${rule.description}`);
-  console.log('');
+  console.error(` フェーズ: ${phase}（${rule.japaneseName || phase}）`);
+  console.error(` ファイル: ${filePath}`);
+  console.error(` ファイルタイプ: ${fileType}（${FILE_TYPE_NAMES[fileType] || fileType}）`);
+  console.error('');
+  console.error(` 理由: ${rule.description}`);
+  console.error('');
 
   // TDD サイクル説明（該当する場合）
   if (rule.tddPhase) {
@@ -1137,8 +1147,8 @@ function displayBlockMessage(phase, filePath, fileType, rule) {
 
   // 読み取り専用フェーズの強調
   if (rule.readOnly) {
-    console.log(' 注意: このフェーズは読み取り専用です。');
-    console.log('');
+    console.error(' 注意: このフェーズは読み取り専用です。');
+    console.error('');
   }
 
   // 許可されるファイル一覧
@@ -1147,7 +1157,7 @@ function displayBlockMessage(phase, filePath, fileType, rule) {
   // 次のステップ（ブロックされたファイルタイプに基づいてフェーズ移行案内）
   displayNextSteps(rule, phase, fileType);
 
-  console.log(SEPARATOR_LINE);
+  console.error(SEPARATOR_LINE);
 }
 
 // =============================================================================
