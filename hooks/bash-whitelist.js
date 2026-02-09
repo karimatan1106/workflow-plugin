@@ -87,7 +87,7 @@ const BASH_BLACKLIST = [
   { pattern: '| bash', type: 'contains' },
   { pattern: '| zsh', type: 'contains' },
   // ファイル書き込み系（コマンドとして使われる場合のみ）
-  { pattern: '> ', type: 'contains' },
+  { pattern: /(?<!=)> /, type: 'regex' },
   { pattern: '>> ', type: 'contains' },
   { pattern: 'base64 -d >', type: 'contains' },
   { pattern: 'printf >', type: 'contains' },
@@ -273,6 +273,9 @@ function matchesBlacklistEntry(command, entry) {
         const trimmed = part.trim();
         return trimmed.startsWith('xxd') && hasRedirection(trimmed);
       });
+
+    case 'regex':
+      return entry.pattern.test(command);
 
     case 'contains':
       // 部分一致（コマンド全体で検査）

@@ -232,6 +232,24 @@ const PHASE_RULES = {
     description: 'ドキュメント更新フェーズ。仕様書のみ編集可能。',
     japaneseName: 'ドキュメント更新',
   },
+  regression_test: {
+    allowed: ['spec', 'test'],
+    blocked: ['code', 'diagram', 'config', 'env', 'other'],
+    description: 'リグレッションテスト中。テストファイルと仕様書の編集が可能。',
+    japaneseName: 'リグレッションテスト',
+  },
+  ci_verification: {
+    allowed: ['spec'],
+    blocked: ['code', 'test', 'diagram', 'config', 'env', 'other'],
+    description: 'CI検証中。仕様書のみ編集可能。',
+    japaneseName: 'CI検証',
+  },
+  deploy: {
+    allowed: ['spec'],
+    blocked: ['code', 'test', 'diagram', 'config', 'env', 'other'],
+    description: 'デプロイ中。仕様書のみ編集可能。',
+    japaneseName: 'デプロイ',
+  },
   commit: {
     allowed: [],
     blocked: ['code', 'test', 'spec', 'diagram', 'config', 'env', 'other'],

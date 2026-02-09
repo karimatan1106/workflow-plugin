@@ -72,6 +72,8 @@ const PHASE_EXTENSIONS = {
   'security_scan': ['.md'],
   'performance_test': ['.md'],
   'e2e_test': ['.md', '.test.ts', '.test.tsx', '.spec.ts', '.spec.tsx'],
+  'docs_update': ['.md', '.mdx'],
+  'ci_verification': ['.md'],
   'commit': [],
   'push': [],
   'deploy': ['.md'],
