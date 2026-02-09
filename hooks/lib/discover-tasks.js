@@ -69,6 +69,10 @@ function discoverTasks() {
       }
     }
 
+    // B-1: taskId descending sort (newest first)
+    // taskId is YYYYMMDD_HHMMSS format, string comparison preserves chronological order
+    tasks.sort((a, b) => (b.taskId || '').localeCompare(a.taskId || ''));
+
     return tasks;
   } catch {
     return [];

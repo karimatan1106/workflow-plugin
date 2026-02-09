@@ -159,12 +159,19 @@ export function workflowCaptureBaseline(
 
   const { taskState } = result;
 
-  // researchフェーズ以外ではエラー
-  if (taskState.phase !== 'research') {
+  // B-3: research and testing phases allowed (testing = deferred baseline)
+  const baselineAllowedPhases = ['research', 'testing'];
+  if (!baselineAllowedPhases.includes(taskState.phase)) {
     return {
       success: false,
-      message: `ベースライン記録はresearchフェーズでのみ可能です。現在: ${taskState.phase}`,
+      message: `ベースライン記録はresearch/testingフェーズでのみ可能です。現在: ${taskState.phase}`,
     };
+  }
+
+  // Warning log for testing phase baseline recording
+  if (taskState.phase === 'testing') {
+    console.warn(`[warning] Testing phase baseline recording (deferred baseline) task: ${taskId}`);
+    console.warn(`Recommendation: record baseline during research phase in the future`);
   }
 
   // パラメータ検証
