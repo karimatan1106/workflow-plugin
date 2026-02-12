@@ -22,6 +22,7 @@ import {
 } from '../validation/scope-validator.js';
 
 /** FR-6: スコープ設定が可能なフェーズ（拡張対応） */
+// N-5: Added docs_update and regression_test to allow scope changes in later phases
 const ALLOWED_PHASES = [
   'research',
   'requirements',
@@ -29,6 +30,8 @@ const ALLOWED_PHASES = [
   'implementation',
   'refactoring',
   'testing',
+  'docs_update',     // N-5: Allow scope changes for documentation updates
+  'regression_test', // N-5: Allow scope changes for regression test creation
 ] as const;
 
 /** スコープサイズ制限（REQ-3） */

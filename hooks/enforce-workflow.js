@@ -46,6 +46,8 @@ const { discoverTasks, findTaskByFilePath } = require('./lib/discover-tasks');
 const { verifyHMAC } = require('./hmac-verify');
 
 // フェーズごとの許可拡張子
+// N-4: JavaScript test extensions (.test.js, .spec.js, .test.jsx, .spec.jsx) added to support various test runners
+const TEST_EXTENSIONS = ['.test.ts', '.test.tsx', '.spec.ts', '.spec.tsx', '.test.js', '.spec.js', '.test.jsx', '.spec.jsx'];
 const PHASE_EXTENSIONS = {
   'research': ['.md', '.mdx', '.txt'],
   'requirements': ['.md', '.mdx', '.txt'],
@@ -57,20 +59,20 @@ const PHASE_EXTENSIONS = {
   'flowchart': ['.md', '.mdx', '.txt', '.mmd'],
   'ui_design': ['.md', '.mdx', '.txt', '.mmd'],
   'design_review': ['.md'],
-  'test_design': ['.md', '.test.ts', '.test.tsx', '.spec.ts', '.spec.tsx'],
-  'test_impl': ['.test.ts', '.test.tsx', '.spec.ts', '.spec.tsx', '.md'],
+  'test_design': ['.md', ...TEST_EXTENSIONS],
+  'test_impl': [...TEST_EXTENSIONS, '.md'],
   'implementation': ['*'],
   'refactoring': ['*'],
   'parallel_quality': ['*'],
   'build_check': ['*'],
   'code_review': ['.md'],
-  'testing': ['.md', '.test.ts', '.test.tsx', '.spec.ts', '.spec.tsx'],
-  'regression_test': ['.md', '.test.ts', '.test.tsx', '.spec.ts', '.spec.tsx'],
+  'testing': ['.md', ...TEST_EXTENSIONS],
+  'regression_test': ['.md', ...TEST_EXTENSIONS],
   'parallel_verification': ['.md'],
   'manual_test': ['.md'],
   'security_scan': ['.md'],
   'performance_test': ['.md'],
-  'e2e_test': ['.md', '.test.ts', '.test.tsx', '.spec.ts', '.spec.tsx'],
+  'e2e_test': ['.md', ...TEST_EXTENSIONS],
   'docs_update': ['.md', '.mdx'],
   'ci_verification': ['.md'],
   'commit': [],

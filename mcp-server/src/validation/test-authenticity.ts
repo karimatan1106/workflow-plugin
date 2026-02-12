@@ -26,8 +26,9 @@ export function validateTestAuthenticity(
   exitCode: number,
   phaseStartedAt: string
 ): TestAuthenticityResult {
-  // 1. 出力の最小文字数チェック（200文字以上）
-  const MIN_OUTPUT_LENGTH = 200;
+  // 1. 出力の最小文字数チェック（100文字以上）
+  // N-3: Reduced from 200 to 100 to support custom test runners with shorter output
+  const MIN_OUTPUT_LENGTH = 100; // N-3: Reduced for custom test runner support
   if (output.length < MIN_OUTPUT_LENGTH) {
     return {
       valid: false,
@@ -37,15 +38,19 @@ export function validateTestAuthenticity(
 
   // 2. テスト出力らしさのチェック（構造的なフレーズ）
   // 単なる "test" という単語ではなく、テストフレームワークが出力しそうな構造的なフレーズをチェック
-  const TEST_OUTPUT_INDICATORS = [
+  // N-3: Added string patterns for custom test runner support
+  const TEST_OUTPUT_INDICATORS: Array<RegExp | string> = [
     /test\s+(execution|suite|files?|results?|summary|report)/i, // "test execution", "test suite" など
     /running\s+tests?/i, // "running tests"
     /test\s+(started|finished|completed)/i, // "test started" など
     /(vitest|jest|mocha|jasmine|ava|tape)/i, // テストフレームワーク名
+    'passed',  // N-3: Custom runner success indicator
+    'failed',  // N-3: Custom runner failure indicator
+    'total',   // N-3: Custom runner count indicator
   ];
 
   const looksLikeTestOutput = TEST_OUTPUT_INDICATORS.some((pattern) =>
-    pattern.test(output)
+    typeof pattern === 'string' ? output.includes(pattern) : pattern.test(output)
   );
 
   // 3. テストフレームワークパターンのチェック & テスト数の抽出
@@ -56,6 +61,9 @@ export function validateTestAuthenticity(
     /(\d+)\s+passing/i, // Mocha: "5 passing"
     /✓\s+\d+\s+tests?\s+completed/i, // Vitest: "✓ 5 tests completed"
     /All\s+(\d+)\s+tests?\s+passed/i, // 汎用: "All 5 tests passed"
+    /passed\s*:\s*(\d+)/i,  // N-3: Custom runner passed count
+    /failed\s*:\s*(\d+)/i,  // N-3: Custom runner failed count
+    /total\s*:\s*(\d+)/i,   // N-3: Custom runner total count
   ];
 
   let testCount: number | null = null;

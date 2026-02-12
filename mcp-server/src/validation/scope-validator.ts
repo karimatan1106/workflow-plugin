@@ -449,8 +449,10 @@ export function validateScopePostExecution(
     // FR-5: gitサブモジュールのパスを取得
     const submodulePaths = getSubmodulePaths(projectRoot);
 
-    // git diff --name-only HEAD で変更ファイルを取得（FR-5: サブモジュール無視）
-    const diffOutput = execSync('git diff --name-only --ignore-submodules HEAD', {
+    // 変更ファイルを取得（FR-5: サブモジュール無視）
+    // N-1: Add -c core.quotePath=false to prevent octal escaping of non-ASCII paths
+    // This ensures Japanese task names in paths are returned as UTF-8 strings
+    const diffOutput = execSync('git -c core.quotePath=false diff --name-only --ignore-submodules HEAD', {
       cwd: projectRoot,
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],

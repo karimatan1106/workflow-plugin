@@ -1592,17 +1592,19 @@ function main(input) {
       const whitelistResult = checkBashWhitelist(command, phase);
       if (!whitelistResult.allowed) {
         const rule = getPhaseRule(phase, workflowState.workflowState);
-        console.log('');
-        console.log(SEPARATOR_LINE);
-        console.log(' Bashコマンドがブロックされました（ホワイトリスト）');
-        console.log(SEPARATOR_LINE);
-        console.log('');
-        console.log(` フェーズ: ${phase}（${rule?.japaneseName || phase}）`);
-        console.log(` コマンド: ${command.substring(0, 100)}${command.length > 100 ? '...' : ''}`);
-        console.log('');
-        console.log(` 理由: ${whitelistResult.reason}`);
-        console.log('');
-        console.log(SEPARATOR_LINE);
+        // N-2: Output error message to stderr for user visibility
+        console.error(`Hook validation failed (Bash whitelist): ${whitelistResult.reason}`);
+        console.error('');
+        console.error(SEPARATOR_LINE);
+        console.error(' Bashコマンドがブロックされました（ホワイトリスト）');
+        console.error(SEPARATOR_LINE);
+        console.error('');
+        console.error(` フェーズ: ${phase}（${rule?.japaneseName || phase}）`);
+        console.error(` コマンド: ${command.substring(0, 100)}${command.length > 100 ? '...' : ''}`);
+        console.error('');
+        console.error(` 理由: ${whitelistResult.reason}`);
+        console.error('');
+        console.error(SEPARATOR_LINE);
         logCheck({
           blocked: true,
           phase,
@@ -1859,6 +1861,8 @@ function main(input) {
   } catch (e) {
     // REQ-3: Fail Closed - エラー時はブロック
     debugLog('エラー発生:', e.message);
+    // N-2: Output error message to stderr for user visibility
+    console.error('Hook validation failed unexpectedly. Please check hook configuration.');
     process.exit(EXIT_CODES.BLOCK);
   }
 }
@@ -1881,6 +1885,8 @@ if (require.main === module) {
     clearTimeout(timeout);
     debugLog('stdin エラー:', err.message);
     // REQ-3: Fail Closed - stdinエラー時はブロック
+    // N-2: Output error message to stderr for user visibility
+    console.error('Failed to read input from stdin.');
     process.exit(EXIT_CODES.BLOCK);
   });
   process.stdin.on('end', () => {
@@ -1891,6 +1897,8 @@ if (require.main === module) {
     } catch (e) {
       // REQ-3: Fail Closed - JSON パースエラー時もブロック
       debugLog('JSON パースエラー:', e.message);
+      // N-2: Output error message to stderr for user visibility
+      console.error('Invalid JSON input from stdin.');
       process.exit(EXIT_CODES.BLOCK);
     }
   });
