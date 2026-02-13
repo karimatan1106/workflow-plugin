@@ -284,6 +284,12 @@ function main(input) {
 
     // ファイルがどのタスクにも属さない場合は、最初のアクティブタスクを使用
     const taskState = currentTask || tasks[0];
+
+    // REQ-C3: HMAC integrity verified before phase access
+    // Verification order (see: docs/security/threat-models/workflow-plugin.md#hmac-verification):
+    // 1. verifyHMAC(task) -> checks HMAC-SHA256 signature (lines 242-263)
+    // 2. if verification fails -> exit(2) (fail-closed)
+    // 3. taskState.phase -> safe access (integrity guaranteed by HMAC)
     const currentPhase = taskState.phase || 'idle';
 
     // idle状態ならブロック

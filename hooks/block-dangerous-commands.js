@@ -130,7 +130,8 @@ function handleInput(inputData) {
         };
         console.error(JSON.stringify(errorMsg));
         logError('BLOCKED', pattern.toString(), command.substring(0, 100));
-        process.exit(1);
+        // REQ-C4: fail-closed principle - exit code 2 for security violations
+        process.exit(2);
       }
     }
 

@@ -10,6 +10,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { getCached } = require('./task-cache');
 
 /** ワークフローディレクトリのパス */
 const STATE_DIR = process.env.STATE_DIR || path.join(process.cwd(), '.claude', 'state');
@@ -39,44 +40,92 @@ function safeReadJsonFile(filePath) {
  * .claude/state/workflows/ 配下のディレクトリをスキャンし、
  * 完了していないタスクの配列を返す。
  *
+ * REQ-A1: TTL付きメモリキャッシュで高速化（300秒キャッシュ）
+ *
  * @returns {Array<{taskId: string, taskName: string, workflowDir: string, phase: string, docsDir?: string, scope?: object}>}
  */
 function discoverTasks() {
-  if (!fs.existsSync(WORKFLOW_DIR)) {
-    return [];
-  }
-
-  try {
-    const entries = fs.readdirSync(WORKFLOW_DIR);
-    const tasks = [];
-
-    for (const entry of entries) {
-      const entryPath = path.join(WORKFLOW_DIR, entry);
-      try {
-        const stat = fs.statSync(entryPath);
-        if (!stat.isDirectory()) {
-          continue;
-        }
-
-        const stateFile = path.join(entryPath, 'workflow-state.json');
-        const taskState = safeReadJsonFile(stateFile);
-        if (taskState && taskState.phase !== 'completed') {
-          tasks.push(taskState);
-        }
-      } catch {
-        // 個別のエントリでエラーが発生した場合はスキップ
-        continue;
-      }
+  return getCached('discover-tasks', undefined, () => {
+    if (!fs.existsSync(WORKFLOW_DIR)) {
+      return [];
     }
 
-    // B-1: taskId descending sort (newest first)
-    // taskId is YYYYMMDD_HHMMSS format, string comparison preserves chronological order
-    tasks.sort((a, b) => (b.taskId || '').localeCompare(a.taskId || ''));
+    try {
+      const entries = fs.readdirSync(WORKFLOW_DIR);
+      const tasks = [];
 
-    return tasks;
-  } catch {
-    return [];
+      for (const entry of entries) {
+        const entryPath = path.join(WORKFLOW_DIR, entry);
+        try {
+          const stat = fs.statSync(entryPath);
+          if (!stat.isDirectory()) {
+            continue;
+          }
+
+          const stateFile = path.join(entryPath, 'workflow-state.json');
+          const taskState = safeReadJsonFile(stateFile);
+          if (taskState && taskState.phase !== 'completed') {
+            tasks.push(taskState);
+          }
+        } catch {
+          // 個別のエントリでエラーが発生した場合はスキップ
+          continue;
+        }
+      }
+
+      // B-1: taskId descending sort (newest first)
+      // taskId is YYYYMMDD_HHMMSS format, string comparison preserves chronological order
+      tasks.sort((a, b) => (b.taskId || '').localeCompare(a.taskId || ''));
+
+      return tasks;
+    } catch {
+      return [];
+    }
+  });
+}
+
+/**
+ * パス文字列を正規化（バックスラッシュをスラッシュに統一）
+ *
+ * Windows/Unix両対応のため、パス区切り文字を統一する。
+ *
+ * @param {string} filePath パス文字列
+ * @returns {string} 正規化されたパス
+ */
+function normalizePath(filePath) {
+  return filePath.replace(/\\/g, '/');
+}
+
+/**
+ * REQ-A3: パス境界チェック付きプレフィックスマッチ
+ *
+ * 誤マッチを防ぐため、プレフィックス一致後にパス境界（/ または終端）を確認する。
+ *
+ * 例:
+ * - "docs/workflows/foo/" と "docs/workflows/foo-bar/" は別タスク
+ * - "docs/workflows/foo" と "docs/workflows/foo/" は同一タスク
+ *
+ * @param {string} filePath ファイルパス
+ * @param {string} dirPath ディレクトリパス
+ * @returns {boolean} パス境界を考慮したマッチ判定
+ */
+function isPrefixMatchWithBoundary(filePath, dirPath) {
+  if (!filePath.startsWith(dirPath)) {
+    return false;
   }
+
+  // ディレクトリパスの末尾がスラッシュの場合、既に境界が明確
+  if (dirPath.endsWith('/')) {
+    return true;
+  }
+
+  // ファイルパスがディレクトリパスと完全一致（dirPath自体がファイル）
+  if (filePath === dirPath) {
+    return true;
+  }
+
+  // ファイルパスの次の文字がスラッシュであることを確認（境界チェック）
+  return filePath[dirPath.length] === '/';
 }
 
 /**
@@ -85,6 +134,8 @@ function discoverTasks() {
  * 指定されたファイルパスがどのタスクに属するかを推論する。
  * docsDirまたはworkflowDirのプレフィックスマッチで判定し、
  * 複数マッチする場合は最長一致のタスクを返す。
+ *
+ * REQ-A3: パス境界チェックで誤マッチを防止
  *
  * @param {string} filePath 推論対象のファイルパス
  * @returns {{taskId: string, taskName: string, workflowDir: string, phase: string, scope?: object}|null}
@@ -95,13 +146,13 @@ function findTaskByFilePath(filePath) {
   let bestMatchLength = 0;
 
   // パスを正規化（バックスラッシュをスラッシュに統一）
-  const normalizedFilePath = filePath.replace(/\\/g, '/');
+  const normalizedFilePath = normalizePath(filePath);
 
   for (const task of tasks) {
-    // docsDirチェック（最長一致）
+    // docsDirチェック（最長一致 + パス境界）
     if (task.docsDir) {
-      const normalizedDocsDir = task.docsDir.replace(/\\/g, '/');
-      if (normalizedFilePath.startsWith(normalizedDocsDir)) {
+      const normalizedDocsDir = normalizePath(task.docsDir);
+      if (isPrefixMatchWithBoundary(normalizedFilePath, normalizedDocsDir)) {
         if (normalizedDocsDir.length > bestMatchLength) {
           bestMatch = task;
           bestMatchLength = normalizedDocsDir.length;
@@ -109,9 +160,9 @@ function findTaskByFilePath(filePath) {
       }
     }
 
-    // workflowDirチェック（最長一致）
-    const normalizedWorkflowDir = task.workflowDir.replace(/\\/g, '/');
-    if (normalizedFilePath.startsWith(normalizedWorkflowDir)) {
+    // workflowDirチェック（最長一致 + パス境界）
+    const normalizedWorkflowDir = normalizePath(task.workflowDir);
+    if (isPrefixMatchWithBoundary(normalizedFilePath, normalizedWorkflowDir)) {
       if (normalizedWorkflowDir.length > bestMatchLength) {
         bestMatch = task;
         bestMatchLength = normalizedWorkflowDir.length;

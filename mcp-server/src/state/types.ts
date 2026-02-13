@@ -266,6 +266,16 @@ export interface TaskState {
    * スキップされたフェーズとその理由のマップ
    */
   phaseSkipReasons?: Record<string, string>;
+  /**
+   * ユーザー指定のスキップフェーズ（REQ-B4/D-1: --skip-phases対応）
+   * workflow_start時に指定されたスキップ対象フェーズのリスト
+   */
+  skippedPhases?: string[];
+  /**
+   * スキップ理由（REQ-B4/D-1）
+   * "user-specified" or "auto-detected"
+   */
+  skipReason?: string;
 }
 
 // ============================================================================

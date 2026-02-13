@@ -353,8 +353,8 @@ function checkLoop(filePath) {
     // 状態を保存
     saveState(state);
 
-    // 処理を中止
-    process.exit(1);
+    // 処理を中止 (REQ-C4: fail-closed principle)
+    process.exit(2);
   }
 
   // 状態を保存

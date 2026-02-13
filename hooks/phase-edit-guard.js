@@ -410,32 +410,18 @@ const ALWAYS_ALLOWED_PATTERNS = [
  */
 const CONFIG_FILE_PATTERNS = [
   // パッケージマネージャ設定
-  'package.json',
-  'package-lock.json',
-  'pnpm-lock.yaml',
-  'pnpm-lock.yml',
+  'package.json', 'package-lock.json', 'pnpm-lock.yaml', 'pnpm-lock.yml',
   // TypeScript設定
-  'tsconfig.json',
-  'tsconfig.base.json',
-  // Lint/Formatter設定
-  '.eslintrc',
-  '.eslintrc.js',
-  '.eslintrc.json',
-  '.prettierrc',
-  '.prettierrc.js',
-  '.prettierrc.json',
+  'tsconfig.json', 'tsconfig.base.json',
+  // Lint/Formatter設定（.eslintrc, .prettierrc とそのバリアント）
+  '.eslintrc', '.eslintrc.js', '.eslintrc.json',
+  '.prettierrc', '.prettierrc.js', '.prettierrc.json',
   // ビルドツール設定
-  'vite.config',
-  'webpack.config',
-  'jest.config',
-  'vitest.config',
+  'vite.config', 'webpack.config', 'jest.config', 'vitest.config',
   // バージョン管理設定
-  '.gitignore',
-  '.gitattributes',
+  '.gitignore', '.gitattributes',
   // インフラ設定
-  'serverless.yml',
-  'docker-compose.yml',
-  'Dockerfile',
+  'serverless.yml', 'docker-compose.yml', 'Dockerfile',
 ];
 
 /** 設定ファイルの拡張子（一般的な設定ファイル） */
@@ -1453,6 +1439,25 @@ function getPhaseRule(phase, workflowState) {
 }
 
 /**
+ * package.json 関連ファイルかどうかを判定
+ *
+ * @param {string} filePath - チェック対象ファイルパス
+ * @returns {boolean} package.json 関連ファイルの場合 true
+ */
+function isPackageJsonRelated(filePath) {
+  const packageJsonPatterns = [
+    'package.json',
+    'package-lock.json',
+    'pnpm-lock.yaml',
+    'yarn.lock'
+  ];
+  const normalizedPath = normalizePath(filePath);
+  return packageJsonPatterns.some(pattern =>
+    normalizedPath.includes(pattern.toLowerCase())
+  );
+}
+
+/**
  * スコープ違反チェック
  * @param {string} filePath - チェック対象ファイルパス
  * @param {object} workflowState - ワークフロー状態
@@ -1805,13 +1810,50 @@ function main(input) {
   const fileType = getFileType(filePath);
   debugLog('ファイルタイプ:', fileType);
 
-  // 7. 設定ファイル・環境変数ファイルは全フェーズで許可
-  if (isAlwaysEditableType(fileType)) {
+  // 7. REQ-C1: package.json系ファイルの早期フェーズ編集制限
+  const isPackageJsonFile = isPackageJsonRelated(filePath);
+
+  if (isPackageJsonFile) {
+    const allowedPhases = ['implementation', 'refactoring', 'build_check', 'code_review'];
+    if (!allowedPhases.includes(phase)) {
+      console.error('');
+      console.error('┌─────────────────────────────────────────────────────────────┐');
+      console.error('│ SECURITY BLOCK: package.json editing restricted             │');
+      console.error('├─────────────────────────────────────────────────────────────┤');
+      console.error(`│ File: ${filePath}`);
+      console.error(`│ Current phase: ${phase}`);
+      console.error('│ Allowed phases: implementation, refactoring, build_check, code_review');
+      console.error('│');
+      console.error('│ Reason:');
+      console.error('│ - Early-phase package.json editing enables Trojan horse attacks');
+      console.error('│ - Malicious code can be injected via preinstall scripts');
+      console.error('│ - Security audit phase has not been reached yet');
+      console.error('│');
+      console.error('│ Action required:');
+      console.error('│ 1. Complete the design and review phases first');
+      console.error('│ 2. Wait until implementation phase');
+      console.error('│ 3. Then you can edit package.json safely');
+      console.error('│');
+      console.error('│ Exit code: 2 (fail-closed - blocking all operations)');
+      console.error('└─────────────────────────────────────────────────────────────┘');
+      console.error('');
+      logCheck({
+        blocked: true,
+        phase,
+        filePath,
+        reason: 'package.json can only be edited during implementation or later (REQ-C1)',
+      });
+      process.exit(EXIT_CODES.BLOCK);
+    }
+  }
+
+  // 8. 設定ファイル・環境変数ファイルは全フェーズで許可（package.json除く）
+  if (isAlwaysEditableType(fileType) && !isPackageJsonFile) {
     debugLog('設定ファイル/環境変数ファイル：許可');
     process.exit(EXIT_CODES.SUCCESS);
   }
 
-  // 8. フェーズルールを取得
+  // 9. フェーズルールを取得
   const rule = getPhaseRule(phase, workflowState.workflowState);
 
   // 未知のフェーズは許可

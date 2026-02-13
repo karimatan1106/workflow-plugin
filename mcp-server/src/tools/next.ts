@@ -30,6 +30,9 @@ import { auditLogger } from '../audit/logger.js';
 const MAX_SCOPE_FILES = 200;
 const MAX_SCOPE_DIRS = 20;
 
+/** テスト基準値の定義 */
+const MIN_TESTS = 0; // テスト存在チェック用
+
 /**
  * フェーズ名から成果物ファイル名への対応表（REQ-3: 品質検証強化）
  *
@@ -355,8 +358,17 @@ export function workflowNext(taskId?: string, sessionToken?: string): NextResult
   // タスクサイズを取得（未設定の場合はlargeとして扱う）
   const taskSize: TaskSize = taskState.taskSize || DEFAULT_TASK_SIZE;
 
-  // REQ-C3: 動的フェーズスキップ判定
+  // REQ-C3: 動的フェーズスキップ判定（自動検出）
   const phaseSkipReasons = calculatePhaseSkips(taskState.scope || {});
+
+  // REQ-B4/D-1: ユーザー指定のスキップフェーズをマージ
+  if (taskState.skippedPhases && taskState.skippedPhases.length > 0) {
+    for (const phase of taskState.skippedPhases) {
+      if (!phaseSkipReasons[phase]) {
+        phaseSkipReasons[phase] = 'ユーザー指定（--skip-phases）';
+      }
+    }
+  }
 
   // 次のフェーズを取得（タスクサイズに応じた遷移）
   let nextPhase = getNextPhase(currentPhase, taskSize);

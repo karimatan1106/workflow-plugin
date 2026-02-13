@@ -1,10 +1,44 @@
 /**
  * 成果物品質検証モジュール
  * @spec docs/workflows/ワークフロー全問題完全解決/spec.md REQ-3
+ *
+ * REQ-B1: セクション密度チェック統合（MIN_SECTION_DENSITY環境変数）
+ * REQ-B2: 意味的整合性チェックのキーワード上限環境変数化（SEMANTIC_KEYWORD_LIMIT環境変数）
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
+
+/** REQ-B1: セクション密度の最小閾値（デフォルト: 0.3 = 30%） */
+const MIN_SECTION_DENSITY = parseFloat(process.env.MIN_SECTION_DENSITY || '0.3');
+const MIN_DENSITY = 0.1;
+const MAX_DENSITY = 1.0;
+
+/** REQ-B2: 意味的整合性チェックのキーワード数上限（デフォルト: 50） */
+const SEMANTIC_KEYWORD_LIMIT = parseInt(process.env.SEMANTIC_KEYWORD_LIMIT || '50', 10);
+const MIN_KEYWORD_LIMIT = 1;
+const MAX_KEYWORD_LIMIT = 1000;
+
+/**
+ * 数値の範囲をバリデートし、範囲外なら終了
+ *
+ * @param value 検証値
+ * @param varName 環境変数名
+ * @param min 最小値
+ * @param max 最大値
+ */
+function validateRange(value: number, varName: string, min: number, max: number): void {
+  if (value < min || value > max) {
+    console.error(`ERROR: ${varName} must be between ${min} and ${max}, got ${value}`);
+    process.exit(1);
+  }
+}
+
+// REQ-B1: 範囲バリデーション
+validateRange(MIN_SECTION_DENSITY, 'MIN_SECTION_DENSITY', MIN_DENSITY, MAX_DENSITY);
+
+// REQ-B2: 範囲バリデーション
+validateRange(SEMANTIC_KEYWORD_LIMIT, 'SEMANTIC_KEYWORD_LIMIT', MIN_KEYWORD_LIMIT, MAX_KEYWORD_LIMIT);
 
 /**
  * 成果物の品質要件
@@ -471,9 +505,13 @@ export function validateMermaidStructure(
 }
 
 /**
- * FR-7: セクション密度の検証
+ * FR-7 + REQ-B1: セクション密度の検証
  *
  * 各 ## セクションが最低限の実質的な内容を持っているか検証する。
+ *
+ * REQ-B1拡張: 密度比率（実内容行 / 総行数）で検証
+ * - MIN_SECTION_DENSITY 環境変数（デフォルト: 0.3）を閾値として使用
+ * - 従来の最小行数チェックも保持（後方互換性）
  *
  * @param content Markdown内容
  * @param minSubstantiveLines セクションあたりの最小実質行数（デフォルト: 5）
@@ -493,9 +531,10 @@ export function checkSectionDensity(
   for (const section of sections) {
     const lines = section.split('\n');
     const sectionName = lines[0]?.trim() || 'Unknown';
+    const sectionContent = lines.slice(1); // セクション名行を除外
 
     // 実質的な行をカウント（空白行、ヘッダー、構造要素を除く）
-    const substantiveLines = lines.slice(1).filter(line => {
+    const substantiveLines = sectionContent.filter(line => {
       const trimmed = line.trim();
 
       // コードブロックの開始/終了を追跡
@@ -513,9 +552,21 @@ export function checkSectionDensity(
       return true;
     });
 
-    if (substantiveLines.length < minSubstantiveLines) {
+    // REQ-B1: 密度比率検証（実内容行 / 総行数）
+    const totalLines = sectionContent.length;
+    const substantiveCount = substantiveLines.length;
+    const density = totalLines > 0 ? substantiveCount / totalLines : 0;
+
+    if (density < MIN_SECTION_DENSITY) {
       errors.push(
-        `セクション「${sectionName}」の実質行数が不足（${substantiveLines.length}行 < ${minSubstantiveLines}行）`
+        `セクション「${sectionName}」の密度が低すぎます（${density.toFixed(2)} < ${MIN_SECTION_DENSITY}）。実内容: ${substantiveCount}行 / 総行数: ${totalLines}行`
+      );
+    }
+
+    // 後方互換性: 最小行数チェックも実施
+    if (substantiveCount < minSubstantiveLines) {
+      errors.push(
+        `セクション「${sectionName}」の実質行数が不足（${substantiveCount}行 < ${minSubstantiveLines}行）`
       );
     }
   }
@@ -716,8 +767,8 @@ export function validateSemanticConsistency(
     return { valid: true, errors: [], warnings: [] };
   }
 
-  // 上位20個のキーワードを対象（頻度順ではなく、抽出順の最初20個）
-  const topKeywords = Array.from(keywords).slice(0, 20);
+  // REQ-B2: 上位N個のキーワードを対象（SEMANTIC_KEYWORD_LIMIT環境変数、デフォルト: 50）
+  const topKeywords = Array.from(keywords).slice(0, SEMANTIC_KEYWORD_LIMIT);
 
   // 後続フェーズ成果物のチェック
   const artifactsToCheck = [

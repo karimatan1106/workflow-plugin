@@ -153,7 +153,7 @@ interface ToolArguments {
   /** ステータス取得（taskIdオプション） */
   workflow_status: { taskId?: string };
   /** タスク開始 */
-  workflow_start: { taskName: string; size?: string };
+  workflow_start: { taskName: string; size?: string; skipPhases?: string };
   /** 次フェーズ遷移（taskId必須） */
   workflow_next: { taskId?: string; sessionToken?: string };
   /** 承認（taskId必須） */
@@ -273,8 +273,8 @@ const TOOL_HANDLERS: Record<ToolName, ToolHandler> = {
   },
 
   workflow_start: (args) => {
-    const { taskName } = args as ToolArguments['workflow_start'];
-    return workflowStart(taskName);
+    const { taskName, skipPhases } = args as ToolArguments['workflow_start'];
+    return workflowStart(taskName, skipPhases);
   },
 
   workflow_next: (args) => {

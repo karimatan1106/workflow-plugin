@@ -7,11 +7,50 @@
  * - SCOPE_MAX_DEPTH環境変数（デフォルト: 5）
  * - 循環依存検出
  * - 動的import検出（import(), require()）
+ *
+ * REQ-A2: BFS走査制限（1000万行プロジェクト対応）
+ * - MAX_SCOPE_FILES: ファイル数上限（デフォルト: 1000）
+ * - MAX_SCOPE_DIRS: ディレクトリ数上限（デフォルト: 100）
+ * - MAX_DEPENDENCY_DEPTH: 依存深度上限（デフォルト: 10）
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
+
+/** REQ-A2: スコープ内ファイル数の上限 */
+const MAX_SCOPE_FILES = parseInt(process.env.MAX_SCOPE_FILES || '1000', 10);
+const MIN_SCOPE_FILES = 1;
+const MAX_SCOPE_FILES_LIMIT = 10000;
+
+/** REQ-A2: スコープ内ディレクトリ数の上限 */
+const MAX_SCOPE_DIRS = parseInt(process.env.MAX_SCOPE_DIRS || '100', 10);
+const MIN_SCOPE_DIRS = 1;
+const MAX_SCOPE_DIRS_LIMIT = 1000;
+
+/** REQ-A2: 依存関係追跡の深度上限 */
+const MAX_DEPENDENCY_DEPTH = parseInt(process.env.MAX_DEPENDENCY_DEPTH || '10', 10);
+const MIN_DEPENDENCY_DEPTH = 1;
+const MAX_DEPENDENCY_DEPTH_LIMIT = 50;
+
+/**
+ * 環境変数の範囲をバリデート
+ * @param value 検証値
+ * @param varName 変数名
+ * @param min 最小値
+ * @param max 最大値
+ */
+function validateEnvRange(value: number, varName: string, min: number, max: number): void {
+  if (value < min || value > max) {
+    console.error(`ERROR: ${varName} must be between ${min} and ${max}, got ${value}`);
+    process.exit(1);
+  }
+}
+
+// REQ-A2: 範囲バリデーション
+validateEnvRange(MAX_SCOPE_FILES, 'MAX_SCOPE_FILES', MIN_SCOPE_FILES, MAX_SCOPE_FILES_LIMIT);
+validateEnvRange(MAX_SCOPE_DIRS, 'MAX_SCOPE_DIRS', MIN_SCOPE_DIRS, MAX_SCOPE_DIRS_LIMIT);
+validateEnvRange(MAX_DEPENDENCY_DEPTH, 'MAX_DEPENDENCY_DEPTH', MIN_DEPENDENCY_DEPTH, MAX_DEPENDENCY_DEPTH_LIMIT);
 
 /**
  * REQ-D3: パス正規化関数
@@ -103,6 +142,7 @@ function getMinDepthFromMode(): number {
  *
  * REQ-5: affectedDirs の深度が最小深度以上であることを検証
  * FR-8: SCOPE_DEPTH_MODE 環境変数に対応
+ * REQ-A2: ディレクトリ数上限チェック追加
  *
  * @param affectedDirs ディレクトリパスの配列
  * @returns 検証結果
@@ -110,6 +150,14 @@ function getMinDepthFromMode(): number {
 export function validateScopeDepth(affectedDirs: string[]): ScopeDepthResult {
   const MIN_DIRECTORY_DEPTH = getMinDepthFromMode();
   const errors: string[] = [];
+
+  // REQ-A2: ディレクトリ数上限チェック
+  if (affectedDirs.length > MAX_SCOPE_DIRS) {
+    errors.push(
+      `スコープディレクトリ数が上限を超えています（${affectedDirs.length} > ${MAX_SCOPE_DIRS}）。より具体的なディレクトリに絞ってください。`
+    );
+    return { valid: false, errors };
+  }
 
   for (const dir of affectedDirs) {
     const depth = calculateDepth(dir);
@@ -261,12 +309,17 @@ function isFileInScope(filePath: string, affectedDirs: string[]): boolean {
 }
 
 /**
- * REQ-5 + FR-8: 依存関係を追跡
+ * REQ-5 + FR-8 + REQ-A2: 依存関係を追跡
  *
  * FR-8拡張:
  * - SCOPE_MAX_DEPTH 環境変数サポート
  * - 循環依存検出
  * - 追跡サマリーログ出力
+ *
+ * REQ-A2拡張:
+ * - MAX_DEPENDENCY_DEPTH による深度制限（デフォルト: 10）
+ * - MAX_SCOPE_FILES によるファイル数制限（デフォルト: 1000）
+ * - 制限超過時の警告出力
  *
  * @param affectedFiles 変更対象ファイルの配列
  * @param affectedDirs スコープディレクトリ（文字列または配列）
@@ -279,8 +332,15 @@ export function trackDependencies(
   options: { maxDepth?: number } = {},
 ): DependencyTrackingResult {
   // FR-8: SCOPE_MAX_DEPTH 環境変数サポート
+  // REQ-A2: MAX_DEPENDENCY_DEPTH をデフォルト上限として使用
   const envMaxDepth = process.env.SCOPE_MAX_DEPTH ? parseInt(process.env.SCOPE_MAX_DEPTH, 10) : undefined;
-  const maxDepth = options.maxDepth ?? envMaxDepth ?? 5;
+  const requestedMaxDepth = options.maxDepth ?? envMaxDepth ?? MAX_DEPENDENCY_DEPTH;
+  const maxDepth = Math.min(requestedMaxDepth, MAX_DEPENDENCY_DEPTH);
+
+  if (requestedMaxDepth > MAX_DEPENDENCY_DEPTH) {
+    console.warn(`[Scope Tracking] Requested maxDepth ${requestedMaxDepth} exceeds MAX_DEPENDENCY_DEPTH ${MAX_DEPENDENCY_DEPTH}, capping at ${MAX_DEPENDENCY_DEPTH}`);
+  }
+
   const dirs = Array.isArray(affectedDirs) ? affectedDirs : [affectedDirs];
 
   const allFiles = new Set<string>(affectedFiles);
@@ -296,6 +356,12 @@ export function trackDependencies(
   while (queue.length > 0) {
     const { file, depth, parent } = queue.shift()!;
 
+    // REQ-A2: ファイル数制限チェック
+    if (allFiles.size >= MAX_SCOPE_FILES) {
+      warnings.push(`File count limit reached (${MAX_SCOPE_FILES}). Dependency tracking stopped.`);
+      break;
+    }
+
     // FR-8: 循環依存検出
     if (visitStack.has(file)) {
       warnings.push(`Circular dependency detected: ${parent} -> ${file}`);
@@ -305,7 +371,10 @@ export function trackDependencies(
     if (visited.has(file)) continue;
     visited.add(file);
 
-    if (depth >= maxDepth) continue;
+    if (depth >= maxDepth) {
+      warnings.push(`Max dependency depth ${maxDepth} reached for ${file}. Stopping traversal.`);
+      continue;
+    }
 
     // Read file and extract imports
     try {
