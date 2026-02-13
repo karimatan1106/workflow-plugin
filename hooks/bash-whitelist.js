@@ -11,7 +11,7 @@
 const SECURITY_ENV_VARS = [
   'HMAC_STRICT', 'SCOPE_STRICT', 'SESSION_TOKEN_REQUIRED',
   'HMAC_AUTO_RECOVER', 'SKIP_WORKFLOW', 'SKIP_LOOP_DETECTOR',
-  'VALIDATE_DESIGN_STRICT',
+  'VALIDATE_DESIGN_STRICT', 'SPEC_FIRST_TTL_MS',
 ];
 
 /**
@@ -625,7 +625,7 @@ function checkBashWhitelist(command, phase) {
       // REQ-R6: 厳格なホワイトリストマッチ（単語境界チェック）
       if (normalizedPart.startsWith(allowedCommand)) {
         const nextChar = normalizedPart[allowedCommand.length];
-        if (!nextChar || nextChar === ' ' || nextChar === '\t' || /[;&|<>]/.test(nextChar)) {
+        if (!nextChar || /\s/.test(nextChar) || /[;&|<>]/.test(nextChar)) {
           partAllowed = true;
           break;
         }

@@ -127,10 +127,16 @@ function normalizeFilePath(filePath) {
     return '';
   }
   try {
-    const resolved = path.resolve(filePath);
+    const resolved = fs.realpathSync(filePath);
     return resolved.replace(/\\/g, '/').toLowerCase();
   } catch (e) {
-    return filePath.replace(/\\/g, '/').toLowerCase().replace(/^\.\//, '');
+    // Fallback to path.resolve if realpathSync fails
+    try {
+      const resolved = path.resolve(filePath);
+      return resolved.replace(/\\/g, '/').toLowerCase();
+    } catch (e2) {
+      return filePath.replace(/\\/g, '/').toLowerCase().replace(/^\.\//, '');
+    }
   }
 }
 
