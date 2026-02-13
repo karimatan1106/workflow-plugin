@@ -27,7 +27,10 @@ const DEFAULT_THRESHOLD = 10;
  */
 export type AuditEventType =
   | 'bypass_enabled'           // バイパス環境変数が有効
-  | 'bypass_threshold_exceeded'; // バイパス使用回数が閾値超過
+  | 'bypass_threshold_exceeded' // バイパス使用回数が閾値超過
+  | 'hmac_auto_recover'        // HMAC自動復旧成功
+  | 'hmac_recover_failed'      // HMAC復旧失敗
+  | 'semantic_check_failed';   // 意味的整合性チェック失敗
 
 /**
  * 監査ログエントリ
@@ -47,6 +50,12 @@ export interface AuditLogEntry {
   count?: number;
   /** 時間窓（bypass_threshold_exceededの場合） */
   window?: string;
+  /** 不足している要件（semantic_check_failedの場合） */
+  missingRequirements?: string[];
+  /** 余分な実装（semantic_check_failedの場合） */
+  extraImplementations?: string[];
+  /** 厳格モード（semantic_check_failedの場合） */
+  strictMode?: boolean;
 }
 
 /**

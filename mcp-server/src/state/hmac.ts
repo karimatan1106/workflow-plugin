@@ -5,6 +5,7 @@
  * これにより鍵ローテーション後も古い署名のタスクが読み取り可能。
  *
  * @spec docs/spec/features/hmac-key-rotation.md
+ * @spec docs/workflows/ワ-クフロ-プラグインレビュ-指摘事項全件修正/spec.md
  */
 
 import * as crypto from 'crypto';
@@ -193,7 +194,11 @@ export function signWithCurrentKey(data: string): string {
 }
 
 /**
- * データとHMACを検証（全有効鍵で試行）
+ * FR-3: データとHMACを検証（全有効鍵で試行、タイミング攻撃対策）
+ *
+ * crypto.timingSafeEqual を使用した定数時間比較により、
+ * タイミング攻撃への脆弱性を防止する。
+ *
  * いずれかの鍵で一致すれば成功
  */
 export function verifyWithAnyKey(data: string, signature: string): boolean {
@@ -204,10 +209,81 @@ export function verifyWithAnyKey(data: string, signature: string): boolean {
       .createHmac(HMAC_ALGORITHM, keyEntry.key)
       .update(data)
       .digest('hex');
-    if (expected === signature) {
-      return true;
+
+    // FR-3: 定数時間比較でタイミング攻撃を防止
+    try {
+      const expectedBuffer = Buffer.from(expected, 'hex');
+      const signatureBuffer = Buffer.from(signature, 'hex');
+
+      // Buffer長が異なる場合もダミー比較を実行してタイミング漏洩を防ぐ
+      if (expectedBuffer.length !== signatureBuffer.length) {
+        // ダミー比較：expectedBufferと同じ長さのゼロバッファと比較
+        crypto.timingSafeEqual(expectedBuffer, Buffer.alloc(expectedBuffer.length));
+        continue; // 次の鍵で試行
+      }
+
+      // 定数時間比較
+      if (crypto.timingSafeEqual(expectedBuffer, signatureBuffer)) {
+        return true;
+      }
+    } catch {
+      // Buffer変換エラーやtimingSafeEqualエラーはスキップして次の鍵で試行
+      continue;
     }
   }
 
   return false;
+}
+
+/**
+ * FR-13: HMAC自動復旧機能
+ *
+ * HMAC検証に失敗した場合、環境変数HMAC_AUTO_RECOVERがtrueの場合のみ
+ * タスク状態から新しいHMAC署名を再生成して復旧を試みる。
+ *
+ * @param stateFilePath - workflow-state.jsonのパス
+ * @returns 復旧成功時はtrue、失敗時はfalse
+ */
+export function attemptHmacRecovery(stateFilePath: string): boolean {
+  // 環境変数チェック（デフォルト: false）
+  if (process.env.HMAC_AUTO_RECOVER !== 'true') {
+    return false;
+  }
+
+  try {
+    console.log('[HMAC Recovery] 自動復旧を試みています...');
+
+    // workflow-state.jsonを読み込み
+    const content = fs.readFileSync(stateFilePath, 'utf-8');
+    const state = JSON.parse(content);
+
+    if (!state) {
+      console.error('[HMAC Recovery] ファイル読み込み失敗');
+      return false;
+    }
+
+    // 旧HMAC署名を保存
+    const oldHmac = state.stateIntegrity;
+
+    // stateIntegrityを除外してデータを作成
+    const { stateIntegrity, ...stateWithoutSignature } = state;
+    const data = JSON.stringify(stateWithoutSignature, Object.keys(stateWithoutSignature).sort());
+
+    // 新しいHMAC署名を生成
+    const newHmac = signWithCurrentKey(data);
+
+    // 新しい署名を設定してファイルに書き戻し
+    state.stateIntegrity = newHmac;
+    fs.writeFileSync(stateFilePath, JSON.stringify(state, null, 2), 'utf-8');
+
+    console.log('[HMAC Recovery] 自動復旧に成功しました');
+
+    // 監査ログに記録（auditLoggerがあればの場合のみ）
+    // NOTE: ここではconsoleログのみで、呼び出し元で監査ログを記録する
+
+    return true;
+  } catch (error) {
+    console.error('[HMAC Recovery] 自動復旧に失敗しました:', error);
+    return false;
+  }
 }

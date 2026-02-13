@@ -285,12 +285,12 @@ describe('REQ-2: HMAC署名機能', () => {
       const actualSignature = parsedState.stateIntegrity;
 
       // REQ-3: ランダム鍵を使用するため、PBKDF2の期待値とは一致しない
-      // 代わりに署名が有効なbase64文字列であることを検証
+      // FR-3統合後はhex形式で署名が格納される
       expect(actualSignature).toBeTruthy();
       expect(typeof actualSignature).toBe('string');
-      // Base64 format check
-      expect(() => Buffer.from(actualSignature, 'base64')).not.toThrow();
-      expect(Buffer.from(actualSignature, 'base64').length).toBe(32); // SHA-256 = 32 bytes
+      // Hex format check: SHA-256 = 32 bytes = 64 hex chars
+      expect(actualSignature).toMatch(/^[0-9a-f]{64}$/i);
+      expect(Buffer.from(actualSignature, 'hex').length).toBe(32); // SHA-256 = 32 bytes
     });
   });
 

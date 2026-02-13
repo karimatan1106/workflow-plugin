@@ -6,9 +6,10 @@
  * 5分以内に同一ファイルが5回以上編集された場合に警告を表示し、処理を中止する。
  *
  * 設定可能な環境変数:
- * （なし）
+ * - SKIP_LOOP_DETECTOR: "true" でこのフックを無効化（開発環境用）
  *
  * @spec docs/spec/features/loop-detector.md
+ * @spec docs/workflows/ワ-クフロ-プラグインレビュ-指摘事項全件修正/spec.md
  */
 
 const HOOK_NAME = 'loop-detector.js';
@@ -196,21 +197,8 @@ function saveLogs(logs) {
   }
 }
 
-/**
- * ログファイルにエラーを記録
- * @param {string} message - エラーメッセージ
- * @param {Error} error - エラーオブジェクト
- */
-function logError(message, error) {
-  const logs = loadLogs();
-  logs.push({
-    timestamp: new Date().toISOString(),
-    type: 'error',
-    message,
-    error: error ? error.message : undefined,
-  });
-  saveLogs(logs);
-}
+// FR-10: 重複 logError 関数を削除
+// Line 27 の logError 関数のみを使用
 
 /**
  * ログファイルに警告を記録
@@ -399,8 +387,12 @@ function main(input) {
 // モジュール化対応（テスト用）
 if (require.main === module) {
   // タイムアウト処理（3秒）
+  // FR-2: Timeout fail-closed化（CRITICAL）
+  // タイムアウト発生時は exit code 2 でフック検証失敗として終了
+  // CLAUDE.md REQ-3 Fail Closed準拠
   const timeout = setTimeout(() => {
-    process.exit(0);
+    console.error('[loop-detector.js] Hook timeout - failing closed for security');
+    process.exit(2);
   }, 3000);
 
   // 非同期stdin読み取り

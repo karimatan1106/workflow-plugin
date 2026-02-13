@@ -1,6 +1,7 @@
 /**
  * スコープ検証モジュール
  * @spec docs/workflows/ワ-クフロ-全問題完全解決/spec.md REQ-5
+ * @spec docs/workflows/ワ-クフロ-プラグインレビュ-指摘事項全件修正/spec.md
  *
  * FR-8対応:
  * - SCOPE_DEPTH_MODE環境変数（shallow/normal/deep）
@@ -19,38 +20,60 @@ import * as path from 'path';
 import { execSync } from 'child_process';
 
 /** REQ-A2: スコープ内ファイル数の上限 */
-const MAX_SCOPE_FILES = parseInt(process.env.MAX_SCOPE_FILES || '1000', 10);
+const MAX_SCOPE_FILES_RAW = parseInt(process.env.MAX_SCOPE_FILES || '1000', 10);
 const MIN_SCOPE_FILES = 1;
 const MAX_SCOPE_FILES_LIMIT = 10000;
 
 /** REQ-A2: スコープ内ディレクトリ数の上限 */
-const MAX_SCOPE_DIRS = parseInt(process.env.MAX_SCOPE_DIRS || '100', 10);
+const MAX_SCOPE_DIRS_RAW = parseInt(process.env.MAX_SCOPE_DIRS || '100', 10);
 const MIN_SCOPE_DIRS = 1;
 const MAX_SCOPE_DIRS_LIMIT = 1000;
 
 /** REQ-A2: 依存関係追跡の深度上限 */
-const MAX_DEPENDENCY_DEPTH = parseInt(process.env.MAX_DEPENDENCY_DEPTH || '10', 10);
+const MAX_DEPENDENCY_DEPTH_RAW = parseInt(process.env.MAX_DEPENDENCY_DEPTH || '10', 10);
 const MIN_DEPENDENCY_DEPTH = 1;
 const MAX_DEPENDENCY_DEPTH_LIMIT = 50;
 
 /**
- * 環境変数の範囲をバリデート
+ * FR-6: 環境変数の範囲をバリデート（process.exit除去、RangeErrorをthrow）
+ *
  * @param value 検証値
  * @param varName 変数名
  * @param min 最小値
  * @param max 最大値
+ * @throws RangeError 範囲外の場合
  */
 function validateEnvRange(value: number, varName: string, min: number, max: number): void {
   if (value < min || value > max) {
-    console.error(`ERROR: ${varName} must be between ${min} and ${max}, got ${value}`);
-    process.exit(1);
+    throw new RangeError(`${varName} must be between ${min} and ${max}, got ${value}`);
   }
 }
 
-// REQ-A2: 範囲バリデーション
-validateEnvRange(MAX_SCOPE_FILES, 'MAX_SCOPE_FILES', MIN_SCOPE_FILES, MAX_SCOPE_FILES_LIMIT);
-validateEnvRange(MAX_SCOPE_DIRS, 'MAX_SCOPE_DIRS', MIN_SCOPE_DIRS, MAX_SCOPE_DIRS_LIMIT);
-validateEnvRange(MAX_DEPENDENCY_DEPTH, 'MAX_DEPENDENCY_DEPTH', MIN_DEPENDENCY_DEPTH, MAX_DEPENDENCY_DEPTH_LIMIT);
+// REQ-A2: 範囲バリデーション（グローバルスコープでの実行を削除）
+// FR-6: エラーハンドリングは呼び出し元で実施
+let MAX_SCOPE_FILES = MIN_SCOPE_FILES;
+try {
+  validateEnvRange(MAX_SCOPE_FILES_RAW, 'MAX_SCOPE_FILES', MIN_SCOPE_FILES, MAX_SCOPE_FILES_LIMIT);
+  MAX_SCOPE_FILES = MAX_SCOPE_FILES_RAW;
+} catch (error) {
+  console.warn(`[scope-validator] ${error instanceof Error ? error.message : error}, using default ${MIN_SCOPE_FILES}`);
+}
+
+let MAX_SCOPE_DIRS = MIN_SCOPE_DIRS;
+try {
+  validateEnvRange(MAX_SCOPE_DIRS_RAW, 'MAX_SCOPE_DIRS', MIN_SCOPE_DIRS, MAX_SCOPE_DIRS_LIMIT);
+  MAX_SCOPE_DIRS = MAX_SCOPE_DIRS_RAW;
+} catch (error) {
+  console.warn(`[scope-validator] ${error instanceof Error ? error.message : error}, using default ${MIN_SCOPE_DIRS}`);
+}
+
+let MAX_DEPENDENCY_DEPTH = MIN_DEPENDENCY_DEPTH;
+try {
+  validateEnvRange(MAX_DEPENDENCY_DEPTH_RAW, 'MAX_DEPENDENCY_DEPTH', MIN_DEPENDENCY_DEPTH, MAX_DEPENDENCY_DEPTH_LIMIT);
+  MAX_DEPENDENCY_DEPTH = MAX_DEPENDENCY_DEPTH_RAW;
+} catch (error) {
+  console.warn(`[scope-validator] ${error instanceof Error ? error.message : error}, using default ${MIN_DEPENDENCY_DEPTH}`);
+}
 
 /**
  * REQ-D3: パス正規化関数
@@ -70,6 +93,72 @@ export function normalizePath(filePath: string): string {
   const nfcNormalized = slashNormalized.normalize('NFC');
 
   return nfcNormalized;
+}
+
+/**
+ * FR-14: Globパターンを正規表現に変換
+ *
+ * シンプルなglob変換ルール:
+ * - `**` → `.*` (0個以上の任意の文字、ディレクトリ区切り含む)
+ * - `*` → `[^/]*` (ディレクトリ区切り以外の任意の文字)
+ * - `?` → `.` (任意の1文字)
+ * - `.` → `\\.` (リテラルドット)
+ *
+ * @param pattern グロブパターン
+ * @returns 正規表現オブジェクト
+ */
+export function globToRegex(pattern: string): RegExp {
+  // エスケープが必要な正規表現特殊文字（.*+?^${}()|[]\ 等）
+  // ただし、グロブで使う *、?、. は後で置換するので先にエスケープ
+  let regexPattern = pattern;
+
+  // 1. ドット（.）をエスケープ（\\.）
+  regexPattern = regexPattern.replace(/\./g, '\\.');
+
+  // 2. ** を一時プレースホルダーに置換（* の処理と区別するため）
+  regexPattern = regexPattern.replace(/\*\*/g, '__DOUBLE_STAR__');
+
+  // 3. * を [^/]* に置換（ディレクトリ区切り以外）
+  regexPattern = regexPattern.replace(/\*/g, '[^/]*');
+
+  // 4. プレースホルダーを .* に置換（ディレクトリ区切り含む）
+  regexPattern = regexPattern.replace(/__DOUBLE_STAR__/g, '.*');
+
+  // 5. ? を . に置換（任意の1文字）
+  regexPattern = regexPattern.replace(/\?/g, '.');
+
+  // 6. 正規表現オブジェクトを作成（^と$で完全一致）
+  return new RegExp(`^${regexPattern}$`);
+}
+
+/** FR-14: グロブ正規表現キャッシュ */
+const globRegexCache = new Map<string, RegExp>();
+const GLOB_CACHE_MAX_SIZE = 100;
+
+/**
+ * FR-14: キャッシュ付きglobToRegex
+ *
+ * @param pattern グロブパターン
+ * @returns 正規表現オブジェクト
+ */
+export function globToRegexCached(pattern: string): RegExp {
+  // キャッシュに存在する場合は再利用
+  if (globRegexCache.has(pattern)) {
+    return globRegexCache.get(pattern)!;
+  }
+
+  // 新規作成
+  const regex = globToRegex(pattern);
+
+  // キャッシュに保存（上限チェック）
+  if (globRegexCache.size >= GLOB_CACHE_MAX_SIZE) {
+    // 最も古いエントリを削除（FIFO）
+    const firstKey = globRegexCache.keys().next().value as string;
+    if (firstKey) globRegexCache.delete(firstKey);
+  }
+
+  globRegexCache.set(pattern, regex);
+  return regex;
 }
 
 /**

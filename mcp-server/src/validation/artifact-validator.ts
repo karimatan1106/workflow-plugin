@@ -1,6 +1,7 @@
 /**
  * 成果物品質検証モジュール
  * @spec docs/workflows/ワークフロー全問題完全解決/spec.md REQ-3
+ * @spec docs/workflows/ワ-クフロ-プラグインレビュ-指摘事項全件修正/spec.md
  *
  * REQ-B1: セクション密度チェック統合（MIN_SECTION_DENSITY環境変数）
  * REQ-B2: 意味的整合性チェックのキーワード上限環境変数化（SEMANTIC_KEYWORD_LIMIT環境変数）
@@ -10,42 +11,64 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 /** REQ-B1: セクション密度の最小閾値（デフォルト: 0.3 = 30%） */
-const MIN_SECTION_DENSITY = parseFloat(process.env.MIN_SECTION_DENSITY || '0.3');
+const MIN_SECTION_DENSITY_RAW = parseFloat(process.env.MIN_SECTION_DENSITY || '0.3');
 const MIN_DENSITY = 0.1;
 const MAX_DENSITY = 1.0;
 
 /** REQ-B2: 意味的整合性チェックのキーワード数上限（デフォルト: 50） */
-const SEMANTIC_KEYWORD_LIMIT = parseInt(process.env.SEMANTIC_KEYWORD_LIMIT || '50', 10);
+const SEMANTIC_KEYWORD_LIMIT_RAW = parseInt(process.env.SEMANTIC_KEYWORD_LIMIT || '50', 10);
 const MIN_KEYWORD_LIMIT = 1;
 const MAX_KEYWORD_LIMIT = 1000;
 
 /**
- * 数値の範囲をバリデートし、範囲外なら終了
+ * FR-6: 数値の範囲をバリデート（process.exit除去、RangeErrorをthrow）
  *
  * @param value 検証値
  * @param varName 環境変数名
  * @param min 最小値
  * @param max 最大値
+ * @throws RangeError 範囲外の場合
  */
 function validateRange(value: number, varName: string, min: number, max: number): void {
   if (value < min || value > max) {
-    console.error(`ERROR: ${varName} must be between ${min} and ${max}, got ${value}`);
-    process.exit(1);
+    throw new RangeError(`${varName} must be between ${min} and ${max}, got ${value}`);
   }
 }
 
-// REQ-B1: 範囲バリデーション
-validateRange(MIN_SECTION_DENSITY, 'MIN_SECTION_DENSITY', MIN_DENSITY, MAX_DENSITY);
+// REQ-B1: 範囲バリデーション（グローバルスコープでの実行を削除）
+// FR-6: エラーハンドリングは呼び出し元で実施
+let MIN_SECTION_DENSITY = MIN_DENSITY;
+try {
+  validateRange(MIN_SECTION_DENSITY_RAW, 'MIN_SECTION_DENSITY', MIN_DENSITY, MAX_DENSITY);
+  MIN_SECTION_DENSITY = MIN_SECTION_DENSITY_RAW;
+} catch (error) {
+  console.warn(`[artifact-validator] ${error instanceof Error ? error.message : error}, using default ${MIN_DENSITY}`);
+}
 
-// REQ-B2: 範囲バリデーション
-validateRange(SEMANTIC_KEYWORD_LIMIT, 'SEMANTIC_KEYWORD_LIMIT', MIN_KEYWORD_LIMIT, MAX_KEYWORD_LIMIT);
+// REQ-B2: 範囲バリデーション（グローバルスコープでの実行を削除）
+// FR-6: エラーハンドリングは呼び出し元で実施
+let SEMANTIC_KEYWORD_LIMIT = MIN_KEYWORD_LIMIT;
+try {
+  validateRange(SEMANTIC_KEYWORD_LIMIT_RAW, 'SEMANTIC_KEYWORD_LIMIT', MIN_KEYWORD_LIMIT, MAX_KEYWORD_LIMIT);
+  SEMANTIC_KEYWORD_LIMIT = SEMANTIC_KEYWORD_LIMIT_RAW;
+} catch (error) {
+  console.warn(`[artifact-validator] ${error instanceof Error ? error.message : error}, using default ${MIN_KEYWORD_LIMIT}`);
+}
+
+/**
+ * FR-12: 多言語セクション名定義
+ */
+export interface MultiLangSection {
+  ja: string;
+  en: string;
+}
 
 /**
  * 成果物の品質要件
  */
 export interface ArtifactRequirement {
   minLines: number;
-  requiredSections: string[];
+  requiredSections: string[] | MultiLangSection[];
 }
 
 /**
@@ -94,19 +117,33 @@ export function isStructuralLine(line: string): boolean {
 export const PHASE_ARTIFACT_REQUIREMENTS: Record<string, ArtifactRequirement> = {
   'research.md': {
     minLines: 20,
-    requiredSections: ['## 調査結果', '## 既存実装の分析'],
+    requiredSections: [
+      { ja: '## 調査結果', en: '## Investigation Results' },
+      { ja: '## 既存実装の分析', en: '## Existing Implementation Analysis' },
+    ],
   },
   'requirements.md': {
     minLines: 30,
-    requiredSections: ['## 背景', '## 機能要件', '## 受入条件'],
+    requiredSections: [
+      { ja: '## 背景', en: '## Background' },
+      { ja: '## 機能要件', en: '## Functional Requirements' },
+      { ja: '## 受入条件', en: '## Acceptance Criteria' },
+    ],
   },
   'spec.md': {
     minLines: 50,
-    requiredSections: ['## 概要', '## 実装計画', '## 変更対象ファイル'],
+    requiredSections: [
+      { ja: '## 概要', en: '## Overview' },
+      { ja: '## 実装計画', en: '## Implementation Plan' },
+      { ja: '## 変更対象ファイル', en: '## Target Files' },
+    ],
   },
   'test-design.md': {
     minLines: 30,
-    requiredSections: ['## テストケース', '## テスト計画'],
+    requiredSections: [
+      { ja: '## テストケース', en: '## Test Cases' },
+      { ja: '## テスト計画', en: '## Test Plan' },
+    ],
   },
   'threat-model.md': {
     minLines: 20,
@@ -195,13 +232,21 @@ export function validateArtifactQuality(
     );
   }
 
-  // 5. 必須セクションチェック
-  const missingSections = requirements.requiredSections.filter(
-    section => !content.includes(section)
-  );
+  // 5. FR-12: 必須セクションチェック（多言語対応）
+  const missingSections = requirements.requiredSections.filter(section => {
+    if (typeof section === 'string') {
+      return !content.includes(section);
+    } else {
+      // 多言語セクション: いずれかの言語でマッチすればOK
+      return !content.includes(section.ja) && !content.includes(section.en);
+    }
+  });
   if (missingSections.length > 0) {
+    const sectionNames = missingSections.map(s =>
+      typeof s === 'string' ? s : `${s.ja} / ${s.en}`
+    );
     errors.push(
-      `${fileName} に必須セクションがありません: ${missingSections.join(', ')}`
+      `${fileName} に必須セクションがありません: ${sectionNames.join(', ')}`
     );
   }
 
@@ -636,14 +681,22 @@ export function checkRequiredSections(
     return { valid: true, errors: [] };
   }
 
-  // 必須セクションチェック
-  const missingSections = requirements.requiredSections.filter(
-    section => !content.includes(section)
-  );
+  // FR-12: 必須セクションチェック（多言語対応）
+  const missingSections = requirements.requiredSections.filter(section => {
+    if (typeof section === 'string') {
+      return !content.includes(section);
+    } else {
+      // 多言語セクション: いずれかの言語でマッチすればOK
+      return !content.includes(section.ja) && !content.includes(section.en);
+    }
+  });
 
   if (missingSections.length > 0) {
+    const sectionNames = missingSections.map(s =>
+      typeof s === 'string' ? s : `${s.ja} / ${s.en}`
+    );
     errors.push(
-      `${fileName} に必須セクションがありません: ${missingSections.join(', ')}`
+      `${fileName} に必須セクションがありません: ${sectionNames.join(', ')}`
     );
   }
 

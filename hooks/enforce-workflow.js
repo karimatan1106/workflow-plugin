@@ -6,6 +6,8 @@
  *
  * REQ-3: .claude-workflow-state.json への依存を廃止し、
  * ディレクトリスキャン方式に統一。
+ *
+ * @spec docs/workflows/ワ-クフロ-プラグインレビュ-指摘事項全件修正/spec.md
  */
 
 const HOOK_NAME = 'enforce-workflow.js';
@@ -45,87 +47,17 @@ const path = require('path');
 const { discoverTasks, findTaskByFilePath } = require('./lib/discover-tasks');
 const { verifyHMAC } = require('./hmac-verify');
 
-// フェーズごとの許可拡張子
-// N-4: JavaScript test extensions (.test.js, .spec.js, .test.jsx, .spec.jsx) added to support various test runners
-const TEST_EXTENSIONS = ['.test.ts', '.test.tsx', '.spec.ts', '.spec.tsx', '.test.js', '.spec.js', '.test.jsx', '.spec.jsx'];
-const PHASE_EXTENSIONS = {
-  'research': ['.md', '.mdx', '.txt'],
-  'requirements': ['.md', '.mdx', '.txt'],
-  'parallel_analysis': ['.md', '.mdx', '.txt'],
-  'threat_modeling': ['.md', '.mdx', '.txt'],
-  'planning': ['.md', '.mdx', '.txt'],
-  'parallel_design': ['.md', '.mdx', '.txt', '.mmd'],
-  'state_machine': ['.md', '.mdx', '.txt', '.mmd'],
-  'flowchart': ['.md', '.mdx', '.txt', '.mmd'],
-  'ui_design': ['.md', '.mdx', '.txt', '.mmd'],
-  'design_review': ['.md'],
-  'test_design': ['.md', ...TEST_EXTENSIONS],
-  'test_impl': [...TEST_EXTENSIONS, '.md'],
-  'implementation': ['*'],
-  'refactoring': ['*'],
-  'parallel_quality': ['*'],
-  'build_check': ['*'],
-  'code_review': ['.md'],
-  'testing': ['.md', ...TEST_EXTENSIONS],
-  'regression_test': ['.md', ...TEST_EXTENSIONS],
-  'parallel_verification': ['.md'],
-  'manual_test': ['.md'],
-  'security_scan': ['.md'],
-  'performance_test': ['.md'],
-  'e2e_test': ['.md', ...TEST_EXTENSIONS],
-  'docs_update': ['.md', '.mdx'],
-  'ci_verification': ['.md'],
-  'commit': [],
-  'push': [],
-  'deploy': ['.md'],
-  'completed': []
-};
+// FR-8: ルール定義共通化 - phase-definitions.jsモジュールを使用
+const { PHASE_EXTENSIONS, PARALLEL_PHASES, PHASE_DESC } = require('./lib/phase-definitions');
 
-// 並列フェーズグループ定義
-const PARALLEL_GROUPS = {
-  'parallel_analysis': ['threat_modeling', 'planning'],
-  'parallel_design': ['state_machine', 'flowchart', 'ui_design'],
-  'parallel_quality': ['build_check', 'code_review'],
-  'parallel_verification': ['manual_test', 'security_scan', 'performance_test', 'e2e_test']
-};
-
-// フェーズ説明
-const PHASE_DESC = {
-  'research': '調査フェーズ - 要件分析・既存コード調査',
-  'requirements': '要件定義フェーズ',
-  'parallel_analysis': '並列分析フェーズ',
-  'threat_modeling': '脅威モデリングフェーズ',
-  'planning': '設計フェーズ - 仕様書作成',
-  'parallel_design': '並列設計フェーズ',
-  'state_machine': 'ステートマシン図作成',
-  'flowchart': 'フローチャート作成',
-  'ui_design': 'UI設計フェーズ',
-  'design_review': '設計レビュー - ユーザー承認待ち',
-  'test_design': 'テスト設計フェーズ',
-  'test_impl': 'テスト実装フェーズ（TDD Red）',
-  'implementation': '実装フェーズ（TDD Green）',
-  'refactoring': 'リファクタリングフェーズ',
-  'parallel_quality': '並列品質チェックフェーズ',
-  'build_check': 'ビルド確認フェーズ',
-  'code_review': 'コードレビュー',
-  'testing': 'テスト実行フェーズ',
-  'regression_test': 'リグレッションテストフェーズ',
-  'parallel_verification': '並列検証フェーズ',
-  'manual_test': '手動確認フェーズ',
-  'security_scan': 'セキュリティスキャンフェーズ',
-  'performance_test': 'パフォーマンステストフェーズ',
-  'e2e_test': 'E2Eテストフェーズ',
-  'commit': 'コミットフェーズ',
-  'push': 'プッシュフェーズ',
-  'deploy': 'デプロイフェーズ',
-  'completed': '完了'
-};
+// PHASE_EXTENSIONS, PARALLEL_PHASES, PHASE_DESC は phase-definitions.js から取得
+// 重複定義を削除（FR-8）
 
 /**
  * 並列フェーズかどうか
  */
 function isParallelPhase(phase) {
-  return phase in PARALLEL_GROUPS;
+  return phase in PARALLEL_PHASES;
 }
 
 /**
@@ -142,7 +74,7 @@ function getAllowedExtensions(phase) {
     return PHASE_EXTENSIONS[phase] || [];
   }
 
-  const subPhases = PARALLEL_GROUPS[phase];
+  const subPhases = PARALLEL_PHASES[phase];
   const allExt = new Set();
 
   for (const sp of subPhases) {
@@ -341,8 +273,12 @@ function main(input) {
 // スクリプトとして実行された場合のみstdin読み取り
 if (require.main === module) {
   // タイムアウト処理（3秒）
+  // FR-2: Timeout fail-closed化（CRITICAL）
+  // タイムアウト発生時は exit code 2 でフック検証失敗として終了
+  // CLAUDE.md REQ-3 Fail Closed準拠
   const timeout = setTimeout(() => {
-    process.exit(0);
+    console.error('[enforce-workflow.js] Hook timeout - failing closed for security');
+    process.exit(2);
   }, 3000);
 
   // 標準入力を読み取り

@@ -272,6 +272,18 @@ export interface TaskState {
    */
   skippedPhases?: string[];
   /**
+   * FR-4: HMAC検証結果キャッシュ
+   * フックでの重複HMAC検証を防止するため、検証結果をキャッシュする
+   */
+  validationResult?: {
+    /** HMAC検証に成功したかどうか */
+    verified: boolean;
+    /** 検証日時（UNIXタイムスタンプミリ秒） */
+    timestamp: number;
+    /** 検証に使用した鍵のインデックス */
+    keyIndex: number;
+  };
+  /**
    * スキップ理由（REQ-B4/D-1）
    * "user-specified" or "auto-detected"
    */

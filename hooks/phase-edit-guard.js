@@ -9,6 +9,7 @@
  * - DEBUG_PHASE_GUARD: "true" でデバッグログ出力
  *
  * @spec docs/spec/features/phase-edit-guard.md
+ * @spec docs/workflows/ワ-クフロ-プラグインレビュ-指摘事項全件修正/spec.md
  */
 
 const HOOK_NAME = 'phase-edit-guard.js';
@@ -48,6 +49,8 @@ const path = require('path');
 const { checkBashWhitelist } = require('./bash-whitelist');
 const { verifyHMAC } = require('./hmac-verify');
 
+// FR-8: ルール定義共通化 - phase-definitions.jsモジュールを使用
+const { PHASES, PHASE_RULES, PARALLEL_PHASES } = require('./lib/phase-definitions');
 
 // REQ-5: タスク探索ロジック統一 - discover-tasks.jsのshared実装を使用
 const { discoverTasks: sharedDiscoverTasks, findTaskByFilePath: sharedFindTaskByFilePath } = require('./lib/discover-tasks');
@@ -86,201 +89,9 @@ const TEST_FILE_PATTERNS = ['.test.', '.spec.', '__tests__', '/tests/'];
 const ENV_FILE_REGEX = /\.env(\.\w+)?$/;
 
 // =============================================================================
-// フェーズ別ルール定義
+// フェーズ別ルール定義（FR-8により phase-definitions.js に移行）
 // =============================================================================
-
-/**
- * フェーズ別ルール定義
- * allowed: 許可されるファイルタイプ
- * blocked: 禁止されるファイルタイプ
- * description: フェーズの説明（日本語）
- */
-const PHASE_RULES = {
-  idle: {
-    allowed: ['config', 'env'],
-    blocked: ['code', 'test', 'spec', 'diagram'],
-    description: 'idle フェーズではコード編集は許可されません。タスクを開始してください。',
-    japaneseName: 'アイドル',
-  },
-  research: {
-    allowed: ['spec'],
-    blocked: ['code', 'test', 'diagram', 'config', 'env', 'other'],
-    description: 'research フェーズでは調査結果（.md）のみ作成可能。コードは編集できません。',
-    japaneseName: '調査',
-  },
-  requirements: {
-    allowed: ['spec', 'config', 'env'],
-    blocked: ['code', 'test', 'diagram'],
-    description: '仕様書（.md）のみ編集可能。コードはまだ編集できません。',
-    japaneseName: '要件定義',
-  },
-  threat_modeling: {
-    allowed: ['spec', 'config', 'env'],
-    blocked: ['code', 'test', 'diagram'],
-    description: '脅威モデリング仕様（.md）のみ編集可能。コードは編集できません。',
-    japaneseName: '脅威モデリング',
-  },
-  planning: {
-    allowed: ['spec', 'config', 'env'],
-    blocked: ['code', 'test', 'diagram'],
-    description: '計画書（.md）のみ編集可能。コード編集はまだできません。',
-    japaneseName: '計画',
-  },
-  architecture_review: {
-    allowed: ['spec', 'config', 'env'],
-    blocked: ['code', 'test', 'diagram'],
-    description: 'アーキテクチャ設計書（.md）のみ編集可能。',
-    japaneseName: 'アーキテクチャレビュー',
-  },
-  state_machine: {
-    allowed: ['spec', 'diagram', 'config', 'env'],
-    blocked: ['code', 'test'],
-    description: '仕様書（.md）とステートマシン図（.mmd）のみ編集可能。',
-    japaneseName: 'ステートマシン設計',
-  },
-  flowchart: {
-    allowed: ['spec', 'diagram', 'config', 'env'],
-    blocked: ['code', 'test'],
-    description: '仕様書（.md）とフローチャート（.mmd）のみ編集可能。',
-    japaneseName: 'フローチャート設計',
-  },
-  ui_design: {
-    allowed: ['spec', 'diagram', 'config', 'env'],
-    blocked: ['code', 'test'],
-    description: 'UI設計書（.md）とUI図式（.mmd）のみ編集可能。',
-    japaneseName: 'UI設計',
-  },
-  design_review: {
-    allowed: ['spec', 'diagram', 'config', 'env'],
-    blocked: ['code', 'test'],
-    description: '設計レビュー段階。仕様書と図式の修正のみ可能。',
-    japaneseName: '設計レビュー',
-  },
-  test_design: {
-    allowed: ['spec', 'test', 'config', 'env'],
-    blocked: ['code', 'diagram'],
-    description: 'テスト設計フェーズ。テストコードと仕様書のみ編集可能。',
-    japaneseName: 'テスト設計',
-  },
-  test_impl: {
-    allowed: ['spec', 'test', 'config', 'env'],
-    blocked: ['code', 'diagram'],
-    description: 'テスト実装フェーズ（TDD Red）。テストコードのみ作成してください。',
-    japaneseName: 'テスト実装（Red）',
-    tddPhase: 'Red',
-  },
-  implementation: {
-    allowed: ['code', 'spec', 'config', 'env'],
-    blocked: ['test', 'diagram'],
-    description: '実装フェーズ（TDD Green）。ソースコード編集可能。テストコードは編集不可。',
-    japaneseName: '実装（Green）',
-    tddPhase: 'Green',
-  },
-  refactoring: {
-    allowed: ['code', 'spec', 'test', 'diagram', 'config', 'env', 'other'],
-    blocked: [],
-    description: 'リファクタリングフェーズ（TDD Refactor）。コード修正可能。',
-    japaneseName: 'リファクタリング（Refactor）',
-    tddPhase: 'Refactor',
-  },
-  build_check: {
-    allowed: ['code', 'test', 'spec', 'config', 'env'],
-    blocked: ['diagram'],
-    description: 'ビルドチェック中。ビルドエラー修正のためのコード・テスト・仕様書・設定ファイルの編集が許可されます。',
-    japaneseName: 'ビルドチェック',
-  },
-  code_review: {
-    allowed: ['spec', 'config', 'env'],
-    blocked: ['code', 'test', 'diagram'],
-    description: 'コードレビュー中。仕様書の更新のみ可能。',
-    japaneseName: 'コードレビュー',
-  },
-  testing: {
-    readOnly: false,
-    allowed: ['spec', 'test'],
-    blocked: ['code', 'diagram', 'config', 'env', 'other'],
-    description: 'テスト結果ドキュメントとテストファイルの編集が可能',
-    japaneseName: 'テスト実行',
-  },
-  manual_test: {
-    allowed: ['spec'],
-    blocked: ['code', 'test', 'diagram', 'config', 'env', 'other'],
-    description: '手動テスト中。仕様書（.md）のみ編集可能。',
-    japaneseName: '手動テスト',
-  },
-  security_scan: {
-    allowed: ['spec'],
-    blocked: ['code', 'test', 'diagram', 'config', 'env', 'other'],
-    description: 'セキュリティスキャン中。仕様書（.md）のみ編集可能。',
-    japaneseName: 'セキュリティスキャン',
-  },
-  performance_test: {
-    allowed: ['spec'],
-    blocked: ['code', 'test', 'diagram', 'config', 'env', 'other'],
-    description: 'パフォーマンステスト中。仕様書（.md）のみ編集可能。',
-    japaneseName: 'パフォーマンステスト',
-  },
-  e2e_test: {
-    allowed: ['spec', 'test'],
-    blocked: ['code', 'diagram', 'config', 'env', 'other'],
-    description: 'E2Eテスト中。仕様書とテストファイルの編集が可能。',
-    japaneseName: 'E2Eテスト',
-  },
-  docs_update: {
-    allowed: ['spec', 'config', 'env'],
-    blocked: ['code', 'test', 'diagram'],
-    description: 'ドキュメント更新フェーズ。仕様書のみ編集可能。',
-    japaneseName: 'ドキュメント更新',
-  },
-  regression_test: {
-    allowed: ['spec', 'test'],
-    blocked: ['code', 'diagram', 'config', 'env', 'other'],
-    description: 'リグレッションテスト中。テストファイルと仕様書の編集が可能。',
-    japaneseName: 'リグレッションテスト',
-  },
-  ci_verification: {
-    allowed: ['spec'],
-    blocked: ['code', 'test', 'diagram', 'config', 'env', 'other'],
-    description: 'CI検証中。仕様書のみ編集可能。',
-    japaneseName: 'CI検証',
-  },
-  deploy: {
-    allowed: ['spec'],
-    blocked: ['code', 'test', 'diagram', 'config', 'env', 'other'],
-    description: 'デプロイ中。仕様書のみ編集可能。',
-    japaneseName: 'デプロイ',
-  },
-  commit: {
-    allowed: [],
-    blocked: ['code', 'test', 'spec', 'diagram', 'config', 'env', 'other'],
-    description: 'コミット中。ファイル編集は禁止です。',
-    japaneseName: 'コミット',
-    readOnly: true,
-  },
-  push: {
-    allowed: [],
-    blocked: ['code', 'test', 'spec', 'diagram', 'config', 'env', 'other'],
-    description: 'プッシュ中。ファイル編集は禁止です。',
-    japaneseName: 'プッシュ',
-    readOnly: true,
-  },
-  completed: {
-    allowed: ['code', 'test', 'spec', 'diagram', 'config', 'env', 'other'],
-    blocked: [],
-    description: 'タスク完了。全ての編集が許可されます。',
-    japaneseName: '完了',
-  },
-};
-
-/**
- * 並列フェーズ定義
- */
-const PARALLEL_PHASES = {
-  parallel_design: ['state_machine', 'flowchart', 'ui_design'],
-  parallel_analysis: ['threat_modeling', 'planning'],
-  parallel_quality: ['build_check', 'code_review'],
-  parallel_verification: ['manual_test', 'security_scan', 'performance_test', 'e2e_test'],
-};
+// PHASE_RULES と PARALLEL_PHASES は require('./lib/phase-definitions') で取得
 
 /**
  * ファイルタイプの日本語名
@@ -397,11 +208,14 @@ function findNextPhaseForFileType(currentPhase, fileType) {
 
 /**
  * 常に編集を許可するファイルパターン
+ * FR-11: パターンを厳格化し、意図しない直接編集を防止
+ * workflow-state.jsonの直接編集はHMAC整合性を破壊するため、
+ * MCPサーバー経由でのみ更新することを推奨
  */
 const ALWAYS_ALLOWED_PATTERNS = [
+  // workflow-state.jsonは技術的には直接編集可能だが、
+  // HMAC検証エラーが発生するため推奨されない
   /workflow-state\.json$/i,
-  /\.claude-workflow-state\.json$/i,
-  /\.claude-.*\.json$/i, // Claude関連状態ファイル
 ];
 
 /**
@@ -1915,8 +1729,12 @@ function main(input) {
 
 if (require.main === module) {
   // タイムアウト処理（3秒）
+  // FR-2: Timeout fail-closed化（CRITICAL）
+  // タイムアウト発生時は exit code 2 でフック検証失敗として終了
+  // CLAUDE.md REQ-3 Fail Closed準拠
   const timeout = setTimeout(() => {
-    process.exit(0);
+    console.error('[phase-edit-guard.js] Hook timeout - failing closed for security');
+    process.exit(2);
   }, 3000);
 
   // 非同期stdin読み取り（3秒タイムアウト付き）

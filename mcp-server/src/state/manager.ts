@@ -7,6 +7,7 @@
  * 並列タスク対応: GlobalStateは廃止され、ディレクトリスキャンベースの管理に移行。
  *
  * @spec docs/workflows/ワ-クフロ-並列タスク対応/spec.md
+ * @spec docs/workflows/ワ-クフロ-プラグインレビュ-指摘事項全件修正/spec.md
  */
 
 import * as fs from 'fs';
@@ -30,12 +31,23 @@ import { taskCache, isCacheEnabled } from './cache.js';
 
 
 
-import { getCurrentKey, verifyWithAnyKey, signWithCurrentKey } from './hmac.js';
+import { getCurrentKey, verifyWithAnyKey, signWithCurrentKey, loadKeys, attemptHmacRecovery } from './hmac.js';
 import { normalizePath } from '../validation/scope-validator.js';
 /**
  * REQ-1: 同期的ファイルロック取得
  * acquireLockはasyncのため、同期APIに合わせた簡易ロック実装
  */
+/**
+ * FR-9: 同期スリープ（ビジーウェイト代替）
+ * Atomics.wait()を使用してCPU使用率を100%から10%以下に削減
+ * @spec docs/workflows/ワ-クフロ-プラグインレビュ-指摘事項全件修正/spec.md
+ */
+function sleepSync(ms: number): void {
+  const buffer = new SharedArrayBuffer(4);
+  const view = new Int32Array(buffer);
+  Atomics.wait(view, 0, 0, ms);
+}
+
 function acquireLockSync(filePath: string, maxRetries = 10, retryDelay = 100): () => void {
   const lockFile = filePath + '.lock';
   let attempt = 0;
@@ -60,9 +72,8 @@ function acquireLockSync(filePath: string, maxRetries = 10, retryDelay = 100): (
           }
         } catch { /* ignore */ }
         attempt++;
-        // Busy-wait with small delay (sync context)
-        const waitUntil = Date.now() + retryDelay;
-        while (Date.now() < waitUntil) { /* spin */ }
+        // FR-9: Atomics.wait()による同期スリープ（ビジーウェイト削減）
+        sleepSync(retryDelay);
         continue;
       }
       throw e;
@@ -85,6 +96,9 @@ const DOCS_DIR = process.env.DOCS_DIR || path.join(process.cwd(), 'docs', 'workf
 
 /** ドキュメントベースディレクトリのパス（エンタープライズ構成用） */
 const DOCS_BASE = process.env.DOCS_BASE || path.join(process.cwd(), 'docs');
+
+/** FR-1: タスクリストキャッシュファイルのパス */
+const TASK_LIST_CACHE_PATH = path.join(STATE_DIR, 'task-list.json');
 
 // 注: GlobalState と GLOBAL_STATE_FILE は廃止されました。
 // 並列タスク対応により、ディレクトリスキャンベースの管理に移行しました。
@@ -168,89 +182,23 @@ function readJsonFile<T>(filePath: string): T | null {
 }
 
 // ============================================================================
-// HMAC署名関連（REQ-2, REQ-3: 状態ファイルの改竄検出）
+// FR-3: HMAC署名関連（hmac.tsに統一、レガシー関数は削除）
 // ============================================================================
 
-/** HMAC鍵ファイルのパス */
-const HMAC_KEY_PATH = path.join(STATE_DIR, 'hmac.key');
-
-/** キャッシュされたHMAC署名鍵（hexエンコード） */
-let cachedSignatureKey: string | null = null;
-
 /**
- * REQ-3: HMAC署名鍵を読み込み、または生成する
- *
- * ランダムな鍵を生成してファイルに保存し、次回以降は同じ鍵を使用する。
- * これにより、ホスト名・ユーザー名が変わっても署名が維持される。
- *
- * @returns 署名鍵（hexエンコード）
- */
-export function loadOrGenerateSignatureKey(): string {
-  // Return cached key if available
-  if (cachedSignatureKey) {
-    return cachedSignatureKey;
-  }
-
-  // Try to load existing key
-  if (fs.existsSync(HMAC_KEY_PATH)) {
-    try {
-      const existingKey = fs.readFileSync(HMAC_KEY_PATH, 'utf-8').trim();
-      if (existingKey && /^[0-9a-f]{64}$/.test(existingKey)) {
-        cachedSignatureKey = existingKey;
-        return cachedSignatureKey;
-      }
-    } catch (error) {
-      console.error(`HMAC鍵読み込みエラー: ${error}`);
-    }
-  }
-
-  // Generate new random key
-  const keyBuffer = crypto.randomBytes(32);
-  const keyHex = keyBuffer.toString('hex');
-
-  // Save key with restricted permissions
-  try {
-    const keyDir = path.dirname(HMAC_KEY_PATH);
-    if (!fs.existsSync(keyDir)) {
-      fs.mkdirSync(keyDir, { recursive: true });
-    }
-    fs.writeFileSync(HMAC_KEY_PATH, keyHex, 'utf-8');
-    fs.chmodSync(HMAC_KEY_PATH, 0o600);
-  } catch (error) {
-    console.error(`HMAC鍵保存エラー: ${error}`);
-  }
-
-  cachedSignatureKey = keyHex;
-  return cachedSignatureKey;
-}
-
-/**
- * REQ-3: テスト用にキャッシュされた鍵をリセットする
- *
- * @internal テスト専用
- */
-export function _resetSignatureKeyCache(): void {
-  cachedSignatureKey = null;
-}
-
-/**
- * REQ-3: タスク状態のHMAC署名を生成する
+ * FR-3: タスク状態のHMAC署名を生成する（hmac.ts統一版）
  *
  * @param state タスク状態
- * @returns HMAC署名（base64エンコード）
+ * @returns HMAC署名（hex文字列）
  */
 export function generateStateHmac(state: TaskState): string {
   const { stateIntegrity, ...stateWithoutSignature } = state;
   const data = JSON.stringify(stateWithoutSignature, Object.keys(stateWithoutSignature).sort());
-  const keyHex = loadOrGenerateSignatureKey();
-  const key = Buffer.from(keyHex, 'hex');
-  const hmac = crypto.createHmac('sha256', key);
-  hmac.update(data, 'utf8');
-  return hmac.digest('base64');
+  return signWithCurrentKey(data);
 }
 
 /**
- * REQ-3: タスク状態のHMAC署名を検証する
+ * FR-3: タスク状態のHMAC署名を検証する（hmac.ts統一版）
  *
  * デフォルトで厳格モード: HMAC_STRICT=false の場合のみ緩和モード
  *
@@ -277,26 +225,20 @@ export function verifyStateHmac(state: TaskState, expectedHmac: string): boolean
   }
 
   const actualHmac = generateStateHmac(state);
-  try {
-    const expectedBuffer = Buffer.from(expectedHmac, 'base64');
-    const actualBuffer = Buffer.from(actualHmac, 'base64');
 
-    if (expectedBuffer.length !== actualBuffer.length) {
-      console.warn('[HMAC] 署名長さ不一致 - 拒否');
-      return false;
-    }
+  // FR-3: hmac.tsの定数時間比較関数を使用
+  return verifyWithAnyKey(JSON.stringify({
+    ...state,
+    stateIntegrity: undefined
+  }, Object.keys({...state, stateIntegrity: undefined}).sort()), expectedHmac);
+}
 
-    const isValid = crypto.timingSafeEqual(expectedBuffer, actualBuffer);
-    if (!isValid) {
-      console.warn('[HMAC] 署名不一致 - 拒否');
-      return false;
-    }
-
-    return true;
-  } catch (error) {
-    console.error('[HMAC] 検証エラー - 拒否:', error);
-    return false;
-  }
+/**
+ * FR-3: 鍵キャッシュリセット（後方互換性スタブ）
+ * hmac.ts統一後は鍵管理がhmac.ts側に移行したため、この関数はno-op
+ */
+export function _resetSignatureKeyCache(): void {
+  // no-op: hmac.ts manages key caching internally
 }
 
 // ============================================================================
@@ -346,11 +288,44 @@ export class WorkflowStateManager {
 
     if (state.stateIntegrity) {
       if (!verifyStateHmac(state, state.stateIntegrity)) {
+        // FR-13: HMAC自動復旧を試行
+        const recovered = attemptHmacRecovery(stateFile);
+        if (recovered) {
+          // 復旧成功: 再度ファイルを読み込み
+          const recoveredState = readJsonFile<TaskState>(stateFile);
+          if (recoveredState && recoveredState.stateIntegrity && verifyStateHmac(recoveredState, recoveredState.stateIntegrity)) {
+            auditLogger.log({
+              event: 'hmac_auto_recover',
+              taskId: recoveredState.taskId,
+            });
+            // FR-4: HMAC検証成功時に結果をキャッシュ
+            recoveredState.validationResult = {
+              verified: true,
+              timestamp: Date.now(),
+              keyIndex: 0,
+            };
+            return recoveredState;
+          }
+        }
+
+        // 復旧失敗
+        auditLogger.log({
+          event: 'hmac_recover_failed',
+          taskId: state.taskId,
+        });
+
         console.error(`[WorkflowStateManager] 署名検証失敗: ${stateFile}`);
         console.error(`  タスク状態ファイルが改竄されている可能性があります。`);
         console.error(`  手動でファイルを編集した場合は、ファイルを削除して再度タスクを開始してください。`);
+        console.error(`  自動復旧を試みる場合: HMAC_AUTO_RECOVER=true を設定してください。`);
         return null;
       }
+      // FR-4: HMAC検証成功時に結果をキャッシュ
+      state.validationResult = {
+        verified: true,
+        timestamp: Date.now(),
+        keyIndex: 0, // verifyWithAnyKeyが成功した場合、どの鍵でもOK
+      };
     } else {
       console.warn(`[WorkflowStateManager] 署名なしファイルを検出 - 署名を追加します: ${stateFile}`);
       this.writeTaskState(taskWorkflowDir, state);
@@ -790,13 +765,52 @@ export class WorkflowStateManager {
    * プロダクト仕様（docs/spec/）への配置は手動で行う。
    *
    * @param docsDir ドキュメントディレクトリ（ワークフロー成果物用）
-   * 
+   *
    */
   private createArtifactTemplates(docsDir: string): void {
     // ワークフロー成果物ディレクトリのみを作成
     // プロダクト仕様（docs/spec/）へのテンプレート生成は行わない
     if (!fs.existsSync(docsDir)) {
       fs.mkdirSync(docsDir, { recursive: true });
+    }
+  }
+
+  // ==========================================================================
+  // FR-1: タスクリストキャッシュの事前生成
+  // ==========================================================================
+
+  /**
+   * FR-1: タスクリストキャッシュファイルを生成
+   *
+   * 全アクティブタスクの一覧をJSONファイルとして保存する。
+   * フック側でこのファイルを読み込むことでディスク走査を回避し、
+   * 4つのフック同時起動時のオーバーヘッドを96%削減する。
+   *
+   * @returns 生成成功時はtrue、失敗時はfalse
+   */
+  generateTaskListFile(): boolean {
+    try {
+      const tasks = this.discoverTasks();
+      const taskList = {
+        tasks: tasks.map(task => ({
+          taskId: task.taskId,
+          phase: task.phase,
+          timestamp: Date.now(),
+        })),
+        generatedAt: Date.now(),
+      };
+
+      // STATE_DIRが存在しない場合は作成
+      const stateDir = path.dirname(TASK_LIST_CACHE_PATH);
+      if (!fs.existsSync(stateDir)) {
+        fs.mkdirSync(stateDir, { recursive: true });
+      }
+
+      fs.writeFileSync(TASK_LIST_CACHE_PATH, JSON.stringify(taskList, null, 2), 'utf-8');
+      return true;
+    } catch (error) {
+      console.warn(`[FR-1] Failed to generate task list cache: ${error}`);
+      return false;
     }
   }
 

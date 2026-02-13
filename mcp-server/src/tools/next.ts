@@ -306,16 +306,47 @@ export function workflowNext(taskId?: string, sessionToken?: string): NextResult
     };
   }
 
-  // ★★★ REQ-B2: 意味的整合性チェック（test_design以降のフェーズ） ★★★
+  // ★★★ REQ-B2 + FR-7: 意味的整合性チェック（test_design以降のフェーズ） ★★★
   const semanticCheckPhases: PhaseName[] = ['test_design', 'test_impl', 'implementation', 'refactoring', 'parallel_quality'];
   if (semanticCheckPhases.includes(currentPhase)) {
     const docsDir = taskState.docsDir || taskState.workflowDir;
     const semanticResult = validateSemanticConsistency(docsDir);
 
-    // 警告がある場合は警告メッセージを表示（ブロックはしない）
+    // FR-7: 環境変数SEMANTIC_CHECK_STRICTによる動作制御（デフォルト: true = 厳格モード）
+    const strictMode = process.env.SEMANTIC_CHECK_STRICT !== 'false';
+
     if (semanticResult.warnings.length > 0) {
-      console.warn('[semantic] 意味的整合性の警告:');
-      semanticResult.warnings.forEach(w => console.warn(`  - ${w}`));
+      const warningMessage = semanticResult.warnings.map(w => `  - ${w}`).join('\n');
+
+      if (strictMode) {
+        // 厳格モード: エラーとしてブロック
+        auditLogger.log({
+          event: 'semantic_check_failed',
+          taskId: taskState.taskId,
+          phase: currentPhase,
+          missingRequirements: semanticResult.warnings.filter(w => w.includes('missing')),
+          extraImplementations: semanticResult.warnings.filter(w => w.includes('extra')),
+          strictMode: true,
+        });
+
+        return {
+          success: false,
+          message: `${currentPhase}フェーズの意味的整合性チェックに失敗しました:\n${warningMessage}\n\n設計書と実装コードの不整合を解消してください。\n（警告モードで続行する場合: SEMANTIC_CHECK_STRICT=false を設定）`,
+        };
+      } else {
+        // 警告モード: 警告のみで続行
+        console.warn('[semantic] 意味的整合性の警告（警告モード）:');
+        semanticResult.warnings.forEach(w => console.warn(`  - ${w}`));
+
+        auditLogger.log({
+          event: 'semantic_check_failed',
+          taskId: taskState.taskId,
+          phase: currentPhase,
+          missingRequirements: semanticResult.warnings.filter(w => w.includes('missing')),
+          extraImplementations: semanticResult.warnings.filter(w => w.includes('extra')),
+          strictMode: false,
+        });
+      }
     }
   }
 
