@@ -14,6 +14,18 @@ const SECURITY_ENV_VARS = [
   'VALIDATE_DESIGN_STRICT', 'SPEC_FIRST_TTL_MS',
 ];
 
+// NEW-SEC-1: ゼロ幅Unicode文字のサニタイズパターン
+const ZERO_WIDTH_CHARS_PATTERN = /[\u200B\u200C\u200D\uFEFF]/g;
+
+/**
+ * NEW-SEC-1: ゼロ幅Unicode文字をサニタイズ
+ * @param {string} str - サニタイズ対象の文字列
+ * @returns {string} サニタイズ後の文字列
+ */
+function sanitizeZeroWidthChars(str) {
+  return str.replace(ZERO_WIDTH_CHARS_PATTERN, '');
+}
+
 /**
  * フェーズ別許可コマンドホワイトリスト
  *
@@ -251,6 +263,8 @@ function getWhitelistForPhase(phase) {
  * @returns {string[]} 分割されたコマンド部
  */
 function splitCommandParts(command) {
+  // NEW-SEC-1: ゼロ幅文字サニタイズ
+  command = sanitizeZeroWidthChars(command);
   return command.split(/\s*(?:&&|\|\||;)\s*/).filter(p => p.trim().length > 0);
 }
 
@@ -312,6 +326,9 @@ function matchesBlacklistEntry(command, entry) {
  * Bashのコマンド区切りとして誤解析しないよう保護する。
  */
 function splitCompoundCommand(command) {
+  // NEW-SEC-1: ゼロ幅文字サニタイズ
+  command = sanitizeZeroWidthChars(command);
+
   // Step 1: クォート内容をプレースホルダーに置換
   const placeholders = [];
   let processed = command;
@@ -407,6 +424,12 @@ function detectEncodedCommand(command, phase) {
             reason: `base64エンコードされた危険コマンド: ${result.reason}`
           };
         }
+      } else {
+        // NEW-SEC-2: Fail-Closed - デコード失敗時はブロック
+        return {
+          allowed: false,
+          reason: 'Base64 decoding failed - possibly malformed or malicious input'
+        };
       }
     }
   }
@@ -415,12 +438,20 @@ function detectEncodedCommand(command, phase) {
   const printfMatch = command.match(/printf\s+["']([^"']*\\x[0-9a-fA-F]{2}[^"']*)["']/);
   if (printfMatch) {
     const decoded = decodeHexSequences(printfMatch[1]);
-    console.error('[bash-whitelist] printf 16進エンコード検出:', decoded);
-    const result = checkBashWhitelist(decoded, phase);
-    if (!result.allowed) {
+    if (decoded) {
+      console.error('[bash-whitelist] printf 16進エンコード検出:', decoded);
+      const result = checkBashWhitelist(decoded, phase);
+      if (!result.allowed) {
+        return {
+          allowed: false,
+          reason: `printf 16進エンコードされた危険コマンド: ${result.reason}`
+        };
+      }
+    } else {
+      // NEW-SEC-2: Fail-Closed - デコード失敗時はブロック
       return {
         allowed: false,
-        reason: `printf 16進エンコードされた危険コマンド: ${result.reason}`
+        reason: 'Printf hex decoding failed - possibly malformed or malicious input'
       };
     }
   }
@@ -429,12 +460,20 @@ function detectEncodedCommand(command, phase) {
   const echoMatch = command.match(/echo\s+-e\s+["']([^"']*\\[0-7]{3}[^"']*)["']/);
   if (echoMatch) {
     const decoded = decodeOctalSequences(echoMatch[1]);
-    console.error('[bash-whitelist] echo 8進エンコード検出:', decoded);
-    const result = checkBashWhitelist(decoded, phase);
-    if (!result.allowed) {
+    if (decoded) {
+      console.error('[bash-whitelist] echo 8進エンコード検出:', decoded);
+      const result = checkBashWhitelist(decoded, phase);
+      if (!result.allowed) {
+        return {
+          allowed: false,
+          reason: `echo 8進エンコードされた危険コマンド: ${result.reason}`
+        };
+      }
+    } else {
+      // NEW-SEC-2: Fail-Closed - デコード失敗時はブロック
       return {
         allowed: false,
-        reason: `echo 8進エンコードされた危険コマンド: ${result.reason}`
+        reason: 'Echo octal decoding failed - possibly malformed or malicious input'
       };
     }
   }

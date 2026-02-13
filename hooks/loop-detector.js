@@ -130,11 +130,15 @@ function normalizeFilePath(filePath) {
     const resolved = fs.realpathSync(filePath);
     return resolved.replace(/\\/g, '/').toLowerCase();
   } catch (e) {
+    // NEW-SEC-3: フォールバック時のログ出力強化
+    console.warn(`[loop-detector] Warning: fs.realpathSync failed for path: ${filePath}, falling back to path.resolve. Reason: ${e.message}`);
     // Fallback to path.resolve if realpathSync fails
     try {
       const resolved = path.resolve(filePath);
       return resolved.replace(/\\/g, '/').toLowerCase();
     } catch (e2) {
+      // NEW-SEC-3: フォールバック時のログ出力強化
+      console.error(`[loop-detector] Error: Both fs.realpathSync and path.resolve failed for path: ${filePath}, using fallback normalization. Reason: ${e2.message}`);
       return filePath.replace(/\\/g, '/').toLowerCase().replace(/^\.\//, '');
     }
   }
