@@ -17,11 +17,12 @@ import {
   isParallelPhase,
   getNextPhase,
   PHASE_DESCRIPTIONS,
+  calculatePhaseSkips,
 } from '../phases/definitions.js';
 import { getTaskByIdOrError, safeExecute, verifySessionToken } from './helpers.js';
 import { STATE_ERRORS } from '../utils/errors.js';
 import { DesignValidator, formatValidationError } from '../validation/design-validator.js';
-import { validateArtifactQuality, PHASE_ARTIFACT_REQUIREMENTS } from '../validation/artifact-validator.js';
+import { validateArtifactQuality, PHASE_ARTIFACT_REQUIREMENTS, validateSemanticConsistency } from '../validation/artifact-validator.js';
 import { validateScopePostExecution } from '../validation/scope-validator.js';
 import { auditLogger } from '../audit/logger.js';
 
@@ -74,7 +75,6 @@ function checkPhaseArtifacts(phase: PhaseName, docsDir: string): string[] {
     // 品質要件を取得
     const requirements = PHASE_ARTIFACT_REQUIREMENTS[artifactFile];
     if (!requirements) {
-      // 品質要件が定義されていない場合は存在チェックのみ
       continue;
     }
 
@@ -137,6 +137,16 @@ export function workflowNext(taskId?: string, sessionToken?: string): NextResult
     };
   }
 
+  // REQ-B1: requirements承認チェック
+  if (currentPhase === 'requirements') {
+    if (!taskState.approvals?.requirements) {
+      return {
+        success: false,
+        message: 'requirements承認が必要です。workflow_approve requirements を実行してください',
+      };
+    }
+  }
+
   // レビュー承認が必要かチェック
   if (requiresApproval(currentPhase)) {
     return {
@@ -156,10 +166,9 @@ export function workflowNext(taskId?: string, sessionToken?: string): NextResult
     }
   }
 
-  // スコープのファイル数・ディレクトリ数を取得（API互換性: 両フィールド名サポート）
-  const scope = taskState.scope as any;
-  const scopeFileCount = (scope?.affectedFiles?.length || scope?.files?.length || 0);
-  const scopeDirCount = (scope?.affectedDirs?.length || scope?.directories?.length || 0);
+  // スコープのファイル数・ディレクトリ数を取得
+  const scopeFileCount = taskState.scope?.affectedFiles?.length || 0;
+  const scopeDirCount = taskState.scope?.affectedDirs?.length || 0;
 
   // REQ-1: parallel_analysis → parallel_design 遷移時のスコープ必須チェック
   if (currentPhase === 'parallel_analysis') {
@@ -182,11 +191,11 @@ export function workflowNext(taskId?: string, sessionToken?: string): NextResult
     }
 
     if (scopeErrors.length > 0) {
+      const errorMessage = `スコープが大きすぎます。\n${scopeErrors.join('\n')}\nタスクを分割してください。`;
       return {
         success: false,
-        error: `スコープが大きすぎます。\n${scopeErrors.join('\n')}\nタスクを分割してください。`,
-        message: `スコープが大きすぎます。\n${scopeErrors.join('\n')}\nタスクを分割してください。`,
-      } as any;
+        message: errorMessage,
+      };
     }
   }
 
@@ -294,6 +303,19 @@ export function workflowNext(taskId?: string, sessionToken?: string): NextResult
     };
   }
 
+  // ★★★ REQ-B2: 意味的整合性チェック（test_design以降のフェーズ） ★★★
+  const semanticCheckPhases: PhaseName[] = ['test_design', 'test_impl', 'implementation', 'refactoring', 'parallel_quality'];
+  if (semanticCheckPhases.includes(currentPhase)) {
+    const docsDir = taskState.docsDir || taskState.workflowDir;
+    const semanticResult = validateSemanticConsistency(docsDir);
+
+    // 警告がある場合は警告メッセージを表示（ブロックはしない）
+    if (semanticResult.warnings.length > 0) {
+      console.warn('[semantic] 意味的整合性の警告:');
+      semanticResult.warnings.forEach(w => console.warn(`  - ${w}`));
+    }
+  }
+
   // REQ-5: スコープ事後検証（docs_update→commit遷移時）
   if (currentPhase === 'docs_update') {
     const scopeFiles = taskState.scope?.affectedFiles || [];
@@ -333,8 +355,25 @@ export function workflowNext(taskId?: string, sessionToken?: string): NextResult
   // タスクサイズを取得（未設定の場合はlargeとして扱う）
   const taskSize: TaskSize = taskState.taskSize || DEFAULT_TASK_SIZE;
 
+  // REQ-C3: 動的フェーズスキップ判定
+  const phaseSkipReasons = calculatePhaseSkips(taskState.scope || {});
+
   // 次のフェーズを取得（タスクサイズに応じた遷移）
-  const nextPhase = getNextPhase(currentPhase, taskSize);
+  let nextPhase = getNextPhase(currentPhase, taskSize);
+  if (!nextPhase) {
+    return {
+      success: false,
+      message: STATE_ERRORS.CANNOT_PROCEED,
+    };
+  }
+
+  // スキップ対象フェーズを飛ばす
+  const skippedPhases: string[] = [];
+  while (nextPhase && phaseSkipReasons[nextPhase]) {
+    skippedPhases.push(nextPhase);
+    nextPhase = getNextPhase(nextPhase, taskSize);
+  }
+
   if (!nextPhase) {
     return {
       success: false,
@@ -344,7 +383,23 @@ export function workflowNext(taskId?: string, sessionToken?: string): NextResult
 
   // フェーズ遷移を実行
   return safeExecute('フェーズ遷移', () => {
+    // REQ-C3: スキップ理由を状態に記録
+    if (Object.keys(phaseSkipReasons).length > 0) {
+      const updatedState = {
+        ...taskState,
+        phaseSkipReasons,
+      };
+      stateManager.writeTaskState(taskState.workflowDir, updatedState);
+    }
+
     stateManager.updateTaskPhase(taskState.taskId, nextPhase);
+
+    // スキップ通知メッセージ
+    let skipMessage = '';
+    if (skippedPhases.length > 0) {
+      const skipDetails = skippedPhases.map(p => `  - ${p}: ${phaseSkipReasons[p]}`).join('\n');
+      skipMessage = `\n\n以下のフェーズをスキップしました:\n${skipDetails}`;
+    }
 
     return {
       success: true,
@@ -352,7 +407,7 @@ export function workflowNext(taskId?: string, sessionToken?: string): NextResult
       from: currentPhase,
       to: nextPhase,
       description: PHASE_DESCRIPTIONS[nextPhase],
-      message: `${currentPhase} → ${nextPhase} に遷移しました`,
+      message: `${currentPhase} → ${nextPhase} に遷移しました${skipMessage}`,
       workflow_context: {
         workflowDir: taskState.workflowDir,
         phase: nextPhase,
@@ -372,14 +427,16 @@ export function workflowNext(taskId?: string, sessionToken?: string): NextResult
 function getLatestTestResult(
   taskState: TaskState,
   phase: 'testing' | 'regression_test'
-): { phase: 'testing' | 'regression_test'; exitCode: number; timestamp: string; summary?: string; passedCount?: number; failedCount?: number } | undefined {
+) {
   const results = taskState.testResults || [];
   const phaseResults = results.filter(r => r.phase === phase);
 
+  if (phaseResults.length === 0) {
+    return undefined;
+  }
+
   // 最新のタイムスタンプのものを返す（タイムスタンプ逆順でソート）
-  return phaseResults.length > 0
-    ? phaseResults.sort((a, b) => b.timestamp.localeCompare(a.timestamp))[0]
-    : undefined;
+  return phaseResults.sort((a, b) => b.timestamp.localeCompare(a.timestamp))[0];
 }
 
 /**

@@ -151,29 +151,29 @@ research → requirements → parallel_analysis（threat_modeling + planning）
 
 ### フェーズ別subagent設定
 
-| フェーズ | subagent_type | model | 入力ファイル | 出力ファイル |
-|---------|---------------|-------|-------------|-------------|
-| research | Explore | haiku | - | research.md |
-| requirements | general-purpose | sonnet | research.md | requirements.md |
-| threat_modeling | general-purpose | sonnet | requirements.md | threat-model.md |
-| planning | Plan | sonnet | requirements.md | spec.md |
-| state_machine | general-purpose | haiku | spec.md | state-machine.mmd |
-| flowchart | general-purpose | haiku | spec.md | flowchart.mmd |
-| ui_design | general-purpose | sonnet | spec.md | ui-design.md |
-| test_design | Plan | sonnet | spec.md, *.mmd | test-design.md |
-| test_impl | general-purpose | sonnet | test-design.md | *.test.ts |
-| implementation | general-purpose | sonnet | *.test.ts | *.ts |
-| refactoring | general-purpose | haiku | *.ts | *.ts |
-| build_check | Bash | haiku | - | - |
-| code_review | general-purpose | sonnet | *.ts | code-review.md |
-| testing | Bash | haiku | - | - |
-| manual_test | general-purpose | haiku | - | manual-test.md |
-| security_scan | Bash | haiku | - | security-scan.md |
-| performance_test | Bash | haiku | - | performance-test.md |
-| e2e_test | Bash | haiku | - | e2e-test.md |
-| docs_update | general-purpose | haiku | 全成果物 | ドキュメント |
-| commit | Bash | haiku | - | - |
-| push | Bash | haiku | - | - |
+| フェーズ | subagent_type | model | 入力ファイル | 入力ファイル重要度 | 出力ファイル |
+|---------|---------------|-------|-------------|-------------------|-------------|
+| research | Explore | haiku | - | - | research.md |
+| requirements | general-purpose | sonnet | research.md | 全文 | requirements.md |
+| threat_modeling | general-purpose | sonnet | requirements.md | 全文 | threat-model.md |
+| planning | Plan | sonnet | requirements.md | 全文 | spec.md |
+| state_machine | general-purpose | haiku | spec.md | 全文 | state-machine.mmd |
+| flowchart | general-purpose | haiku | spec.md | 全文 | flowchart.mmd |
+| ui_design | general-purpose | sonnet | spec.md | 全文 | ui-design.md |
+| test_design | Plan | sonnet | spec.md (全文), *.mmd (全文) | 全文 | test-design.md |
+| test_impl | general-purpose | sonnet | test-design.md | 全文 | *.test.ts |
+| implementation | general-purpose | sonnet | test-design.md (全文), spec.md (全文), requirements.md (サマリー) | 全文/サマリー | *.ts |
+| refactoring | general-purpose | haiku | implementation成果物 (全文), spec.md (サマリー), test-design.md (参照) | 全文/サマリー/参照 | *.ts |
+| build_check | Bash | haiku | - | - | - |
+| code_review | general-purpose | sonnet | implementation成果物 (全文), spec.md (全文), test-design.md (サマリー), requirements.md (参照) | 全文/サマリー/参照 | code-review.md |
+| testing | Bash | haiku | test-design.md (全文), implementation成果物 (全文), spec.md (サマリー), requirements.md (参照) | 全文/サマリー/参照 | - |
+| manual_test | general-purpose | haiku | - | - | manual-test.md |
+| security_scan | Bash | haiku | - | - | security-scan.md |
+| performance_test | Bash | haiku | - | - | performance-test.md |
+| e2e_test | Bash | haiku | - | - | e2e-test.md |
+| docs_update | general-purpose | haiku | 全成果物 | サマリー | ドキュメント |
+| commit | Bash | haiku | - | - | - |
+| push | Bash | haiku | - | - | - |
 
 ### subagent起動テンプレート
 
@@ -190,7 +190,11 @@ Task({
 
     ## 入力
     以下のファイルを読み込んでください:
-    - {入力ファイルパス}
+    - ★ {重要度Highファイルパス} （全文読み込み）
+    - ☆ {重要度Mediumファイルパス} （サマリーセクションのみ読み込み）
+    - {重要度Lowファイルパス} （参照不要）
+
+    **重要**: 重要度Highファイルは全文を読み込んでください。重要度Mediumファイルは「## サマリー」セクションのみを読み込んでください。
 
     ## 作業内容
     {フェーズの作業内容}
@@ -198,6 +202,19 @@ Task({
     ## 出力
     以下のファイルに成果物を保存してください:
     - {出力ファイルパス}
+
+    ## ★重要★ サマリーセクション必須化（REQ-B4）
+    成果物の先頭には必ず以下のセクションを配置してください:
+
+    ## サマリー
+
+    （50行以内で、このドキュメントの要点を記述）
+    - 目的: このドキュメントの目的
+    - 主要な決定事項: 重要な設計決定や技術選定
+    - 次フェーズで必要な情報: 後続フェーズで必須となる情報
+
+    これにより、次フェーズのsubagentがサマリーのみを読み込むことで
+    効率的にコンテキストを引き継ぐことができます。
   `,
   subagent_type: '{subagent_type}',
   model: '{model}',

@@ -337,6 +337,170 @@ function splitCompoundCommand(command) {
 }
 
 /**
+ * base64エンコードされたコマンドをデコード
+ *
+ * @param {string} encodedStr - base64文字列
+ * @returns {string|null} デコード後の文字列、またはnull
+ */
+function decodeBase64Safe(encodedStr) {
+  try {
+    return Buffer.from(encodedStr, 'base64').toString('utf8');
+  } catch (e) {
+    console.error('[bash-whitelist] base64デコードエラー:', e.message);
+    return null;
+  }
+}
+
+/**
+ * 16進エスケープシーケンス（\xNN）をデコード
+ *
+ * @param {string} hexStr - 16進エスケープシーケンス含む文字列
+ * @returns {string} デコード後の文字列
+ */
+function decodeHexSequences(hexStr) {
+  return hexStr.replace(/\\x([0-9a-fA-F]{2})/g, (match, hex) => {
+    return String.fromCharCode(parseInt(hex, 16));
+  });
+}
+
+/**
+ * 8進エスケープシーケンス（\NNN）をデコード
+ *
+ * @param {string} octStr - 8進エスケープシーケンス含む文字列
+ * @returns {string} デコード後の文字列
+ */
+function decodeOctalSequences(octStr) {
+  return octStr.replace(/\\([0-7]{3})/g, (match, oct) => {
+    return String.fromCharCode(parseInt(oct, 8));
+  });
+}
+
+/**
+ * REQ-C1: エンコードされたコマンドを検出してデコード
+ *
+ * base64エンコード、printf/echo エスケープシーケンスを検出し、
+ * デコードした結果をホワイトリスト照合にかける。
+ *
+ * @param {string} command - コマンド文字列
+ * @param {string} phase - フェーズ名
+ * @returns {{allowed: boolean, reason?: string}} 検証結果
+ */
+function detectEncodedCommand(command, phase) {
+  // base64 -d / base64 --decode パターン検出
+  if (/base64\s+(-d|--decode)/.test(command)) {
+    const base64Match = command.match(/echo\s+["']?([A-Za-z0-9+/=]+)["']?\s*\|/);
+    if (base64Match) {
+      const decoded = decodeBase64Safe(base64Match[1]);
+      if (decoded) {
+        console.error('[bash-whitelist] base64デコード検出:', decoded);
+        const result = checkBashWhitelist(decoded, phase);
+        if (!result.allowed) {
+          return {
+            allowed: false,
+            reason: `base64エンコードされた危険コマンド: ${result.reason}`
+          };
+        }
+      }
+    }
+  }
+
+  // printf \xNN パターン検出
+  const printfMatch = command.match(/printf\s+["']([^"']*\\x[0-9a-fA-F]{2}[^"']*)["']/);
+  if (printfMatch) {
+    const decoded = decodeHexSequences(printfMatch[1]);
+    console.error('[bash-whitelist] printf 16進エンコード検出:', decoded);
+    const result = checkBashWhitelist(decoded, phase);
+    if (!result.allowed) {
+      return {
+        allowed: false,
+        reason: `printf 16進エンコードされた危険コマンド: ${result.reason}`
+      };
+    }
+  }
+
+  // echo -e \NNN パターン検出
+  const echoMatch = command.match(/echo\s+-e\s+["']([^"']*\\[0-7]{3}[^"']*)["']/);
+  if (echoMatch) {
+    const decoded = decodeOctalSequences(echoMatch[1]);
+    console.error('[bash-whitelist] echo 8進エンコード検出:', decoded);
+    const result = checkBashWhitelist(decoded, phase);
+    if (!result.allowed) {
+      return {
+        allowed: false,
+        reason: `echo 8進エンコードされた危険コマンド: ${result.reason}`
+      };
+    }
+  }
+
+  return { allowed: true };
+}
+
+/**
+ * クォート除去
+ *
+ * @param {string} str - 文字列
+ * @returns {string} クォート除去後の文字列
+ */
+function removeQuotes(str) {
+  return str.replace(/^["']|["']$/g, '');
+}
+
+/**
+ * REQ-C1: 間接実行（eval/exec/sh -c）を検出
+ *
+ * eval, exec, sh -c, bash -c, パイプ経由のシェル実行を検出し、
+ * 実行対象文字列をホワイトリスト照合にかける。
+ *
+ * @param {string} command - コマンド文字列
+ * @param {string} phase - フェーズ名
+ * @returns {{allowed: boolean, reason?: string}} 検証結果
+ */
+function detectIndirectExecution(command, phase) {
+  // eval / exec パターン
+  const evalMatch = command.match(/\b(eval|exec)\s+(.+)/);
+  if (evalMatch) {
+    const unquoted = removeQuotes(evalMatch[2].trim());
+    console.error('[bash-whitelist] eval/exec 検出:', unquoted);
+    const result = checkBashWhitelist(unquoted, phase);
+    if (!result.allowed) {
+      return {
+        allowed: false,
+        reason: `${evalMatch[1]} による間接実行: ${result.reason}`
+      };
+    }
+  }
+
+  // sh -c / bash -c パターン
+  const shellMatch = command.match(/\b(sh|bash|zsh)\s+-c\s+(.+)/);
+  if (shellMatch) {
+    const unquoted = removeQuotes(shellMatch[2].trim());
+    console.error('[bash-whitelist] sh/bash -c 検出:', unquoted);
+    const result = checkBashWhitelist(unquoted, phase);
+    if (!result.allowed) {
+      return {
+        allowed: false,
+        reason: `${shellMatch[1]} -c による間接実行: ${result.reason}`
+      };
+    }
+  }
+
+  // パイプ経由のシェル実行（| sh / | bash）
+  if (/\|\s*(sh|bash|zsh)\s*$/.test(command)) {
+    const inputPart = command.split('|')[0].trim();
+    console.error('[bash-whitelist] パイプ経由シェル実行検出:', inputPart);
+    const result = checkBashWhitelist(inputPart, phase);
+    if (!result.allowed) {
+      return {
+        allowed: false,
+        reason: `パイプ経由シェル実行: ${result.reason}`
+      };
+    }
+  }
+
+  return { allowed: true };
+}
+
+/**
  * D-6: git -C オプションを正規化
  * git -C /path/to/dir status → git status に変換
  * @param {string} cmd - コマンド文字列
@@ -377,6 +541,18 @@ function checkBashWhitelist(command, phase) {
         };
       }
     }
+  }
+
+  // REQ-C1: エンコードされたコマンド検出（base64/printf/echo）
+  const encodedResult = detectEncodedCommand(commandToCheck, phase);
+  if (!encodedResult.allowed) {
+    return encodedResult;
+  }
+
+  // REQ-C1: 間接実行検出（eval/exec/sh -c）
+  const indirectResult = detectIndirectExecution(commandToCheck, phase);
+  if (!indirectResult.allowed) {
+    return indirectResult;
   }
 
   // REQ-2: build_checkでもブラックリストを適用（早期リターン削除）
@@ -450,6 +626,8 @@ module.exports = {
   checkBashWhitelist,
   getWhitelistForPhase,
   splitCompoundCommand,  // REQ-9: テスト用にエクスポート
+  detectEncodedCommand,  // REQ-C1: テスト用にエクスポート
+  detectIndirectExecution,  // REQ-C1: テスト用にエクスポート
   BASH_WHITELIST,
   BASH_BLACKLIST,
   NODE_E_BLACKLIST,

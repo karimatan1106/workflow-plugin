@@ -117,7 +117,7 @@ export const SUB_PHASE_DEPENDENCIES: Record<string, Partial<Record<SubPhaseName,
   },
   parallel_analysis: {
     threat_modeling: [], // 依存なし
-    planning: [], // 依存なし（独立実行可）
+    planning: ['threat_modeling'], // REQ-B3: threat_modeling完了後に実行推奨
   },
   parallel_quality: {
     build_check: [], // 依存なし
@@ -334,6 +334,16 @@ export function requiresApproval(phase: PhaseName): boolean {
 }
 
 /**
+ * 拡張子文字列をセットに変換（スペース区切り）
+ *
+ * @param extensionStr 拡張子文字列（スペース区切り）
+ * @returns 拡張子セット
+ */
+function parseExtensions(extensionStr: string): Set<string> {
+  return new Set(extensionStr.split(' ').filter(Boolean));
+}
+
+/**
  * 並列フェーズの許可拡張子を集約して取得
  *
  * 並列フェーズの場合、全サブフェーズの許可拡張子を
@@ -356,9 +366,72 @@ export function getParallelPhaseExtensions(phase: PhaseName): string {
       return '*';
     }
     // 拡張子をセットに追加
-    for (const e of ext.split(' ').filter(Boolean)) {
-      allExtensions.add(e);
-    }
+    parseExtensions(ext).forEach(e => allExtensions.add(e));
   }
   return Array.from(allExtensions).sort().join(' ');
+}
+
+// ============================================================================
+// REQ-C3: 動的フェーズスキップ機構
+// ============================================================================
+
+/**
+ * タスクスコープからスキップ対象フェーズを判定
+ *
+ * ファイル拡張子を分析し、コードファイルやテストファイルの有無から
+ * スキップ可能なフェーズを決定する。
+ *
+ * @param scope タスクスコープ（affectedFiles配列）
+ * @returns スキップすべきフェーズとその理由のマップ
+ */
+export function calculatePhaseSkips(scope: { affectedFiles?: string[]; files?: string[] }): Record<string, string> {
+  const files = scope.affectedFiles || scope.files || [];
+  const phaseSkipReasons: Record<string, string> = {};
+
+  // ファイルが空の場合はスキップ判定しない
+  if (files.length === 0) {
+    return phaseSkipReasons;
+  }
+
+  // 拡張子を抽出
+  const extensions = files.map(f => {
+    const match = f.match(/\.([^.]+)$/);
+    return match ? match[1] : '';
+  }).filter(Boolean);
+
+  // コードファイルの拡張子
+  const codeExtensions = ['ts', 'tsx', 'js', 'jsx', 'py', 'java', 'cpp', 'c', 'go', 'rs'];
+  // テストファイルのパターン
+  const testPatterns = /\.(test|spec)\.(ts|tsx|js|jsx)$/;
+  // ドキュメントファイルの拡張子
+  const docExtensions = ['md', 'mdx', 'txt'];
+
+  const hasCodeFiles = files.some(f => {
+    const ext = f.split('.').pop() || '';
+    return codeExtensions.includes(ext) && !testPatterns.test(f);
+  });
+  const hasTestFiles = files.some(f => testPatterns.test(f));
+  const hasOnlyDocs = files.every(f => {
+    const ext = f.split('.').pop() || '';
+    return docExtensions.includes(ext);
+  });
+
+  // コードファイルがない場合
+  if (!hasCodeFiles) {
+    phaseSkipReasons['implementation'] = 'コードファイルが影響範囲に含まれないため';
+    phaseSkipReasons['refactoring'] = 'コードファイルが影響範囲に含まれないため';
+  }
+
+  // テストファイルがない場合
+  if (!hasTestFiles) {
+    phaseSkipReasons['test_impl'] = 'テストファイルが影響範囲に含まれないため';
+  }
+
+  // コードファイルもテストファイルもない場合
+  if (!hasCodeFiles && !hasTestFiles) {
+    phaseSkipReasons['testing'] = 'テスト対象ファイルが影響範囲に含まれないため';
+    phaseSkipReasons['regression_test'] = 'テスト対象ファイルが影響範囲に含まれないため';
+  }
+
+  return phaseSkipReasons;
 }

@@ -12,6 +12,8 @@ import type { ResetResult, PhaseName, TaskSize } from '../state/types.js';
 import { DEFAULT_TASK_SIZE } from '../state/types.js';
 import { getPhaseIndex, PHASES_BY_SIZE } from '../phases/definitions.js';
 import { getTaskByIdOrError, safeExecute, verifySessionToken } from './helpers.js';
+import * as fs from 'fs';
+import * as path from 'path';
 
 /**
  * タスクを指定フェーズに差し戻し
@@ -73,32 +75,147 @@ export function workflowBack(
   }
 
   // 差し戻し処理を実行
-  return safeExecute('差し戻し', () => {
+  try {
+    // REQ-C4: 成果物をバックアップ
+    const docsDir = taskState.docsDir;
+    const movedFiles = docsDir
+      ? resetArtifactsFromPhaseSync(
+          taskState.workflowDir,
+          docsDir,
+          taskState.taskId,
+          targetPhase as PhaseName,
+          taskSize
+        )
+      : [];
+
+    if (!docsDir) {
+      console.warn(`[workflow_back] docsDir is undefined for task ${taskState.taskId}`);
+    }
+
     // resetHistoryに記録
-    const existingResetHistory = taskState.resetHistory || [];
+    const resetReason = reason || `${targetPhase}フェーズへ差し戻し`;
     const newResetEntry = {
       fromPhase,
-      reason: reason || `${targetPhase}フェーズへ差し戻し`,
+      reason: resetReason,
       timestamp: new Date().toISOString(),
     };
 
     const updatedState = {
       ...taskState,
       phase: targetPhase as PhaseName,
-      resetHistory: [...existingResetHistory, newResetEntry],
+      resetHistory: [...(taskState.resetHistory || []), newResetEntry],
     };
 
     stateManager.writeTaskState(taskState.workflowDir, updatedState);
+
+    // REQ-C4: リカバリガイダンスを生成
+    const guidance = generateRecoveryGuidance(targetPhase as PhaseName, resetReason);
 
     return {
       success: true,
       taskId: taskState.taskId,
       fromPhase,
       toPhase: targetPhase as PhaseName,
-      reason: reason || `${targetPhase}フェーズへ差し戻し`,
-      message: `${fromPhase} → ${targetPhase} に差し戻しました`,
+      reason: resetReason,
+      message: `${fromPhase} → ${targetPhase} に差し戻しました\n\n${guidance}`,
     };
-  }) as ResetResult;
+  } catch (error) {
+    return {
+      success: false,
+      message: `差し戻し処理中にエラーが発生しました: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+/**
+ * REQ-C4: 差し戻し先フェーズ以降の成果物をバックアップ
+ *
+ * 差し戻し先フェーズ以降の成果物をバックアップディレクトリに移動する。
+ * バックアップディレクトリ名: `backup_{taskId}_{timestamp}`
+ *
+ * @param workflowDir ワークフローディレクトリ（内部状態管理用）
+ * @param docsDir ドキュメントディレクトリ（成果物配置先）
+ * @param taskId タスクID
+ * @param targetPhase 差し戻し先フェーズ
+ * @param taskSize タスクサイズ
+ * @returns 移動した成果物ファイルのリスト
+ */
+function resetArtifactsFromPhaseSync(
+  workflowDir: string,
+  docsDir: string,
+  taskId: string,
+  targetPhase: PhaseName,
+  taskSize: TaskSize
+): string[] {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const backupDir = path.join(workflowDir, `backup_${taskId}_${timestamp}`);
+
+  // バックアップディレクトリを作成
+  if (!fs.existsSync(backupDir)) {
+    fs.mkdirSync(backupDir, { recursive: true });
+  }
+
+  const movedFiles: string[] = [];
+
+  // REQ-C4: フェーズ定義から成果物ファイルパターンを取得
+  // targetPhase以降のフェーズの成果物のみをバックアップ対象とする
+  const phases = PHASES_BY_SIZE[taskSize];
+  const targetIndex = getPhaseIndex(targetPhase, taskSize);
+
+  // フェーズごとの成果物マッピング
+  const phaseArtifacts: Record<string, string[]> = {
+    'requirements': ['requirements.md'],
+    'parallel_analysis': ['threat-model.md', 'spec.md'],
+    'parallel_design': ['state-machine.mmd', 'flowchart.mmd', 'ui-design.md'],
+    'test_design': ['test-design.md'],
+    'parallel_quality': ['code-review.md'],
+    'parallel_verification': ['manual-test.md', 'security-scan.md', 'performance-test.md', 'e2e-test.md'],
+  };
+
+  // targetPhase以降のフェーズの成果物を収集
+  const artifactPatterns: string[] = [];
+  for (let i = targetIndex + 1; i < phases.length; i++) {
+    const phase = phases[i];
+    if (phaseArtifacts[phase]) {
+      artifactPatterns.push(...phaseArtifacts[phase]);
+    }
+  }
+
+  // REQ-C4: docsDirを直接使用してファイルパスを解決
+  for (const pattern of artifactPatterns) {
+    const filePath = path.join(docsDir, pattern);
+    if (fs.existsSync(filePath)) {
+      const destPath = path.join(backupDir, pattern);
+      fs.renameSync(filePath, destPath);
+      movedFiles.push(pattern);
+    }
+  }
+
+  return movedFiles;
+}
+
+/**
+ * REQ-C4: リカバリガイダンスメッセージを生成
+ *
+ * 差し戻し先フェーズに応じたリカバリガイダンスメッセージを生成する。
+ *
+ * @param targetPhase 差し戻し先フェーズ
+ * @param reason 差し戻し理由
+ * @returns ガイダンスメッセージ（マークダウン形式）
+ */
+function generateRecoveryGuidance(targetPhase: PhaseName, reason?: string): string {
+  const reasonText = reason || '指定なし';
+  return `
+## リカバリガイダンス
+
+${targetPhase}フェーズに差し戻しました。理由: ${reasonText}
+
+### 次の作業
+${targetPhase}フェーズの成果物を修正してください。
+
+### 完了後
+workflow_nextで次フェーズに進んでください。
+`.trim();
 }
 
 /**

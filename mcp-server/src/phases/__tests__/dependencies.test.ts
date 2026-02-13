@@ -28,13 +28,13 @@ describe('SUB_PHASE_DEPENDENCIES', () => {
     expect(deps.ui_design).toEqual(['state_machine', 'flowchart']);
   });
 
-  // parallel_analysis の依存関係（依存なし）
-  test('should have no dependencies for parallel_analysis', () => {
+  // parallel_analysis の依存関係（REQ-B3: planningはthreat_modelingに依存）
+  test('should have correct dependencies for parallel_analysis', () => {
     const deps = SUB_PHASE_DEPENDENCIES.parallel_analysis;
 
     expect(deps).toBeDefined();
     expect(deps.threat_modeling).toEqual([]);
-    expect(deps.planning).toEqual([]);
+    expect(deps.planning).toEqual(['threat_modeling']);
   });
 
   // parallel_quality の依存関係（依存なし）
@@ -135,12 +135,18 @@ describe('Dependency validation helper', () => {
     expect(result.missing).toEqual([]);
   });
 
-  // parallel_analysis: 依存なしで並列完了可能
-  test('should allow parallel completion in parallel_analysis', () => {
+  // parallel_analysis: REQ-B3 planningはthreat_modeling完了が推奨
+  test('should check dependencies for parallel_analysis planning', () => {
     let result = checkDependencies('parallel_analysis', 'threat_modeling', []);
     expect(result.satisfied).toBe(true);
 
+    // planningはthreat_modeling未完了だと依存関係未充足
     result = checkDependencies('parallel_analysis', 'planning', []);
+    expect(result.satisfied).toBe(false);
+    expect(result.missing).toContain('threat_modeling');
+
+    // threat_modeling完了後は充足
+    result = checkDependencies('parallel_analysis', 'planning', ['threat_modeling']);
     expect(result.satisfied).toBe(true);
   });
 

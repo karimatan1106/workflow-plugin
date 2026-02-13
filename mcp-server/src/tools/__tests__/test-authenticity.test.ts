@@ -47,7 +47,7 @@ All tests passed.
 
     expect(result.valid).toBe(false);
     expect(result.reason).toContain(
-      'テストフレームワークの構造が含まれていません'
+      'テスト出力からテスト数を抽出できませんでした'
     );
   });
 
@@ -185,14 +185,12 @@ All tests completed successfully with no failures.
   // ===================================================================
   // TC-4-6: 200文字未満の出力がブロック
   // ===================================================================
-  it('TC-4-6: 200文字未満の出力がブロックされること', () => {
-    // 150文字程度の短い出力
+  it('TC-4-6: 最小文字数未満の出力がブロックされること', () => {
+    // 100文字未満の短い出力（MIN_OUTPUT_LENGTH=100）
     const shortOutput = `
 Tests: 5 passed, 5 total
 Time: 1s
-All tests passed successfully.
-No errors detected.
-Test execution completed.
+Done.
     `.trim();
 
     const result = validateTestAuthenticity(shortOutput, 0, phaseStartedAt);

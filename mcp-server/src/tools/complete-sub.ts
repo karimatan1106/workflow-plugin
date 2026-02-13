@@ -11,10 +11,47 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { stateManager } from '../state/manager.js';
 import type { CompleteSubResult, SubPhaseName } from '../state/types.js';
-import { isParallelPhase, PARALLEL_GROUPS, getSubPhaseDependencies } from '../phases/definitions.js';
+import { isParallelPhase, PARALLEL_GROUPS, getSubPhaseDependencies, SUB_PHASE_DEPENDENCIES } from '../phases/definitions.js';
 import { getTaskByIdOrError, validateRequiredString, safeExecute, verifySessionToken } from './helpers.js';
 import { MISSING_PARAM_ERRORS, invalidValueError } from '../utils/errors.js';
 import { validateArtifactQuality, PHASE_ARTIFACT_REQUIREMENTS } from '../validation/artifact-validator.js';
+
+/**
+ * REQ-B3: サブフェーズ依存関係の警告チェック
+ *
+ * @param parentPhase 並列フェーズ名
+ * @param subPhase サブフェーズ名
+ * @param currentSubPhases 現在のサブフェーズ状態
+ * @returns 警告メッセージの配列
+ */
+function checkSubPhaseDependencyWarnings(
+  parentPhase: string,
+  subPhase: SubPhaseName,
+  currentSubPhases: Record<string, string | undefined>
+): string[] {
+  const warnings: string[] = [];
+  const phaseDeps = SUB_PHASE_DEPENDENCIES[parentPhase];
+  if (!phaseDeps) {
+    return warnings;
+  }
+
+  const deps = phaseDeps[subPhase] || [];
+  if (deps.length === 0) {
+    return warnings;
+  }
+
+  const incompleteDeps = deps.filter(
+    dep => currentSubPhases[dep as SubPhaseName] !== 'completed'
+  );
+
+  if (incompleteDeps.length > 0) {
+    warnings.push(
+      `推奨: ${subPhase}を完了する前に、以下のサブフェーズを先に完了することを推奨します: ${incompleteDeps.join(', ')}`
+    );
+  }
+
+  return warnings;
+}
 
 /**
  * サブフェーズ名から成果物ファイル名への対応表（REQ-3: 品質検証強化）
@@ -155,6 +192,9 @@ export function workflowCompleteSub(taskId?: string, subPhase?: string, sessionT
     };
   }
 
+  // ★★★ REQ-B3: 依存関係の警告チェック ★★★
+  const warnings = checkSubPhaseDependencyWarnings(currentPhase, subPhaseName, taskState.subPhases || {});
+
   // サブフェーズ完了処理を実行
   return safeExecute('サブフェーズ完了処理', () => {
     // サブフェーズを完了としてマーク
@@ -165,9 +205,14 @@ export function workflowCompleteSub(taskId?: string, subPhase?: string, sessionT
     const allCompleted = remaining.length === 0;
 
     // 結果メッセージを生成
-    const message = allCompleted
+    let message = allCompleted
       ? `${subPhaseName}を完了しました。全て完了。workflow_next で次へ進めます`
       : `${subPhaseName}を完了しました。残り: ${remaining.join(', ')}`;
+
+    // REQ-B3: 警告メッセージを追加
+    if (warnings.length > 0) {
+      message += `\n\n⚠ 警告:\n${warnings.map(w => `  - ${w}`).join('\n')}`;
+    }
 
     return {
       success: true,

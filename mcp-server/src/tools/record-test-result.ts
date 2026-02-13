@@ -12,7 +12,11 @@
 import { stateManager } from '../state/manager.js';
 import type { ToolResult } from '../state/types.js';
 import { getTaskByIdOrError, safeExecute, verifySessionToken } from './helpers.js';
-import { validateTestAuthenticity } from '../validation/test-authenticity.js';
+import {
+  validateTestAuthenticity,
+  validateTestExecutionTime,
+  recordTestOutputHash
+} from '../validation/test-authenticity.js';
 
 /** テスト出力の最小文字数 */
 const MIN_OUTPUT_LENGTH = 50;
@@ -157,12 +161,21 @@ function validateTestOutputConsistency(
 
 /**
  * 正規表現マッチから数値を安全に抽出
- * @param match 正規表現マッチ結果
- * @param index キャプチャグループのインデックス
+ * @param output テキスト
+ * @param patterns 正規表現パターンの配列
  * @returns パースされた数値、またはundefined
  */
-function extractNumber(match: RegExpMatchArray | null, index: number): number | undefined {
-  return match ? parseInt(match[index], 10) : undefined;
+function extractNumberFromPatterns(
+  output: string,
+  patterns: RegExp[]
+): number | undefined {
+  for (const pattern of patterns) {
+    const match = output.match(pattern);
+    if (match && match[1]) {
+      return parseInt(match[1], 10);
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -172,32 +185,22 @@ function extractNumber(match: RegExpMatchArray | null, index: number): number | 
  * vitest形式: "Tests  42 passed (42)"
  */
 function extractTestCounts(output: string): { passedCount?: number; failedCount?: number } {
-  const patterns = [
+  const passPatterns = [
     /Tests:\s+(\d+)\s+passed/,   // jest形式: "Tests: 5 passed, 5 total"
     /Tests\s+(\d+)\s+passed/,    // vitest形式: "Tests  42 passed (42)"
     /(\d+)\s+tests?\s+passed/,   // 汎用形式: "5 tests passed" or "1 test passed"
     /(\d+)\s+passed/,            // 最小形式: "5 passed"
   ];
 
-  const result: { passedCount?: number; failedCount?: number } = {};
-
-  // passed カウント抽出
-  for (const pattern of patterns) {
-    result.passedCount = extractNumber(output.match(pattern), 1);
-    if (result.passedCount !== undefined) break;
-  }
-
-  // failed カウント抽出
   const failPatterns = [
     /(?:Tests:\s*)?(\d+)\s+failed/,  // jest形式
     /(\d+)\s+failed/,                // 汎用形式
   ];
-  for (const pattern of failPatterns) {
-    result.failedCount = extractNumber(output.match(pattern), 1);
-    if (result.failedCount !== undefined) break;
-  }
 
-  return result;
+  return {
+    passedCount: extractNumberFromPatterns(output, passPatterns),
+    failedCount: extractNumberFromPatterns(output, failPatterns),
+  };
 }
 
 /**
@@ -287,6 +290,27 @@ export function workflowRecordTestResult(
     };
   }
 
+  // REQ-C2: テスト実行時間の妥当性チェック
+  const testStartTime = new Date(phaseStartedAt).getTime();
+  const testEndTime = Date.now();
+  const executionTimeValidation = validateTestExecutionTime(testStartTime, testEndTime);
+  if (!executionTimeValidation.valid) {
+    return {
+      success: false,
+      message: `[実行時間検証エラー] ${executionTimeValidation.reason}`,
+    };
+  }
+
+  // REQ-C2: テスト出力ハッシュの記録と重複チェック
+  const existingHashes = taskState.testOutputHashes || [];
+  const hashValidation = recordTestOutputHash(output, existingHashes);
+  if (!hashValidation.valid) {
+    return {
+      success: false,
+      message: `[出力重複検証エラー] ${hashValidation.reason}`,
+    };
+  }
+
   // AC-1.3: テストフレームワーク構造なし → 警告（ブロックしない）
   const hasFrameworkStructure = TEST_FRAMEWORK_PATTERNS.some(pattern =>
     pattern.test(output)
@@ -323,9 +347,13 @@ export function workflowRecordTestResult(
       failedCount: counts.failedCount,
     };
 
+    // REQ-C2: 新しいハッシュを追加
+    const updatedHashes = [...existingHashes, hashValidation.hash];
+
     const updatedState = {
       ...taskState,
       testResults: [...existingResults, newResult],
+      testOutputHashes: updatedHashes,
     };
 
     stateManager.writeTaskState(taskState.workflowDir, updatedState);

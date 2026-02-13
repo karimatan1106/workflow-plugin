@@ -142,6 +142,7 @@ describe('complete-sub.ts - 成果物チェック（REQ-2）', () => {
     it('should return success: false with message containing "spec.md"', () => {
       const mockTask = createMockTaskState('parallel_analysis', {
         planning: 'pending',
+        threat_modeling: 'completed',  // REQ-B3: planningはthreat_modeling完了が必要
       });
 
       vi.mocked(stateManager.getTaskById).mockReturnValue(mockTask);

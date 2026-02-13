@@ -14,6 +14,26 @@ import * as path from 'path';
 import { execSync } from 'child_process';
 
 /**
+ * REQ-D3: パス正規化関数
+ *
+ * バックスラッシュ統一とUTF-8正規化を実施する。
+ * - バックスラッシュをスラッシュに統一
+ * - UTF-8 NFC正規化
+ *
+ * @param filePath ファイルパス
+ * @returns 正規化後のパス
+ */
+export function normalizePath(filePath: string): string {
+  // バックスラッシュをスラッシュに統一
+  const slashNormalized = filePath.replace(/\\/g, '/');
+
+  // UTF-8 NFC正規化
+  const nfcNormalized = slashNormalized.normalize('NFC');
+
+  return nfcNormalized;
+}
+
+/**
  * スコープ深度検証結果
  */
 export interface ScopeDepthResult {
@@ -33,13 +53,14 @@ export interface ScopeFileResult {
  * ディレクトリ深度を計算する関数
  *
  * REQ-5: src/ 配下のディレクトリ深度を計算し、浅すぎるスコープを防ぐ
+ * REQ-D3: normalizePath関数を使用
  *
  * @param dir ディレクトリパス
  * @returns 深度（src/ = 1, src/backend/ = 2, etc.）。src/以外は999（チェック対象外）
  */
 export function calculateDepth(dir: string): number {
-  // パスを正規化（バックスラッシュ→スラッシュ、先頭の./を除去）
-  const normalized = dir.replace(/\\/g, '/').replace(/^\.\//, '');
+  // REQ-D3: パスを正規化
+  const normalized = normalizePath(dir).replace(/^\.\//, '');
 
   // src/ 配下のみチェック
   if (!normalized.startsWith('src/')) {
@@ -183,6 +204,7 @@ export function extractImports(content: string, filePath: string): string[] {
 
 /**
  * REQ-5: 相対importパスを解決
+ * REQ-D3: normalizePath関数を使用
  *
  * @param baseFile importを含むファイルのパス
  * @param importPath import文のパス
@@ -196,8 +218,8 @@ export function resolveImportPath(baseFile: string, importPath: string): string 
 
   const baseDir = path.dirname(baseFile);
   const resolved = path.join(baseDir, importPath);
-  // Normalize path separators
-  const normalized = resolved.replace(/\\/g, '/');
+  // REQ-D3: パスを正規化
+  const normalized = normalizePath(resolved);
 
   // 拡張子がある場合、そのまま返す
   const ext = path.extname(importPath);
@@ -216,7 +238,7 @@ export function resolveImportPath(baseFile: string, importPath: string): string 
 
   // index.ts 等も試す
   for (const tryExt of extensions) {
-    const indexPath = path.join(normalized, `index${tryExt}`).replace(/\\/g, '/');
+    const indexPath = normalizePath(path.join(normalized, `index${tryExt}`));
     if (fs.existsSync(indexPath)) {
       return indexPath;
     }
@@ -228,11 +250,12 @@ export function resolveImportPath(baseFile: string, importPath: string): string 
 
 /**
  * ファイルがスコープ内か判定
+ * REQ-D3: normalizePath関数を使用
  */
 function isFileInScope(filePath: string, affectedDirs: string[]): boolean {
-  const normalized = filePath.replace(/\\/g, '/');
+  const normalized = normalizePath(filePath);
   return affectedDirs.some(dir => {
-    const normalizedDir = dir.replace(/\\/g, '/');
+    const normalizedDir = normalizePath(dir);
     return normalized.startsWith(normalizedDir);
   });
 }
@@ -408,15 +431,16 @@ export function getSubmodulePaths(projectRoot: string): string[] {
 
 /**
  * ファイルがサブモジュール内か判定
+ * REQ-D3: normalizePath関数を使用
  *
  * @param filePath ファイルパス
  * @param submodulePaths サブモジュールパスの配列
  * @returns サブモジュール内の場合 true
  */
 function isInSubmodule(filePath: string, submodulePaths: string[]): boolean {
-  const normalized = filePath.replace(/\\/g, '/');
+  const normalized = normalizePath(filePath);
   return submodulePaths.some(subPath => {
-    const normalizedSubPath = subPath.replace(/\\/g, '/');
+    const normalizedSubPath = normalizePath(subPath);
     return normalized.startsWith(normalizedSubPath + '/') || normalized === normalizedSubPath;
   });
 }
@@ -473,16 +497,17 @@ export function validateScopePostExecution(
 
       const absChanged = path.resolve(projectRoot, changedFile);
 
+      // REQ-D3: パスを正規化してから比較
       // scopeFilesに含まれるか確認
       const inScopeFiles = scopeFiles.some(sf => {
         const absSf = path.isAbsolute(sf) ? sf : path.resolve(projectRoot, sf);
-        return absChanged === absSf;
+        return normalizePath(absChanged) === normalizePath(absSf);
       });
 
       // scopeDirsに含まれるか確認
       const inScopeDirs = scopeDirs.some(sd => {
         const absSd = path.isAbsolute(sd) ? sd : path.resolve(projectRoot, sd);
-        return absChanged.replace(/\\/g, '/').startsWith(absSd.replace(/\\/g, '/'));
+        return normalizePath(absChanged).startsWith(normalizePath(absSd));
       });
 
       if (!inScopeFiles && !inScopeDirs) {

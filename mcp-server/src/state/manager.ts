@@ -31,6 +31,7 @@ import { taskCache, isCacheEnabled } from './cache.js';
 
 
 import { getCurrentKey, verifyWithAnyKey, signWithCurrentKey } from './hmac.js';
+import { normalizePath } from '../validation/scope-validator.js';
 /**
  * REQ-1: 同期的ファイルロック取得
  * acquireLockはasyncのため、同期APIに合わせた簡易ロック実装
@@ -461,6 +462,8 @@ export class WorkflowStateManager {
    * docsDirまたはworkflowDirのプレフィックスマッチで判定し、
    * 複数マッチする場合は最長一致のタスクを返す。
    *
+   * REQ-D3: normalizePath関数を使用
+   *
    * @param filePath 推論対象のファイルパス
    * @returns マッチしたタスク、またはnull
    */
@@ -469,13 +472,13 @@ export class WorkflowStateManager {
     let bestMatch: TaskState | null = null;
     let bestMatchLength = 0;
 
-    // パスを正規化（バックスラッシュをスラッシュに統一）
-    const normalizedFilePath = filePath.replace(/\\/g, '/');
+    // REQ-D3: パスを正規化
+    const normalizedFilePath = normalizePath(filePath);
 
     for (const task of tasks) {
       // docsDirチェック（最長一致）
       if (task.docsDir) {
-        const normalizedDocsDir = task.docsDir.replace(/\\/g, '/');
+        const normalizedDocsDir = normalizePath(task.docsDir);
         if (normalizedFilePath.startsWith(normalizedDocsDir)) {
           if (normalizedDocsDir.length > bestMatchLength) {
             bestMatch = task;
@@ -485,7 +488,7 @@ export class WorkflowStateManager {
       }
 
       // workflowDirチェック（最長一致）
-      const normalizedWorkflowDir = task.workflowDir.replace(/\\/g, '/');
+      const normalizedWorkflowDir = normalizePath(task.workflowDir);
       if (normalizedFilePath.startsWith(normalizedWorkflowDir)) {
         if (normalizedWorkflowDir.length > bestMatchLength) {
           bestMatch = task;

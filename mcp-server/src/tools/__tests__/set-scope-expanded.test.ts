@@ -96,13 +96,13 @@ describe('REQ-1: set-scope フェーズ拡張', () => {
     expect(result.message).toContain('research/requirements/planning/implementation/refactoring/testing');
   });
 
-  // TC-SS-5: docs_updateフェーズでscope設定不可
-  test('TC-SS-5: docs_updateフェーズでscope設定不可', () => {
+  // TC-SS-5: docs_updateフェーズでscope設定可能（N-5拡張）
+  test('TC-SS-5: docs_updateフェーズでscope設定可能', () => {
     vi.mocked(stateManager.getTaskById).mockReturnValue(createTaskState('docs_update'));
 
     const result = workflowSetScope(mockTaskId, ['src/a.ts'], []) as ScopeResult;
 
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 
   // TC-SS-6: 空配列のみ指定→エラー

@@ -241,6 +241,11 @@ export interface TaskState {
     failedCount?: number;
   }>;
   /**
+   * テスト出力のハッシュ記録（REQ-C2: 真正性証明）
+   * SHA-256ハッシュ値の配列。重複チェックに使用。
+   */
+  testOutputHashes?: string[];
+  /**
    * 状態ファイルのHMAC-SHA256署名
    * @spec docs/workflows/ワ-クフロ-プラグイン大規模対応根本改修/spec.md#REQ-2
    */
@@ -256,6 +261,11 @@ export interface TaskState {
     design?: boolean;
     test_design?: boolean;
   };
+  /**
+   * フェーズスキップ理由（REQ-C3: 動的フェーズスキップ機構）
+   * スキップされたフェーズとその理由のマップ
+   */
+  phaseSkipReasons?: Record<string, string>;
 }
 
 // ============================================================================

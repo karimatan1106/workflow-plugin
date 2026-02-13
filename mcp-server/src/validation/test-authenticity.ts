@@ -133,3 +133,59 @@ export function validateTestAuthenticity(
   // 全てのチェックに合格
   return { valid: true };
 }
+
+/**
+ * REQ-C2: テスト実行時間の妥当性を検証
+ *
+ * テスト実行の開始時刻と終了時刻から実行時間を計算し、
+ * 100ms未満の場合は捏造と判定する。
+ *
+ * @param startTime テスト実行開始時刻（ミリ秒単位のUNIXタイムスタンプ）
+ * @param endTime テスト実行終了時刻（ミリ秒単位のUNIXタイムスタンプ）
+ * @returns 検証結果
+ */
+export function validateTestExecutionTime(
+  startTime: number,
+  endTime: number
+): TestAuthenticityResult {
+  const MIN_TEST_EXECUTION_MS = 100;
+  const duration = endTime - startTime;
+
+  if (duration < MIN_TEST_EXECUTION_MS) {
+    return {
+      valid: false,
+      reason: `テスト実行時間が不自然に短いです（${duration}ms）。実際のテスト実行結果を提出してください`,
+    };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * REQ-C2: テスト出力のハッシュを記録
+ *
+ * テスト出力全文のSHA-256ハッシュを計算し、
+ * 過去のハッシュと比較して重複がある場合はエラーを返す。
+ *
+ * @param output テスト出力全文
+ * @param existingHashes 既存のハッシュ配列
+ * @returns 検証結果とハッシュ
+ */
+export function recordTestOutputHash(
+  output: string,
+  existingHashes: string[] = []
+): { valid: boolean; reason?: string; hash: string } {
+  const crypto = require('crypto');
+  const hash = crypto.createHash('sha256').update(output).digest('hex');
+
+  // 重複チェック
+  if (existingHashes.includes(hash)) {
+    return {
+      valid: false,
+      reason: '同一のテスト出力が既に記録されています。新規実行結果を提出してください',
+      hash,
+    };
+  }
+
+  return { valid: true, hash };
+}

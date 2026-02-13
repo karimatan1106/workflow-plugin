@@ -42,7 +42,7 @@ describe('REQ-2: checkBashWhitelist() build_check制限', () => {
 
       // 期待: allowed=false（現在はtrueなので失敗する）
       expect(result.allowed).toBe(false);
-      expect(result.reason).toContain('禁止');
+      expect(result.reason).toContain('間接実行');
     });
   });
 

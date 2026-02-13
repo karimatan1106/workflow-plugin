@@ -80,13 +80,22 @@ export function workflowStatus(taskId?: string): StatusResult {
 
   // 並列フェーズの場合、サブフェーズ状態を追加
   if (isParallelPhase(phase)) {
-    // サブフェーズが初期化されていない場合は初期化
-    const subPhases = Object.keys(taskState.subPhases || {}).length > 0
-      ? taskState.subPhases
-      : stateManager.initializeSubPhases(phase);
+    const existingSubPhases = taskState.subPhases || {};
+    const hasSubPhases = Object.keys(existingSubPhases).length > 0;
+    const subPhases = hasSubPhases ? existingSubPhases : stateManager.initializeSubPhases(phase);
 
     result.subPhases = subPhases;
     result.isParallelPhase = true;
+  }
+
+  // REQ-C3: スキップされたフェーズ情報を追加
+  if (taskState.phaseSkipReasons && Object.keys(taskState.phaseSkipReasons).length > 0) {
+    const skippedPhases = Object.entries(taskState.phaseSkipReasons)
+      .map(([phaseName, reason]) => `- **${phaseName}**: ${reason}`)
+      .join('\n');
+
+    const skipInfo = `\n\n## スキップされたフェーズ\n\n${skippedPhases}`;
+    result.message = (result.message || '') + skipInfo;
   }
 
   return result;

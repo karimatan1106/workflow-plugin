@@ -62,10 +62,15 @@ export function workflowApprove(taskId?: string, type?: string, sessionToken?: s
 
   // 承認処理を実行
   return safeExecute('承認処理', () => {
-    // FR-9: 承認フラグを記録
-    if (!taskState.approvals) taskState.approvals = {};
-    taskState.approvals[typeValidation.value as keyof typeof taskState.approvals] = true;
-    stateManager.writeTaskState(taskState.workflowDir, taskState);
+    // REQ-B1: 承認フラグを記録
+    const updatedState = {
+      ...taskState,
+      approvals: {
+        ...taskState.approvals,
+        [typeValidation.value]: true,
+      },
+    };
+    stateManager.writeTaskState(taskState.workflowDir, updatedState);
 
     // フェーズを更新
     stateManager.updateTaskPhase(taskState.taskId, nextPhase);

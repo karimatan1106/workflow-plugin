@@ -27,6 +27,9 @@ export interface ArtifactValidationResult {
  *
  * Markdown文書の構造要素（区切り線、コードフェンス、テーブル区切り）を判定する。
  *
+ * REQ-D2: コードブロック内の行とテーブルデータ行を除外するよう改善。
+ * ただし、コードブロック内フラグ管理は呼び出し元で行うこと。
+ *
  * @param line 判定対象の行（トリム済み）
  * @returns 構造要素の場合はtrue
  */
@@ -36,14 +39,14 @@ export function isStructuralLine(line: string): boolean {
   if (/^[-*_]{3,}$/.test(trimmed)) return true;
   // コードフェンス: ```で始まる行
   if (trimmed.startsWith('```')) return true;
-  // テーブル区切り: |で始まりハイフンを含む（例: |---|---|）
+  // テーブルセパレータ行: |で始まりハイフン・コロンのみを含む（例: |---|---|）
   if (/^\|[\s\-:|]+\|$/.test(trimmed)) return true;
+  // REQ-D2: テーブルデータ行: |で囲まれた行（パイプ区切りの行全て）
+  if (/^\|.*\|$/.test(trimmed)) return true;
   // Markdownラベルパターン: **太字**: のような構造ラベル
   if (/^\*\*[^*]+\*\*[:：]?\s*$/.test(trimmed)) return true;
   // リスト先頭のMarkdownラベル: - **太字**: のような構造ラベル
   if (/^[-*]\s+\*\*[^*]+\*\*[:：]?\s*$/.test(trimmed)) return true;
-  // テーブルデータ行: |で囲まれた行
-  if (/^\|.*\|$/.test(trimmed)) return true;
   return false;
 }
 
@@ -484,6 +487,9 @@ export function checkSectionDensity(
   // ## で始まるセクションに分割
   const sections = content.split(/^##\s+/m).slice(1);
 
+  // REQ-D2: コードブロック内フラグ管理
+  let inCodeBlock = false;
+
   for (const section of sections) {
     const lines = section.split('\n');
     const sectionName = lines[0]?.trim() || 'Unknown';
@@ -491,6 +497,16 @@ export function checkSectionDensity(
     // 実質的な行をカウント（空白行、ヘッダー、構造要素を除く）
     const substantiveLines = lines.slice(1).filter(line => {
       const trimmed = line.trim();
+
+      // コードブロックの開始/終了を追跡
+      if (trimmed.startsWith('```')) {
+        inCodeBlock = !inCodeBlock;
+        return false; // コードフェンス自体は構造要素
+      }
+
+      // コードブロック内の行は構造要素として除外
+      if (inCodeBlock) return false;
+
       if (trimmed.length === 0) return false;
       if (trimmed.startsWith('#')) return false;
       if (isStructuralLine(trimmed)) return false;
@@ -612,4 +628,126 @@ export function checkCodePathReferences(
   }
 
   return { valid: errors.length === 0, errors };
+}
+
+/**
+ * REQ-B2: 意味的整合性検証結果
+ */
+export interface SemanticConsistencyResult {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+}
+
+/**
+ * REQ-B2: 日本語ストップワード辞書
+ */
+const STOP_WORDS = [
+  'こと', 'ため', 'もの', 'これ', 'それ', 'あれ', 'この', 'その', 'あの',
+  'の', 'は', 'が', 'を', 'に', 'で', 'と', 'から', 'まで', 'など',
+  'する', 'ある', 'いる', 'なる', 'できる', 'れる', 'られる',
+  'です', 'ます', 'である', 'ない', 'ください', 'ため', 'よう',
+];
+
+/**
+ * REQ-B2: requirements.mdからキーワードを抽出
+ *
+ * @param requirementsContent - requirements.mdの内容
+ * @returns 抽出されたキーワードのセット
+ */
+function extractRequirementKeywords(requirementsContent: string): Set<string> {
+  const keywords = new Set<string>();
+
+  // REQ-*セクションを抽出
+  const reqSectionPattern = /^###\s+(REQ-[A-Z0-9]+).*?(?=^###|$)/gms;
+  const matches = requirementsContent.matchAll(reqSectionPattern);
+
+  for (const match of matches) {
+    const sectionText = match[0];
+
+    // 3文字以上の単語を抽出（名詞・動詞・形容詞相当）
+    // ひらがな・カタカナ・漢字・英数字の組み合わせ
+    const wordPattern = /[\u4e00-\u9faf\u3040-\u309f\u30a0-\u30ffa-zA-Z0-9]{3,}/g;
+    const words = sectionText.match(wordPattern) || [];
+
+    for (const word of words) {
+      // ストップワード除外
+      if (!STOP_WORDS.includes(word)) {
+        keywords.add(word);
+      }
+    }
+  }
+
+  return keywords;
+}
+
+/**
+ * REQ-B2: 意味的整合性チェック
+ *
+ * requirements.mdのキーワードが後続フェーズの成果物（spec.md, test-design.md, threat-model.md）
+ * に適切に含まれているか検証する。
+ *
+ * @param workflowDir - ワークフロー成果物ディレクトリ
+ * @returns 検証結果
+ */
+export function validateSemanticConsistency(
+  workflowDir: string
+): SemanticConsistencyResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  // ファイルパス
+  const requirementsPath = path.join(workflowDir, 'requirements.md');
+  const specPath = path.join(workflowDir, 'spec.md');
+  const testDesignPath = path.join(workflowDir, 'test-design.md');
+  const threatModelPath = path.join(workflowDir, 'threat-model.md');
+
+  // requirements.md が存在しない場合はスキップ
+  if (!fs.existsSync(requirementsPath)) {
+    return { valid: true, errors: [], warnings: [] };
+  }
+
+  // requirements.md からキーワード抽出
+  const requirementsContent = fs.readFileSync(requirementsPath, 'utf-8');
+  const keywords = extractRequirementKeywords(requirementsContent);
+
+  // キーワードが0件の場合はスキップ
+  if (keywords.size === 0) {
+    return { valid: true, errors: [], warnings: [] };
+  }
+
+  // 上位20個のキーワードを対象（頻度順ではなく、抽出順の最初20個）
+  const topKeywords = Array.from(keywords).slice(0, 20);
+
+  // 後続フェーズ成果物のチェック
+  const artifactsToCheck = [
+    { path: specPath, name: 'spec.md' },
+    { path: testDesignPath, name: 'test-design.md' },
+    { path: threatModelPath, name: 'threat-model.md' },
+  ];
+
+  for (const artifact of artifactsToCheck) {
+    if (!fs.existsSync(artifact.path)) {
+      continue; // ファイルが存在しない場合はスキップ
+    }
+
+    const content = fs.readFileSync(artifact.path, 'utf-8');
+
+    // 各キーワードの出現回数をカウント
+    for (const keyword of topKeywords) {
+      const occurrences = (content.match(new RegExp(keyword, 'g')) || []).length;
+
+      if (occurrences <= 1) {
+        warnings.push(
+          `${artifact.name} でキーワード「${keyword}」の出現が少ない（${occurrences}回）`
+        );
+      }
+    }
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    warnings,
+  };
 }
