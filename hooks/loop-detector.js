@@ -39,12 +39,12 @@ function logError(type, message, stack) {
 // グローバルエラーハンドラ
 process.on('uncaughtException', (err) => {
   logError('未捕捉エラー', err.message, err.stack);
-  process.exit(1);
+  process.exit(2);
 });
 
 process.on('unhandledRejection', (reason) => {
   logError('未処理のPromise拒否', String(reason), null);
-  process.exit(1);
+  process.exit(2);
 });
 
 const fs = require('fs');
