@@ -7,6 +7,13 @@
  * @spec /mnt/c/ツール/Workflow/docs/workflows/ワークフロー全問題完全解決/spec.md REQ-2
  */
 
+// REQ-R3: セキュリティ保護対象の環境変数
+const SECURITY_ENV_VARS = [
+  'HMAC_STRICT', 'SCOPE_STRICT', 'SESSION_TOKEN_REQUIRED',
+  'HMAC_AUTO_RECOVER', 'SKIP_WORKFLOW', 'SKIP_LOOP_DETECTOR',
+  'VALIDATE_DESIGN_STRICT',
+];
+
 /**
  * フェーズ別許可コマンドホワイトリスト
  *
@@ -555,6 +562,17 @@ function checkBashWhitelist(command, phase) {
     return indirectResult;
   }
 
+  // REQ-R3: セキュリティ環境変数の変更をブロック
+  for (const envVar of SECURITY_ENV_VARS) {
+    if (commandToCheck.includes(envVar)) {
+      const exportPattern = new RegExp(`\\b(export|unset)\\s+(['"]?${envVar}['"]?)`, 'i');
+      const envCmdPattern = new RegExp(`\\benv\\s+${envVar}=`, 'i');
+      if (exportPattern.test(commandToCheck) || envCmdPattern.test(commandToCheck)) {
+        return { allowed: false, reason: 'セキュリティ設定の変更は許可されていません' };
+      }
+    }
+  }
+
   // REQ-2: build_checkでもブラックリストを適用（早期リターン削除）
   // 1. ブラックリストチェック（全フェーズ共通）
   for (const entry of BASH_BLACKLIST) {
@@ -604,9 +622,13 @@ function checkBashWhitelist(command, phase) {
     const normalizedPart = normalizeGitCommand(partTrimmed);
     let partAllowed = false;
     for (const allowedCommand of whitelist) {
+      // REQ-R6: 厳格なホワイトリストマッチ（単語境界チェック）
       if (normalizedPart.startsWith(allowedCommand)) {
-        partAllowed = true;
-        break;
+        const nextChar = normalizedPart[allowedCommand.length];
+        if (!nextChar || nextChar === ' ' || nextChar === '\t' || /[;&|<>]/.test(nextChar)) {
+          partAllowed = true;
+          break;
+        }
       }
     }
 

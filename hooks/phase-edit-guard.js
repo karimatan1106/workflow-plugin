@@ -1291,10 +1291,20 @@ function checkScopeViolation(filePath, workflowState) {
     return { blocked: false };
   }
 
-  // docs/配下は常に許可（スコープチェック対象外）
+  // REQ-R2: docs/配下のバイパス制限
   const normalizedPath = normalizePath(filePath);
   if (normalizedPath.startsWith('docs/')) {
-    return { blocked: false };
+    const tasks = discoverTasksUnified();
+    for (const task of tasks) {
+      const taskDocsDir = normalizePath(task.docsDir || '');
+      if (taskDocsDir && normalizedPath.startsWith(taskDocsDir)) {
+        return { blocked: false };
+      }
+    }
+    if (normalizedPath.startsWith('docs/spec/') || normalizedPath.startsWith('docs/architecture/')) {
+      return { blocked: false };
+    }
+    return { blocked: true, reason: 'このドキュメントはアクティブタスクの範囲外です' };
   }
 
   // src/配下のみチェック

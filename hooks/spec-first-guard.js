@@ -13,6 +13,9 @@
 const HOOK_NAME = 'spec-first-guard.js';
 const ERROR_LOG = require('path').join(process.cwd(), '.claude-hook-errors.log');
 
+// REQ-R1: TTLデフォルト1時間
+const SPEC_FIRST_TTL_MS = parseInt(process.env.SPEC_FIRST_TTL_MS || '3600000', 10);
+
 // エラーをログファイルに書き出す
 function logError(type, message, stack) {
   const timestamp = new Date().toISOString();
@@ -200,6 +203,14 @@ function main(input) {
     // コードファイルの編集 → 仕様書更新済みかチェック
     if (isCodePath(filePath)) {
       const state = loadState();
+
+      // REQ-R1: TTL判定
+      if (state.specUpdated && state.updatedAt && SPEC_FIRST_TTL_MS > 0) {
+        const elapsed = Date.now() - new Date(state.updatedAt).getTime();
+        if (elapsed > SPEC_FIRST_TTL_MS) {
+          state.specUpdated = false; // TTL超過により無効化
+        }
+      }
 
       if (!state.specUpdated) {
         // ブロック

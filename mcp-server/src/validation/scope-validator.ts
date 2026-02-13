@@ -29,8 +29,8 @@ const MAX_SCOPE_DIRS_RAW = parseInt(process.env.MAX_SCOPE_DIRS || '100', 10);
 const MIN_SCOPE_DIRS = 1;
 const MAX_SCOPE_DIRS_LIMIT = 1000;
 
-/** REQ-A2: 依存関係追跡の深度上限 */
-const MAX_DEPENDENCY_DEPTH_RAW = parseInt(process.env.MAX_DEPENDENCY_DEPTH || '10', 10);
+/** REQ-A2: 依存関係追跡の深度上限（REQ-R5: デフォルト20に引き上げ） */
+const MAX_DEPENDENCY_DEPTH_RAW = parseInt(process.env.MAX_DEPENDENCY_DEPTH || '20', 10);
 const MIN_DEPENDENCY_DEPTH = 1;
 const MAX_DEPENDENCY_DEPTH_LIMIT = 50;
 

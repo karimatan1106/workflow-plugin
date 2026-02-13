@@ -117,6 +117,7 @@ function getEditThreshold(phase) {
  * - スラッシュをスラッシュで統一
  * - 大文字を小文字に統一
  * - 先頭の ./ を削除
+ * - REQ-R7: path.resolve による絶対パス変換
  *
  * @param {string} filePath - 正規化対象のファイルパス
  * @returns {string} 正規化されたファイルパス
@@ -125,11 +126,12 @@ function normalizeFilePath(filePath) {
   if (!filePath || typeof filePath !== 'string') {
     return '';
   }
-
-  return filePath
-    .replace(/\\/g, '/') // バックスラッシュをスラッシュに
-    .toLowerCase() // 小文字に統一
-    .replace(/^\.\//, ''); // 先頭の ./ を削除
+  try {
+    const resolved = path.resolve(filePath);
+    return resolved.replace(/\\/g, '/').toLowerCase();
+  } catch (e) {
+    return filePath.replace(/\\/g, '/').toLowerCase().replace(/^\.\//, '');
+  }
 }
 
 /**

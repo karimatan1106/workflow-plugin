@@ -34,9 +34,15 @@ const ALLOWED_PHASES = [
   'regression_test', // N-5: Allow scope changes for regression test creation
 ] as const;
 
-/** スコープサイズ制限（REQ-3） */
-const MAX_SCOPE_FILES = 200;
-const MAX_SCOPE_DIRS = 20;
+/** スコープサイズ制限（REQ-3, REQ-R4: 環境変数対応） */
+const MAX_SCOPE_FILES = Math.min(
+  Math.max(parseInt(process.env.MAX_SCOPE_FILES || '1000', 10) || 1000, 10),
+  10000
+);
+const MAX_SCOPE_DIRS = Math.min(
+  Math.max(parseInt(process.env.MAX_SCOPE_DIRS || '100', 10) || 100, 5),
+  1000
+);
 
 /**
  * フェーズの許可確認
