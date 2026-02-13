@@ -18,24 +18,23 @@ import * as path from 'path';
 
 /**
  * HMAC鍵エントリ
+ * hooks側(hmac-verify.js)と同一形式: [{generation, key, createdAt}]
  */
 export interface HmacKeyEntry {
-  /** 鍵ID（UUID v4形式） */
-  keyId: string;
+  /** 鍵世代番号 */
+  generation: number;
   /** 鍵データ（hex文字列、32バイト） */
   key: string;
   /** 作成日時（ISO 8601） */
   createdAt: string;
-  /** ローテーション日時（ISO 8601、未ローテーションの場合はnull） */
-  rotatedAt: string | null;
 }
 
 /**
- * HMAC鍵ファイルの構造
+ * レガシーHMAC鍵ファイルの構造（マイグレーション用）
  */
-interface HmacKeyFile {
+interface LegacyHmacKeyFile {
   version: number;
-  keys: HmacKeyEntry[];
+  keys: { keyId: string; key: string; createdAt: string; rotatedAt: string | null }[];
 }
 
 // ============================================================================
@@ -67,64 +66,59 @@ function getLegacyKeyFilePath(): string {
 }
 
 /**
- * UUID v4を生成（crypto.randomUUID互換）
- */
-function generateKeyId(): string {
-  const bytes = crypto.randomBytes(16);
-  bytes[6] = (bytes[6] & 0x0f) | 0x40;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  const hex = bytes.toString('hex');
-  return [
-    hex.slice(0, 8),
-    hex.slice(8, 12),
-    hex.slice(12, 16),
-    hex.slice(16, 20),
-    hex.slice(20, 32),
-  ].join('-');
-}
-
-/**
  * 新しい鍵を生成
  */
-export function generateKey(): HmacKeyEntry {
+export function generateKey(generation = 1): HmacKeyEntry {
   return {
-    keyId: generateKeyId(),
+    generation,
     key: crypto.randomBytes(32).toString('hex'),
     createdAt: new Date().toISOString(),
-    rotatedAt: null,
   };
 }
 
 /**
  * 鍵ファイルから鍵配列を読み込む
- * ファイルが存在しない場合はレガシー鍵のマイグレーションまたは初期鍵の自動生成を行う
+ * hooks側(hmac-verify.js)と同一の配列形式 [{generation, key, createdAt}] を使用。
+ * レガシー形式（{version, keys}オブジェクト）からの自動マイグレーション対応。
  */
 export function loadKeys(): HmacKeyEntry[] {
   const keyFilePath = getKeyFilePath();
 
-  // 新形式ファイルが存在する場合
   if (fs.existsSync(keyFilePath)) {
     try {
-      const data: HmacKeyFile = JSON.parse(fs.readFileSync(keyFilePath, 'utf-8'));
-      if (data.keys && data.keys.length > 0) {
-        return data.keys;
+      const parsed = JSON.parse(fs.readFileSync(keyFilePath, 'utf-8'));
+
+      // hooks互換の配列形式
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+
+      // レガシーオブジェクト形式 {version, keys} からのマイグレーション
+      const legacy = parsed as LegacyHmacKeyFile;
+      if (legacy.keys && legacy.keys.length > 0) {
+        const migrated: HmacKeyEntry[] = legacy.keys.map((k, i) => ({
+          generation: i + 1,
+          key: k.key,
+          createdAt: k.createdAt,
+        }));
+        saveKeys(migrated);
+        return migrated;
       }
     } catch {
       // ファイル破損時はフォールスルーして再生成
     }
   }
 
-  // レガシー鍵ファイルからのマイグレーション
+  // レガシー単一鍵ファイル(hmac.key)からのマイグレーション
   const legacyKeyPath = getLegacyKeyFilePath();
   if (fs.existsSync(legacyKeyPath)) {
     try {
       const legacyKey = fs.readFileSync(legacyKeyPath, 'utf-8').trim();
       if (legacyKey) {
         const entry: HmacKeyEntry = {
-          keyId: generateKeyId(),
+          generation: 1,
           key: legacyKey,
           createdAt: new Date().toISOString(),
-          rotatedAt: null,
         };
         saveKeys([entry]);
         return [entry];
@@ -142,6 +136,7 @@ export function loadKeys(): HmacKeyEntry[] {
 
 /**
  * 鍵配列をファイルに保存
+ * hooks側(hmac-verify.js)と互換性のある配列形式で保存する。
  */
 function saveKeys(keys: HmacKeyEntry[]): void {
   const keyFilePath = getKeyFilePath();
@@ -149,8 +144,7 @@ function saveKeys(keys: HmacKeyEntry[]): void {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
-  const data: HmacKeyFile = { version: 1, keys };
-  fs.writeFileSync(keyFilePath, JSON.stringify(data, null, 2));
+  fs.writeFileSync(keyFilePath, JSON.stringify(keys, null, 2));
 }
 
 /**
@@ -163,41 +157,38 @@ export function getCurrentKey(): HmacKeyEntry {
 
 /**
  * 鍵ローテーションを実行
- * 新しい鍵を生成して配列の先頭に追加し、古い鍵のrotatedAtを設定
+ * 新しい鍵を生成して配列の先頭に追加する。
  */
 export function rotateKey(): HmacKeyEntry {
   const keys = loadKeys();
-
-  // 現行の鍵にローテーション日時を設定
-  if (keys.length > 0) {
-    keys[0].rotatedAt = new Date().toISOString();
-  }
-
-  // 新しい鍵を先頭に追加
-  const newKey = generateKey();
+  const maxGeneration = keys.reduce((max, k) => Math.max(max, k.generation), 0);
+  const newKey = generateKey(maxGeneration + 1);
   keys.unshift(newKey);
-
-  // 保存
   saveKeys(keys);
   return newKey;
 }
 
 /**
  * データに対してHMACを生成（最新鍵を使用）
+ * hooks側(hmac-verify.js)と同一アルゴリズム:
+ * - 鍵: Buffer.from(hexKey, 'hex') でバイナリ変換
+ * - ダイジェスト: base64エンコード
  */
 export function signWithCurrentKey(data: string): string {
   const currentKey = getCurrentKey();
   return crypto
-    .createHmac(HMAC_ALGORITHM, currentKey.key)
-    .update(data)
-    .digest('hex');
+    .createHmac(HMAC_ALGORITHM, Buffer.from(currentKey.key, 'hex'))
+    .update(data, 'utf8')
+    .digest('base64');
 }
 
 /**
  * FR-3: データとHMACを検証（全有効鍵で試行、タイミング攻撃対策）
  *
- * crypto.timingSafeEqual を使用した定数時間比較により、
- * タイミング攻撃への脆弱性を防止する。
+ * hooks側(hmac-verify.js)と同一アルゴリズム:
+ * - 鍵: Buffer.from(hexKey, 'hex') でバイナリ変換
+ * - ダイジェスト: base64エンコード
+ * - 比較: crypto.timingSafeEqual で定数時間比較
  *
  * いずれかの鍵で一致すれば成功
  */
@@ -206,20 +197,19 @@ export function verifyWithAnyKey(data: string, signature: string): boolean {
 
   for (const keyEntry of keys) {
     const expected = crypto
-      .createHmac(HMAC_ALGORITHM, keyEntry.key)
-      .update(data)
-      .digest('hex');
+      .createHmac(HMAC_ALGORITHM, Buffer.from(keyEntry.key, 'hex'))
+      .update(data, 'utf8')
+      .digest('base64');
 
     // FR-3: 定数時間比較でタイミング攻撃を防止
     try {
-      const expectedBuffer = Buffer.from(expected, 'hex');
-      const signatureBuffer = Buffer.from(signature, 'hex');
+      const expectedBuffer = Buffer.from(expected, 'base64');
+      const signatureBuffer = Buffer.from(signature, 'base64');
 
       // Buffer長が異なる場合もダミー比較を実行してタイミング漏洩を防ぐ
       if (expectedBuffer.length !== signatureBuffer.length) {
-        // ダミー比較：expectedBufferと同じ長さのゼロバッファと比較
         crypto.timingSafeEqual(expectedBuffer, Buffer.alloc(expectedBuffer.length));
-        continue; // 次の鍵で試行
+        continue;
       }
 
       // 定数時間比較

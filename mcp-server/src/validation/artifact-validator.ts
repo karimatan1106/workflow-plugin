@@ -92,6 +92,8 @@ export interface ArtifactValidationResult {
  */
 export function isStructuralLine(line: string): boolean {
   const trimmed = line.trim();
+  // Markdownヘッダー: #で始まる行（## サマリー、### 概要 等）
+  if (/^#+\s/.test(trimmed)) return true;
   // 区切り線: ---、***、___（3文字以上の繰り返し）
   if (/^[-*_]{3,}$/.test(trimmed)) return true;
   // コードフェンス: ```で始まる行
@@ -263,27 +265,30 @@ export function validateArtifactQuality(
 
   // 7. ダミーテキスト検出（同一行の3回以上繰り返し）
   // コードフェンス内の行は除外する（コード例は構文上の繰り返しが自然に発生する）
-  const lineCountMap = new Map<string, number>();
-  let insideCodeFence = false;
-  for (const line of lines) {
-    const trimmed = line.trim();
-    // コードフェンスの開始/終了を追跡
-    if (trimmed.startsWith('```')) {
-      insideCodeFence = !insideCodeFence;
-      continue;
+  // .mmd ファイル（Mermaid図）は構文上の繰り返し（閉じ括弧等）が自然に発生するため除外
+  if (!filePath.endsWith('.mmd')) {
+    const lineCountMap = new Map<string, number>();
+    let insideCodeFence = false;
+    for (const line of lines) {
+      const trimmed = line.trim();
+      // コードフェンスの開始/終了を追跡
+      if (trimmed.startsWith('```')) {
+        insideCodeFence = !insideCodeFence;
+        continue;
+      }
+      // コードフェンス内の行はスキップ
+      if (insideCodeFence) continue;
+      if (trimmed.length > 0 && !isStructuralLine(trimmed)) {
+        lineCountMap.set(trimmed, (lineCountMap.get(trimmed) || 0) + 1);
+      }
     }
-    // コードフェンス内の行はスキップ
-    if (insideCodeFence) continue;
-    if (trimmed.length > 0 && !isStructuralLine(trimmed)) {
-      lineCountMap.set(trimmed, (lineCountMap.get(trimmed) || 0) + 1);
-    }
-  }
 
-  const duplicates = Array.from(lineCountMap.entries()).filter(([_, count]) => count >= 3);
-  if (duplicates.length > 0) {
-    errors.push(
-      `${fileName} にダミーテキストの疑いがあります（同一行の繰り返し）`
-    );
+    const duplicates = Array.from(lineCountMap.entries()).filter(([_, count]) => count >= 3);
+    if (duplicates.length > 0) {
+      errors.push(
+        `${fileName} にダミーテキストの疑いがあります（同一行の繰り返し）`
+      );
+    }
   }
 
   // 8. ヘッダーのみチェック（Markdown形式の場合）
