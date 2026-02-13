@@ -77,6 +77,17 @@ function isKeywordNegated(output: string, keyword: string): boolean {
 }
 
 /**
+ * ハイフン結合語を除外（"Fail-Closed"等の複合語は誤検出防止）
+ * @param output テキスト
+ * @param keyword キーワード
+ * @param matchIndex マッチ位置
+ * @returns ハイフン結合語の場合true
+ */
+function isHyphenatedWord(output: string, keyword: string, matchIndex: number): boolean {
+  return output[matchIndex + keyword.length] === '-';
+}
+
+/**
  * テスト出力とexitCodeの整合性を検証（Fail Closed）
  *
  * @param exitCode - テスト終了コード
@@ -96,20 +107,27 @@ function validateTestOutputConsistency(
       if (kw === '×' || kw === '✗') {
         return output.includes(kw);
       }
-      // 大文字のキーワード（FAIL, FAILED, ERROR, ERRORS）:
-      // 最初の文字が大文字の場合のみマッチ（"Errors", "ERROR", "Error" はマッチ、"errors" はマッチしない）
-      // 小文字のキーワード（failing, failures, errored）は大文字小文字不問
       const isUpperCase = kw === kw.toUpperCase();
       if (isUpperCase) {
-        // First letter capitalized (Error, Errors, ERROR, ERRORS etc.)
+        // 大文字キーワード（FAIL, FAILED, ERROR等）: "0 Failed", "no Error" は除外
+        if (isKeywordNegated(output, kw.toLowerCase())) {
+          return false;
+        }
+        // 最初の文字が大文字のみマッチ（"Error", "ERRORS" ✓ / "errors" ✗）
         const firstChar = kw.charAt(0);
         const rest = kw.slice(1).toLowerCase();
-        const pattern = new RegExp(`\\b${firstChar}${rest}\\b`, 'i');
-        // But only match if the actual matched text starts with uppercase
-        const matches = output.match(new RegExp(`\\b(${firstChar}${rest})\\b`, 'gi')) || [];
-        return matches.some(match => match.charAt(0) === match.charAt(0).toUpperCase());
+        const matchPattern = new RegExp(`\\b(${firstChar}${rest})\\b`, 'gi');
+        const matches = output.match(matchPattern) || [];
+        return matches.some(match => {
+          // 実際のマッチテキストの最初の文字が大文字か確認
+          if (match.charAt(0) !== match.charAt(0).toUpperCase()) return false;
+          // ハイフン結合語を除外（"Fail-Closed" ✗）
+          const idx = output.indexOf(match);
+          if (isHyphenatedWord(output, match, idx)) return false;
+          return true;
+        });
       } else {
-        // 小文字のキーワード: 否定語コンテキスト判定後にマッチ
+        // 小文字キーワード（failing, failures等）: 否定語コンテキスト判定後にマッチ
         if (isKeywordNegated(output, kw)) {
           return false;
         }

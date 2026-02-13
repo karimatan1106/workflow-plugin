@@ -61,7 +61,8 @@ const BASH_WHITELIST = {
     'npx eslint', 'npx prettier --check',
     // その他
     'npm run lint', 'npm run type-check',
-    'node ',
+    // BUG-1修正: 末尾スペースを除去（REQ-R6境界チェックで'nodejs'等を除外）
+    'node',
   ],
 
   // 実装コマンド（implementation, refactoring）
@@ -72,7 +73,8 @@ const BASH_WHITELIST = {
     'npm run build', 'npx tsc', 'npx webpack', 'npx vite build',
     // ディレクトリ作成
     'mkdir', 'mkdir -p',
-    'node ',
+    // BUG-1修正: 末尾スペースを除去（REQ-R6境界チェックで'nodejs'等を除外）
+    'node',
   ],
 
   // ビルド修正（build_check）- REQ-2: ホワイトリスト + ブラックリスト適用
@@ -686,6 +688,7 @@ function checkBashWhitelist(command, phase) {
 module.exports = {
   checkBashWhitelist,
   getWhitelistForPhase,
+  splitCommandParts,     // NEW-SEC-1: テスト用にエクスポート
   splitCompoundCommand,  // REQ-9: テスト用にエクスポート
   detectEncodedCommand,  // REQ-C1: テスト用にエクスポート
   detectIndirectExecution,  // REQ-C1: テスト用にエクスポート
