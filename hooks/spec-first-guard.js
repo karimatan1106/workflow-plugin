@@ -27,12 +27,12 @@ function logError(type, message, stack) {
 // グローバルエラーハンドラ
 process.on('uncaughtException', (err) => {
   logError('未捕捉エラー', err.message, err.stack);
-  process.exit(1);
+  process.exit(2);
 });
 
 process.on('unhandledRejection', (reason) => {
   logError('未処理のPromise拒否', String(reason), null);
-  process.exit(1);
+  process.exit(2);
 });
 
 const fs = require('fs');
@@ -65,7 +65,7 @@ function loadOrGenerateHmacKey() {
     return key;
   } catch (e) {
     logError('HMAC鍵エラー', e.message, e.stack);
-    process.exit(1);
+    process.exit(2);
   }
 }
 
@@ -103,9 +103,8 @@ function loadState() {
       if (raw.signature) {
         // 署名検証
         if (!verifyStateHmac(raw, raw.signature)) {
-    console.error('Workflow state integrity check failed');
-    process.exit(1);
-  };
+          console.error('Workflow state integrity check failed');
+          process.exit(2);
         }
         return raw;
       } else {
