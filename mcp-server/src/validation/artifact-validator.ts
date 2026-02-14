@@ -139,8 +139,10 @@ export function isStructuralLine(line: string): boolean {
   if (/^[-*_]{3,}$/.test(trimmed)) return true;
   // コードフェンス: ```で始まる行
   if (trimmed.startsWith('```')) return true;
-  // テーブルセパレータ行: |で始まりハイフン・コロン・スペースのみを含む（例: |---|---|）
-  if (/^\s*\|[\s:-]+\|\s*$/.test(trimmed)) return true;
+  // テーブルセパレータ行: |で始まりハイフン・コロン・スペースのみを含む（例: |---|---|---|）
+  if (/^\s*\|[\s:-]+(\|[\s:-]+)*\|\s*$/.test(trimmed)) return true;
+  // テーブルデータ行: パイプで始まりパイプで終わる行で内側に1つ以上のパイプを含む（2カラム以上）
+  if (/^\s*\|.+\|.+\|\s*$/.test(trimmed)) return true;
   // Markdownラベルパターン: **太字**: のような構造ラベル
   if (/^\*\*[^*]+\*\*[:：]?\s*$/.test(trimmed)) return true;
   // リスト先頭のMarkdownラベル: - **太字**: のような構造ラベル
