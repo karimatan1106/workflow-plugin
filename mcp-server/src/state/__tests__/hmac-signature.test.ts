@@ -57,6 +57,7 @@ vi.mock('fs', () => {
     writeSync: vi.fn(() => undefined),
     closeSync: vi.fn(() => undefined),
     chmodSync: vi.fn(() => undefined),
+    appendFileSync: vi.fn(() => undefined),
   };
 });
 
@@ -101,17 +102,23 @@ describe('REQ-2: HMAC署名機能', () => {
 
   /**
    * テストヘルパー: サンプル状態オブジェクトを生成
+   *
+   * NOTE: userIntentを明示的に設定する。readTaskState()は
+   * state.userIntentが未設定の場合にtaskNameを自動代入するため、
+   * 署名計算時と検証時でオブジェクトの内容が不一致になるのを防ぐ。
    */
   function createSampleState(overrides?: Partial<TaskState>): TaskState {
+    const taskName = overrides?.taskName ?? 'テストタスク';
     return {
       taskId: 'task-001',
-      taskName: 'テストタスク',
+      taskName,
       phase: 'research',
       workflowDir: '/test/workflow',
       startedAt: '2026-02-07T00:00:00.000Z',
       checklist: {},
       history: [],
       subPhases: {},
+      userIntent: taskName,
       ...overrides,
     };
   }
@@ -285,12 +292,12 @@ describe('REQ-2: HMAC署名機能', () => {
       const actualSignature = parsedState.stateIntegrity;
 
       // REQ-3: ランダム鍵を使用するため、PBKDF2の期待値とは一致しない
-      // FR-3統合後はhex形式で署名が格納される
+      // FR-3統合後はhmac.tsのsignWithCurrentKeyがbase64形式で署名を生成する
       expect(actualSignature).toBeTruthy();
       expect(typeof actualSignature).toBe('string');
-      // Hex format check: SHA-256 = 32 bytes = 64 hex chars
-      expect(actualSignature).toMatch(/^[0-9a-f]{64}$/i);
-      expect(Buffer.from(actualSignature, 'hex').length).toBe(32); // SHA-256 = 32 bytes
+      // Base64 format check: SHA-256 HMAC = 32 bytes -> 44 chars in base64 (with padding)
+      expect(actualSignature).toMatch(/^[A-Za-z0-9+/]+=*$/);
+      expect(Buffer.from(actualSignature, 'base64').length).toBe(32); // SHA-256 = 32 bytes
     });
   });
 

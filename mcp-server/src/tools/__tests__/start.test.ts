@@ -23,9 +23,10 @@ vi.mock('../../state/manager.js', () => ({
     createTask: vi.fn(),
     writeTaskState: vi.fn(),
   },
+  generateSessionToken: vi.fn(() => 'a'.repeat(64)), // 64文字のランダム文字列
 }));
 
-import { stateManager } from '../../state/manager.js';
+import { stateManager, generateSessionToken } from '../../state/manager.js';
 
 describe('start.ts - workflow_start ツールテスト', () => {
   beforeEach(() => {
@@ -50,6 +51,7 @@ describe('start.ts - workflow_start ツールテスト', () => {
         taskSize: 'large',
         docsDir: 'docs/workflows/テストタスク',
       });
+      vi.mocked(generateSessionToken).mockReturnValue('a'.repeat(64));
 
       const result = workflowStart('テストタスク') as StartResult & { taskSize?: string; sessionToken?: string };
 
@@ -83,6 +85,7 @@ describe('start.ts - workflow_start ツールテスト', () => {
         taskSize: 'large',
         docsDir: 'docs/workflows/テストタスク',
       });
+      vi.mocked(generateSessionToken).mockReturnValue('a'.repeat(64));
 
       const result = workflowStart('テストタスク') as StartResult;
 
@@ -127,6 +130,7 @@ describe('start.ts - docsDir テスト', () => {
       taskSize: 'large',
       docsDir: 'docs/workflows/テストタスク',
     });
+    vi.mocked(generateSessionToken).mockReturnValue('a'.repeat(64));
 
     const result = workflowStart('テストタスク') as StartResult & { docsDir?: string; sessionToken?: string };
 
@@ -147,6 +151,7 @@ describe('start.ts - docsDir テスト', () => {
       taskSize: 'large',
       docsDir: 'docs/workflows/機能名',
     });
+    vi.mocked(generateSessionToken).mockReturnValue('a'.repeat(64));
 
     const result = workflowStart('機能名') as StartResult & { docsDir?: string };
 

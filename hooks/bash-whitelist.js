@@ -48,6 +48,8 @@ const BASH_WHITELIST = {
     'echo',
     // node -e（読み取り系のみ - 後述の検証が必要）
     'node -e',
+    // BUG-3: mkdir -p（ワークフロー成果物ディレクトリ作成用、validateMkdirTargetで制限）
+    'mkdir -p',
   ],
 
   // テスト実行コマンド（testing, regression_test）
@@ -143,7 +145,6 @@ const BASH_BLACKLIST = [
  */
 function extractIdentifiersFromAST(code) {
   try {
-    // Use Function constructor to parse (lightweight, no external deps)
     const identifiers = new Set();
 
     // 文字列連結パターンを検出: obj['str1' + 'str2'] or obj["str1" + "str2"]
@@ -156,20 +157,17 @@ function extractIdentifiersFromAST(code) {
     // テンプレートリテラルパターン: `${prefix}FileSync`
     const templatePattern = /\`[^\x60]*\$\{([^}]+)\}[^\x60]*\`/g;
     while ((match = templatePattern.exec(code)) !== null) {
-      // テンプレートリテラル使用自体を危険とみなす
       identifiers.add('TEMPLATE_LITERAL_DETECTED');
     }
 
     // eval()パターン検出
     if (code.includes('eval(') || code.includes('eval (')) {
-      // eval内の文字列を展開して解析
       const evalContentMatch = code.match(/eval\s*\(\s*(['"])(.*?)\1\s*\)/);
       if (evalContentMatch) {
         const evalContent = evalContentMatch[2];
         const innerIds = extractIdentifiersFromAST(evalContent);
         innerIds.forEach(id => identifiers.add(id));
       }
-      // eval + require + readFileSync パターン
       if (code.includes('require') && code.includes('readFileSync')) {
         identifiers.add('EVAL_FILE_EXECUTION');
       }
@@ -213,12 +211,8 @@ function getWhitelistForPhase(phase) {
     'design_review', 'code_review', 'manual_test',
   ];
 
-  // FR-1: docs_updateフェーズ（readonly + gh）
   const docsUpdatePhases = ['docs_update'];
-
-  // FR-2: parallel_verificationサブフェーズ（readonly + testing + gh）
   const verificationPhases = ['security_scan', 'performance_test', 'e2e_test', 'ci_verification'];
-
   const testingPhases = ['testing', 'regression_test'];
   const implementationPhases = ['test_impl', 'implementation', 'refactoring'];
   const deployPhases = ['deploy'];
@@ -227,10 +221,8 @@ function getWhitelistForPhase(phase) {
   if (readonlyPhases.includes(phase)) {
     return BASH_WHITELIST.readonly;
   } else if (docsUpdatePhases.includes(phase)) {
-    // FR-1: docs_updateはreadonlyコマンド + ghコマンドを許可
     return [...BASH_WHITELIST.readonly, 'gh'];
   } else if (verificationPhases.includes(phase)) {
-    // FR-2: verification系サブフェーズはreadonly + testing + ghを許可
     return [...BASH_WHITELIST.readonly, ...BASH_WHITELIST.testing, 'gh'];
   } else if (testingPhases.includes(phase)) {
     return [...BASH_WHITELIST.readonly, ...BASH_WHITELIST.testing];
@@ -241,40 +233,31 @@ function getWhitelistForPhase(phase) {
       ...BASH_WHITELIST.implementation,
     ];
   } else if (deployPhases.includes(phase)) {
-    // D-2: deployフェーズはreadonly + implementation + deploy用コマンドを許可
     return [...BASH_WHITELIST.readonly, ...BASH_WHITELIST.implementation, 'docker', 'kubectl', 'ssh', 'helm', 'gh'];
   } else if (gitPhases.includes(phase)) {
     return [...BASH_WHITELIST.readonly, ...BASH_WHITELIST.git];
   } else if (phase === 'build_check' || phase === 'parallel_quality') {
-    // REQ-2: build_checkはビルド修正に必要なコマンドを全て許可
     return [
       ...BASH_WHITELIST.readonly,
       ...BASH_WHITELIST.testing,
       ...BASH_WHITELIST.implementation,
-      'rm -f', // 削除コマンド
+      'rm -f',
     ];
   } else {
-    return BASH_WHITELIST.readonly; // デフォルトは読み取りのみ
+    return BASH_WHITELIST.readonly;
   }
 }
 
 /**
  * コマンド文字列を分割（複合コマンド対応）
- *
- * @param {string} command - コマンド文字列
- * @returns {string[]} 分割されたコマンド部
  */
 function splitCommandParts(command) {
-  // NEW-SEC-1: ゼロ幅文字サニタイズ
   command = sanitizeZeroWidthChars(command);
   return command.split(/\s*(?:&&|\|\||;)\s*/).filter(p => p.trim().length > 0);
 }
 
 /**
  * コマンド部がリダイレクトを含むかチェック
- *
- * @param {string} part - コマンド部
- * @returns {boolean}
  */
 function hasRedirection(part) {
   return part.includes('>') || part.includes('>>');
@@ -282,28 +265,21 @@ function hasRedirection(part) {
 
 /**
  * ブラックリストパターンにマッチするかチェック
- *
- * @param {string} command - チェック対象のコマンド文字列
- * @param {{pattern: string, type: string}} entry - ブラックリストエントリ
- * @returns {boolean} マッチした場合 true
  */
 function matchesBlacklistEntry(command, entry) {
   const parts = splitCommandParts(command);
 
   switch (entry.type) {
     case 'prefix':
-      // コマンドの各パートの先頭にマッチ
       return parts.some(part => part.trim().startsWith(entry.pattern));
 
     case 'awk-redirect':
-      // awk + リダイレクト検出
       return parts.some(part => {
         const trimmed = part.trim();
         return trimmed.startsWith('awk') && hasRedirection(trimmed);
       });
 
     case 'xxd-redirect':
-      // xxd + リダイレクト検出
       return parts.some(part => {
         const trimmed = part.trim();
         return trimmed.startsWith('xxd') && hasRedirection(trimmed);
@@ -313,7 +289,6 @@ function matchesBlacklistEntry(command, entry) {
       return entry.pattern.test(command);
 
     case 'contains':
-      // 部分一致（コマンド全体で検査）
       return command.includes(entry.pattern);
 
     default:
@@ -323,10 +298,6 @@ function matchesBlacklistEntry(command, entry) {
 
 /**
  * HIGH-4: コマンドチェーン分割関数（クォート状態を追跡）
- *
- * クォート内のセミコロン・&&・||を無視して、正確にコマンドチェーンを分割する
- * @param {string} cmd - コマンド文字列
- * @returns {string[]} 分割されたコマンド配列
  */
 function splitCommandChain(cmd) {
   const commands = [];
@@ -341,47 +312,40 @@ function splitCommandChain(cmd) {
     const next2Chars = cmd.substring(i, i + 2);
 
     if (escaped) {
-      // エスケープ文字の次の文字は無条件で追加
       currentCommand += char;
       escaped = false;
       continue;
     }
 
     if (char === '\\') {
-      // エスケープ開始
       currentCommand += char;
       escaped = true;
       continue;
     }
 
     if (char === "'" && !inDoubleQuote) {
-      // シングルクォートの開始/終了
       inSingleQuote = !inSingleQuote;
       currentCommand += char;
       continue;
     }
 
     if (char === '"' && !inSingleQuote) {
-      // ダブルクォートの開始/終了
       inDoubleQuote = !inDoubleQuote;
       currentCommand += char;
       continue;
     }
 
-    // クォート外でのみコマンド区切り文字を検出
     if (!inSingleQuote && !inDoubleQuote) {
       if (next2Chars === '&&' || next2Chars === '||') {
-        // && または ||
         if (currentCommand.trim().length > 0) {
           commands.push(currentCommand.trim());
         }
         currentCommand = '';
-        i++; // 次の文字もスキップ
+        i++;
         continue;
       }
 
       if (char === ';') {
-        // セミコロン
         if (currentCommand.trim().length > 0) {
           commands.push(currentCommand.trim());
         }
@@ -390,11 +354,9 @@ function splitCommandChain(cmd) {
       }
     }
 
-    // 通常の文字を追加
     currentCommand += char;
   }
 
-  // 最後のコマンドを追加
   if (currentCommand.trim().length > 0) {
     commands.push(currentCommand.trim());
   }
@@ -404,23 +366,14 @@ function splitCommandChain(cmd) {
 
 /**
  * REQ-9: 複合コマンドを分割（クォート内のセミコロンを保護）
- *
- * node -e "var a=1;console.log(a)" のクォート内セミコロンを
- * Bashのコマンド区切りとして誤解析しないよう保護する。
  */
 function splitCompoundCommand(command) {
-  // NEW-SEC-1: ゼロ幅文字サニタイズ
   command = sanitizeZeroWidthChars(command);
-
-  // HIGH-4: splitCommandChain を使用
   return splitCommandChain(command);
 }
 
 /**
  * base64エンコードされたコマンドをデコード
- *
- * @param {string} encodedStr - base64文字列
- * @returns {string|null} デコード後の文字列、またはnull
  */
 function decodeBase64Safe(encodedStr) {
   try {
@@ -433,9 +386,6 @@ function decodeBase64Safe(encodedStr) {
 
 /**
  * 16進エスケープシーケンス（\xNN）をデコード
- *
- * @param {string} hexStr - 16進エスケープシーケンス含む文字列
- * @returns {string} デコード後の文字列
  */
 function decodeHexSequences(hexStr) {
   return hexStr.replace(/\\x([0-9a-fA-F]{2})/g, (match, hex) => {
@@ -445,9 +395,6 @@ function decodeHexSequences(hexStr) {
 
 /**
  * 8進エスケープシーケンス（\NNN）をデコード
- *
- * @param {string} octStr - 8進エスケープシーケンス含む文字列
- * @returns {string} デコード後の文字列
  */
 function decodeOctalSequences(octStr) {
   return octStr.replace(/\\([0-7]{3})/g, (match, oct) => {
@@ -457,16 +404,8 @@ function decodeOctalSequences(octStr) {
 
 /**
  * REQ-C1: エンコードされたコマンドを検出してデコード
- *
- * base64エンコード、printf/echo エスケープシーケンスを検出し、
- * デコードした結果をホワイトリスト照合にかける。
- *
- * @param {string} command - コマンド文字列
- * @param {string} phase - フェーズ名
- * @returns {{allowed: boolean, reason?: string}} 検証結果
  */
 function detectEncodedCommand(command, phase) {
-  // base64 -d / base64 --decode パターン検出
   if (/base64\s+(-d|--decode)/.test(command)) {
     const base64Match = command.match(/echo\s+["']?([A-Za-z0-9+/=]+)["']?\s*\|/);
     if (base64Match) {
@@ -481,7 +420,6 @@ function detectEncodedCommand(command, phase) {
           };
         }
       } else {
-        // NEW-SEC-2: Fail-Closed - デコード失敗時はブロック
         return {
           allowed: false,
           reason: 'Base64 decoding failed - possibly malformed or malicious input'
@@ -490,7 +428,6 @@ function detectEncodedCommand(command, phase) {
     }
   }
 
-  // printf \xNN パターン検出
   const printfMatch = command.match(/printf\s+["']([^"']*\\x[0-9a-fA-F]{2}[^"']*)["']/);
   if (printfMatch) {
     const decoded = decodeHexSequences(printfMatch[1]);
@@ -504,7 +441,6 @@ function detectEncodedCommand(command, phase) {
         };
       }
     } else {
-      // NEW-SEC-2: Fail-Closed - デコード失敗時はブロック
       return {
         allowed: false,
         reason: 'Printf hex decoding failed - possibly malformed or malicious input'
@@ -512,7 +448,6 @@ function detectEncodedCommand(command, phase) {
     }
   }
 
-  // echo -e \NNN パターン検出
   const echoMatch = command.match(/echo\s+-e\s+["']([^"']*\\[0-7]{3}[^"']*)["']/);
   if (echoMatch) {
     const decoded = decodeOctalSequences(echoMatch[1]);
@@ -526,7 +461,6 @@ function detectEncodedCommand(command, phase) {
         };
       }
     } else {
-      // NEW-SEC-2: Fail-Closed - デコード失敗時はブロック
       return {
         allowed: false,
         reason: 'Echo octal decoding failed - possibly malformed or malicious input'
@@ -539,9 +473,6 @@ function detectEncodedCommand(command, phase) {
 
 /**
  * クォート除去
- *
- * @param {string} str - 文字列
- * @returns {string} クォート除去後の文字列
  */
 function removeQuotes(str) {
   return str.replace(/^["']|["']$/g, '');
@@ -549,16 +480,8 @@ function removeQuotes(str) {
 
 /**
  * REQ-C1: 間接実行（eval/exec/sh -c）を検出
- *
- * eval, exec, sh -c, bash -c, パイプ経由のシェル実行を検出し、
- * 実行対象文字列をホワイトリスト照合にかける。
- *
- * @param {string} command - コマンド文字列
- * @param {string} phase - フェーズ名
- * @returns {{allowed: boolean, reason?: string}} 検証結果
  */
 function detectIndirectExecution(command, phase) {
-  // eval / exec パターン
   const evalMatch = command.match(/\b(eval|exec)\s+(.+)/);
   if (evalMatch) {
     const unquoted = removeQuotes(evalMatch[2].trim());
@@ -572,7 +495,6 @@ function detectIndirectExecution(command, phase) {
     }
   }
 
-  // sh -c / bash -c パターン
   const shellMatch = command.match(/\b(sh|bash|zsh)\s+-c\s+(.+)/);
   if (shellMatch) {
     const unquoted = removeQuotes(shellMatch[2].trim());
@@ -586,7 +508,6 @@ function detectIndirectExecution(command, phase) {
     }
   }
 
-  // パイプ経由のシェル実行（| sh / | bash）
   if (/\|\s*(sh|bash|zsh)\s*$/.test(command)) {
     const inputPart = command.split('|')[0].trim();
     console.error('[bash-whitelist] パイプ経由シェル実行検出:', inputPart);
@@ -604,14 +525,100 @@ function detectIndirectExecution(command, phase) {
 
 /**
  * D-6: git -C オプションを正規化
- * git -C /path/to/dir status → git status に変換
- * @param {string} cmd - コマンド文字列
- * @returns {string} 正規化されたコマンド
  */
 function normalizeGitCommand(cmd) {
   if (!cmd.startsWith('git ')) return cmd;
-  // -C <path> ペアを全て除去
   return cmd.replace(/\s+-C\s+\S+/g, '').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * BUG-3: mkdir -p のターゲットパスを検証
+ * 読み取り専用フェーズでは、ワークフロー成果物ディレクトリと内部状態ディレクトリへのmkdirのみ許可
+ * @param {string} command - mkdir コマンド文字列
+ * @returns {{ allowed: boolean, reason?: string }}
+ */
+function validateMkdirTarget(command) {
+  const match = command.match(/^mkdir\s+(?:-p\s+)?(.+)/);
+  if (!match) return { allowed: false, reason: 'mkdir のパースに失敗しました' };
+
+  const targetPath = match[1].trim().replace(/^['"]|['"]$/g, '');
+  const normalized = targetPath.replace(/\\/g, '/');
+
+  if (normalized.includes('..')) {
+    return { allowed: false, reason: 'mkdir のパスに .. は使用できません' };
+  }
+
+  const allowedPrefixes = ['docs/workflows/', 'docs/security/', '.claude/state/'];
+  const isAllowed = allowedPrefixes.some(prefix => normalized.startsWith(prefix));
+
+  if (!isAllowed) {
+    return {
+      allowed: false,
+      reason: `mkdir は許可されたディレクトリのみ作成可能です: ${allowedPrefixes.join(', ')}`,
+    };
+  }
+
+  return { allowed: true };
+}
+
+/**
+ * SEC-ENV-1: セキュリティ環境変数の設定をブロック
+ * VAR=value command 形式、export/env/unset コマンドでの設定を検出
+ * @param {string} commandPart - コマンドチェーンの一部
+ * @returns {{ allowed: boolean, reason?: string }}
+ */
+function checkSecurityEnvVar(commandPart) {
+  // インライン環境変数設定: VAR=value command
+  for (const envVar of SECURITY_ENV_VARS) {
+    const inlinePattern = new RegExp(`^${envVar}=\\S+\\s+`, 'i');
+    if (inlinePattern.test(commandPart)) {
+      return {
+        allowed: false,
+        reason: `セキュリティ環境変数のインライン設定がブロックされました: ${envVar}`,
+      };
+    }
+  }
+
+  // export コマンド: export VAR=value または export VAR
+  if (/^export\s+/i.test(commandPart)) {
+    for (const envVar of SECURITY_ENV_VARS) {
+      const exportPattern = new RegExp(`^export\\s+(['"]?${envVar}['"]?)(\\s|=|$)`, 'i');
+      if (exportPattern.test(commandPart)) {
+        return {
+          allowed: false,
+          reason: `セキュリティ環境変数の変更がブロックされました: ${envVar}`,
+        };
+      }
+    }
+  }
+
+  // env コマンド: env VAR=value
+  if (/^env\s+/i.test(commandPart)) {
+    for (const envVar of SECURITY_ENV_VARS) {
+      const envPattern = new RegExp(`\\benv\\s+${envVar}=`, 'i');
+      if (envPattern.test(commandPart)) {
+        return {
+          allowed: false,
+          reason: `セキュリティ環境変数の変更がブロックされました: ${envVar}`,
+        };
+      }
+    }
+  }
+
+  // unset コマンド: unset VAR
+  if (/^unset\s+/i.test(commandPart)) {
+    for (const envVar of SECURITY_ENV_VARS) {
+      const unsetPattern = new RegExp(`^unset\\s+(['"]?${envVar}['"]?)($|\\s)`, 'i');
+      if (unsetPattern.test(commandPart)) {
+        return {
+          allowed: false,
+          reason: `セキュリティ環境変数の変更がブロックされました: ${envVar}`,
+        };
+      }
+    }
+  }
+
+  return { allowed: true };
 }
 
 function checkBashWhitelist(command, phase) {
@@ -622,17 +629,14 @@ function checkBashWhitelist(command, phase) {
   const heredocReplacements = [];
 
   if (phase === 'commit' && /^git\s+commit\s+.*\$\(\s*cat\s+<</.test(trimmed)) {
-    // heredocパターンを検出してプレースホルダに置換
     commandToCheck = trimmed.replace(/\$\(\s*cat\s+<<'?(\w+)'?\s*([\s\S]*?)\1\s*\)/g, (match, delimiter, content) => {
       const idx = heredocReplacements.length;
       heredocReplacements.push(match);
       return `__HEREDOC_PLACEHOLDER_${idx}__`;
     });
 
-    // heredoc前後にコマンド連結がないことを確認
     const parts = commandToCheck.split(/\s*(?:&&|\|\||;)\s*/).filter(p => p.trim().length > 0);
     if (parts.length > 1) {
-      // heredoc内のgit commitコマンド以外の部分にコマンド連結がある
       const hasExternalChaining = parts.some(part =>
         !part.includes('git commit') && part.trim().length > 0
       );
@@ -657,36 +661,12 @@ function checkBashWhitelist(command, phase) {
     return indirectResult;
   }
 
-  // SEC-4: セキュリティ環境変数保護（早期チェック）
-  // コマンドチェーン分割して各コマンドをチェック
+  // SEC-4 + SEC-ENV-1: セキュリティ環境変数保護（統一チェック）
   const chainParts = splitCommandChain(commandToCheck);
   for (const part of chainParts) {
-    const trimmedPart = part.trim();
-
-    // export/unset コマンドをチェック
-    if (/^(export|unset)\s+/i.test(trimmedPart)) {
-      for (const envVar of SECURITY_ENV_VARS) {
-        const exportPattern = new RegExp(`^(export|unset)\\s+(['"]?${envVar}['"]?)(\\s|=|$)`, 'i');
-        if (exportPattern.test(trimmedPart)) {
-          return {
-            allowed: false,
-            reason: `セキュリティ環境変数の変更がブロックされました: ${envVar}`
-          };
-        }
-      }
-    }
-
-    // env コマンドをチェック
-    if (/^env\s+/i.test(trimmedPart)) {
-      for (const envVar of SECURITY_ENV_VARS) {
-        const envPattern = new RegExp(`\\benv\\s+${envVar}=`, 'i');
-        if (envPattern.test(trimmedPart)) {
-          return {
-            allowed: false,
-            reason: `セキュリティ環境変数の変更がブロックされました: ${envVar}`
-          };
-        }
-      }
+    const envResult = checkSecurityEnvVar(part.trim());
+    if (!envResult.allowed) {
+      return envResult;
     }
   }
 
@@ -750,6 +730,14 @@ function checkBashWhitelist(command, phase) {
       }
     }
 
+    // BUG-3: mkdir -p は追加のパス検証が必要
+    if (partAllowed && partTrimmed.startsWith('mkdir')) {
+      const mkdirResult = validateMkdirTarget(partTrimmed);
+      if (!mkdirResult.allowed) {
+        return mkdirResult;
+      }
+    }
+
     if (!partAllowed) {
       return {
         allowed: false,
@@ -770,6 +758,8 @@ module.exports = {
   splitCompoundCommand,  // REQ-9: テスト用にエクスポート
   detectEncodedCommand,  // REQ-C1: テスト用にエクスポート
   detectIndirectExecution,  // REQ-C1: テスト用にエクスポート
+  validateMkdirTarget,     // BUG-3: テスト用にエクスポート
+  checkSecurityEnvVar,     // SEC-ENV-1: テスト用にエクスポート
   BASH_WHITELIST,
   BASH_BLACKLIST,
   NODE_E_BLACKLIST,

@@ -622,29 +622,53 @@ export function checkSectionDensity(
     const sectionName = lines[0]?.trim() || 'Unknown';
     const sectionContent = lines.slice(1); // セクション名行を除外
 
-    // 実質的な行をカウント（空白行、ヘッダー、構造要素を除く）
-    const substantiveLines = sectionContent.filter(line => {
+    // REQ-B1: BUG-2修正: 一度の走査で実質行と構造行をカウント（重複排除）
+    let substantiveCount = 0;
+    let structuralCount = 0;
+    inCodeBlock = false;
+
+    for (const line of sectionContent) {
       const trimmed = line.trim();
 
       // コードブロックの開始/終了を追跡
       if (trimmed.startsWith('```')) {
         inCodeBlock = !inCodeBlock;
-        return false; // コードフェンス自体は構造要素
+        structuralCount++;
+        continue;
       }
 
       // コードブロック内の行は構造要素として除外
-      if (inCodeBlock) return false;
+      if (inCodeBlock) {
+        structuralCount++;
+        continue;
+      }
 
-      if (trimmed.length === 0) return false;
-      if (trimmed.startsWith('#')) return false;
-      if (isStructuralLine(trimmed)) return false;
-      return true;
-    });
+      // 空白行は構造要素
+      if (trimmed.length === 0) {
+        structuralCount++;
+        continue;
+      }
 
-    // REQ-B1: 密度比率検証（実内容行 / 総行数）
+      // ヘッダーは構造要素
+      if (trimmed.startsWith('#')) {
+        structuralCount++;
+        continue;
+      }
+
+      // その他の構造要素
+      if (isStructuralLine(trimmed)) {
+        structuralCount++;
+        continue;
+      }
+
+      // 実質的な行
+      substantiveCount++;
+    }
+
+    // 密度比率検証（実内容行 / 有効行数）
     const totalLines = sectionContent.length;
-    const substantiveCount = substantiveLines.length;
-    const density = totalLines > 0 ? substantiveCount / totalLines : 0;
+    const effectiveTotal = totalLines - structuralCount;
+    const density = effectiveTotal > 0 ? substantiveCount / effectiveTotal : 0;
 
     if (density < MIN_SECTION_DENSITY) {
       errors.push(

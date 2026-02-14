@@ -17,6 +17,7 @@ vi.mock('../../state/manager.js', () => ({
     getIncompleteSubPhases: vi.fn().mockReturnValue([]),
     writeTaskState: vi.fn(),
   },
+  generateSessionToken: vi.fn(() => 'a'.repeat(64)), // 64文字のランダム文字列
 }));
 
 // design-validatorをモック

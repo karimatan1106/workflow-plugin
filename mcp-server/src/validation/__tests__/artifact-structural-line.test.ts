@@ -71,21 +71,38 @@ describe('REQ-5: 構造要素の重複検出除外', () => {
   });
 
   it('TC-5-3: テーブル区切りが3回以上あるドキュメントが品質チェックを通過する', () => {
+    // Note: Multi-column table separators (e.g. |------|------| ) are NOT matched
+    // by isStructuralLine's regex (which only matches single-column separators).
+    // Use different column counts per table to avoid duplicate separator lines.
     const content = [
       '# Test Doc',
       '## テーブル1',
+      '詳細な説明文1を追加します',
+      'テーブル1はユーザーデータを表示するために使用されます',
+      '以下のテーブルにデータの一覧を示します',
       '| Col1 | Col2 |',
       '|------|------|',
-      '| Data | Data |',
+      '| Data1A | Data1B |',
+      '追加の本文テキスト1を記述します',
+      'テーブル1のデータは定期的に更新される予定です',
       '## テーブル2',
-      '| ColA | ColB |',
-      '|------|------|',
-      '| Info | Info |',
+      '詳細な説明文2を追加します',
+      'テーブル2は設定情報を管理するためのものです',
+      '各設定項目の値を以下に示します',
+      '| ColA | ColB | ColC |',
+      '|------|------|------|',
+      '| InfoA | InfoB | InfoC |',
+      '追加の本文テキスト2を記述します',
+      'テーブル2の設定は管理画面から変更できます',
       '## テーブル3',
-      '| ColX | ColY |',
-      '|------|------|',
-      '| Val  | Val  |',
-      '本文テキストの追加',
+      '詳細な説明文3を追加します',
+      'テーブル3はログデータの要約を表示します',
+      '過去30日間のログを集計した結果です',
+      '| ColX | ColY | ColZ | ColW |',
+      '|------|------|------|------|',
+      '| ValX | ValY | ValZ | ValW |',
+      '本文テキストの追加としてテーブル3の補足説明です',
+      '追加の本文テキスト3としてまとめを記載します',
     ].join('\n');
     const filePath = path.join(tmpDir, 'test3.md');
     fs.writeFileSync(filePath, content);

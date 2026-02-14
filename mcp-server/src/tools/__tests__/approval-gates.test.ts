@@ -134,13 +134,9 @@ describe('REQ-2: 承認ゲートテスト', () => {
 
       const result = workflowNext(TEST_TASK_ID) as NextResult;
 
-      // 現在の実装: 承認不要のため success: true で遷移する
-      expect(result.success).toBe(true);
-
-      // REQ-2実装後の期待値:
-      // parallel_quality完了後にcode_reviewの承認が必要
-      // expect(result.success).toBe(false);
-      // expect(result.message).toMatch(/承認が必要/);
+      // REQ-2実装済み: parallel_quality → testing 遷移時にcode_review承認が必要
+      expect(result.success).toBe(false);
+      expect(result.message).toMatch(/code_review承認が必要/);
     });
   });
 
@@ -174,7 +170,7 @@ describe('REQ-2: 承認ゲートテスト', () => {
     });
   });
 
-  describe('TC-2-6: workflowApprove("code_review")が成功する（REQ-2実装後）', () => {
+  describe('TC-2-6: workflowApprove("code_review")が成功する（REQ-2実装済み）', () => {
     test('approve type "code_review" で承認できる', () => {
       // parallel_quality完了後の状態
       const state = createMockTaskState('parallel_quality');
@@ -185,30 +181,28 @@ describe('REQ-2: 承認ゲートテスト', () => {
 
       vi.mocked(stateManager.getTaskById).mockReturnValue(state);
 
-      // 現在の実装: APPROVE_TYPE_MAPPING に 'code_review' は存在しない
+      // REQ-2実装済み: APPROVE_TYPE_MAPPING に 'code_review' が追加された
       const result = workflowApprove(TEST_TASK_ID, 'code_review') as ApproveResult;
 
-      expect(result.success).toBe(false);
-      expect(result.message).toMatch(/不明な承認タイプ/);
-
-      // REQ-2実装後の期待値:
-      // expect(result.success).toBe(true);
-      // expect(result.approved).toBe('code_review');
-      // expect(result.nextPhase).toBe('testing');
+      expect(result.success).toBe(true);
+      expect(result.approved).toBe('code_review');
+      expect(result.nextPhase).toBe('testing');
     });
   });
 
   describe('TC-2-7: APPROVE_TYPE_MAPPING の確認', () => {
-    test('REQ-2実装済み: requirements, design, test_design が含まれる', () => {
+    test('REQ-2実装済み: requirements, design, test_design, code_review が含まれる', () => {
       expect(APPROVE_TYPE_MAPPING).toHaveProperty('requirements');
       expect(APPROVE_TYPE_MAPPING).toHaveProperty('design');
       expect(APPROVE_TYPE_MAPPING).toHaveProperty('test_design');
-      expect(Object.keys(APPROVE_TYPE_MAPPING).length).toBe(3);
+      expect(APPROVE_TYPE_MAPPING).toHaveProperty('code_review');
+      expect(Object.keys(APPROVE_TYPE_MAPPING).length).toBe(4);
     });
 
-    test('code_reviewはAPPROVE_TYPE_MAPPINGに含まれない（SubPhaseNameのため）', () => {
-      // code_reviewはSubPhaseNameであり、PhaseName用のAPPROVE_TYPE_MAPPINGには含まれない
-      expect(APPROVE_TYPE_MAPPING).not.toHaveProperty('code_review');
+    test('code_reviewはAPPROVE_TYPE_MAPPINGに含まれる（REQ-2実装済み）', () => {
+      // REQ-2実装済み: code_reviewがAPPROVE_TYPE_MAPPINGに追加された
+      expect(APPROVE_TYPE_MAPPING).toHaveProperty('code_review');
+      expect(APPROVE_TYPE_MAPPING.code_review).toEqual({ expectedPhase: 'parallel_quality', nextPhase: 'testing' });
     });
   });
 

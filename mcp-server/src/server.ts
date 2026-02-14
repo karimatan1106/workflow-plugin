@@ -119,8 +119,8 @@ function validateToolArgs(toolName: string, args: Record<string, unknown>): { va
   if (args.taskName !== undefined && typeof args.taskName !== 'string') {
     return { valid: false, error: 'taskName must be a string' };
   }
-  if (args.type !== undefined && !['requirements', 'design', 'test_design'].includes(String(args.type))) {
-    return { valid: false, error: 'type must be one of: requirements, design, test_design' };
+  if (args.type !== undefined && !['requirements', 'design', 'test_design', 'code_review'].includes(String(args.type))) {
+    return { valid: false, error: 'type must be one of: requirements, design, test_design, code_review' };
   }
   if (args.severity !== undefined && !['low', 'medium', 'high', 'critical'].includes(String(args.severity))) {
     return { valid: false, error: 'severity must be one of: low, medium, high, critical' };

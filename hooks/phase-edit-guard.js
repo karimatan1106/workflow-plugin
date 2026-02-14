@@ -1022,6 +1022,20 @@ function saveLogs(logs) {
 }
 
 /**
+ * SEC-LOG-1: コマンド文字列から機密情報をマスク
+ * @param {string} text - マスク対象のテキスト
+ * @returns {string} マスク済みテキスト
+ */
+function maskSensitiveInfo(text) {
+  if (!text) return text;
+  return text
+    .replace(/(?:password|passwd|pwd)\s*[=:]\s*\S+/gi, 'password=***')
+    .replace(/(?:api[_-]?key|apikey)\s*[=:]\s*\S+/gi, 'api_key=***')
+    .replace(/(?:token|secret)\s*[=:]\s*\S+/gi, 'token=***')
+    .replace(/Bearer\s+\S+/g, 'Bearer ***');
+}
+
+/**
  * チェック結果をログに記録
  *
  * 全てのチェック結果（許可・ブロック・スキップ）を記録し、
@@ -1429,7 +1443,7 @@ function main(input) {
         console.error(SEPARATOR_LINE);
         console.error('');
         console.error(` フェーズ: ${phase}（${rule?.japaneseName || phase}）`);
-        console.error(` コマンド: ${command.substring(0, 100)}${command.length > 100 ? '...' : ''}`);
+        console.error(` コマンド: ${maskSensitiveInfo(command.substring(0, 100))}${command.length > 100 ? '...' : ''}`);
         console.error('');
         console.error(` 理由: ${whitelistResult.reason}`);
         console.error('');
@@ -1437,7 +1451,7 @@ function main(input) {
         logCheck({
           blocked: true,
           phase,
-          command: command.substring(0, 100),
+          command: maskSensitiveInfo(command.substring(0, 100)),
           reason: 'Bash whitelist violation: ' + whitelistResult.reason,
         });
         process.exit(EXIT_CODES.BLOCK);

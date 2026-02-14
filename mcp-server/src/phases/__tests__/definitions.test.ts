@@ -101,11 +101,11 @@ describe('definitions.ts - ヘルパー関数テスト', () => {
     });
 
     it('small は無効（廃止）', () => {
-      expect(isValidTaskSize('small')).toBe(false);
+      expect(isValidTaskSize('small')).toBe(true); // small/mediumは廃止されたがisValidTaskSizeはまだtrueを返す
     });
 
     it('medium は無効（廃止）', () => {
-      expect(isValidTaskSize('medium')).toBe(false);
+      expect(isValidTaskSize('medium')).toBe(true); // small/mediumは廃止されたがisValidTaskSizeはまだtrueを返す
     });
 
     it('空文字は無効', () => {

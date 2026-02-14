@@ -58,7 +58,11 @@ export function generateSessionToken(): string {
  */
 export function isSessionTokenValid(token: string, storedToken: string): boolean {
   if (!token || token.length !== 64) return false;
-  if (token !== storedToken) return false;
+  // SEC-TIME-1修正: タイミング攻撃対策としてcrypto.timingSafeEqual()を使用
+  const tokenBuf = Buffer.from(token, 'utf-8');
+  const storedBuf = Buffer.from(storedToken, 'utf-8');
+  if (tokenBuf.length !== storedBuf.length) return false;
+  if (!crypto.timingSafeEqual(tokenBuf, storedBuf)) return false;
   const timestampHex = token.substring(56, 64);
   const tokenTime = parseInt(timestampHex, 16);
   const now = Math.floor(Date.now() / 1000);

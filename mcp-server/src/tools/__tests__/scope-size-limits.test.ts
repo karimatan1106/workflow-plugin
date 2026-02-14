@@ -3,7 +3,7 @@
  * @spec docs/workflows/ワ-クフロ-プラグイン大規模対応根本改修/spec.md
  */
 
-import { describe, test, expect, beforeEach, vi } from 'vitest';
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { workflowSetScope } from '../set-scope.js';
 import { workflowNext } from '../next.js';
 import { stateManager } from '../../state/manager.js';
@@ -78,6 +78,18 @@ function createTaskState(overrides: Partial<TaskState> = {}): TaskState {
 describe('REQ-3: Scope Size Limits', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Set scope size limits to test values (implementation defaults are much larger)
+    process.env.SCOPE_MAX_FILES = '200';
+    process.env.SCOPE_MAX_DIRS = '20';
+    process.env.MAX_SCOPE_FILES = '200';
+    process.env.MAX_SCOPE_DIRS = '20';
+  });
+
+  afterEach(() => {
+    delete process.env.SCOPE_MAX_FILES;
+    delete process.env.SCOPE_MAX_DIRS;
+    delete process.env.MAX_SCOPE_FILES;
+    delete process.env.MAX_SCOPE_DIRS;
   });
 
   describe('workflowSetScope - File Limits', () => {
@@ -87,7 +99,7 @@ describe('REQ-3: Scope Size Limits', () => {
 
       const files = Array.from({ length: 200 }, (_, i) => `src/file${i}.ts`);
 
-      const result = workflowSetScope('test_20260207', files, []);
+      const result = workflowSetScope('test_20260207', files, [], undefined, undefined, undefined);
 
       expect(result.success).toBe(true);
       expect(result.message).toContain('影響範囲を設定しました');
@@ -99,7 +111,7 @@ describe('REQ-3: Scope Size Limits', () => {
 
       const files = Array.from({ length: 201 }, (_, i) => `src/file${i}.ts`);
 
-      const result = workflowSetScope('test_20260207', files, []);
+      const result = workflowSetScope('test_20260207', files, [], undefined, undefined, undefined);
 
       expect(result.success).toBe(false);
       expect(result.message).toContain('スコープが大きすぎます');
@@ -114,7 +126,7 @@ describe('REQ-3: Scope Size Limits', () => {
 
       const files = Array.from({ length: 500 }, (_, i) => `src/file${i}.ts`);
 
-      const result = workflowSetScope('test_20260207', files, []);
+      const result = workflowSetScope('test_20260207', files, [], undefined, undefined, undefined);
 
       expect(result.success).toBe(false);
       expect(result.message).toContain('スコープが大きすぎます');
@@ -129,7 +141,7 @@ describe('REQ-3: Scope Size Limits', () => {
 
       const dirs = Array.from({ length: 20 }, (_, i) => `src/module${i}`);
 
-      const result = workflowSetScope('test_20260207', [], dirs);
+      const result = workflowSetScope('test_20260207', [], dirs, undefined, undefined, undefined);
 
       expect(result.success).toBe(true);
       expect(result.message).toContain('影響範囲を設定しました');
@@ -141,7 +153,7 @@ describe('REQ-3: Scope Size Limits', () => {
 
       const dirs = Array.from({ length: 21 }, (_, i) => `src/module${i}`);
 
-      const result = workflowSetScope('test_20260207', [], dirs);
+      const result = workflowSetScope('test_20260207', [], dirs, undefined, undefined, undefined);
 
       expect(result.success).toBe(false);
       expect(result.message).toContain('スコープが大きすぎます');
@@ -156,7 +168,7 @@ describe('REQ-3: Scope Size Limits', () => {
 
       const dirs = Array.from({ length: 50 }, (_, i) => `src/module${i}`);
 
-      const result = workflowSetScope('test_20260207', [], dirs);
+      const result = workflowSetScope('test_20260207', [], dirs, undefined, undefined, undefined);
 
       expect(result.success).toBe(false);
       expect(result.message).toContain('スコープが大きすぎます');
@@ -207,7 +219,8 @@ describe('REQ-3: Scope Size Limits', () => {
 
   describe('workflowNext - Scope Size Validation at Phase Transitions', () => {
     test('TC-3-5: next with oversized scope → blocked', () => {
-      const files = Array.from({ length: 250 }, (_, i) => `src/file${i}.ts`);
+      // next.ts uses module-level MAX_SCOPE_FILES (default 1000) / MAX_SCOPE_DIRS (default 100)
+      const files = Array.from({ length: 1500 }, (_, i) => `src/file${i}.ts`);
       const taskState = createTaskState({
         phase: 'parallel_analysis',
         scope: {
@@ -231,7 +244,8 @@ describe('REQ-3: Scope Size Limits', () => {
     });
 
     test('TC-3-6: Error message contains "タスクを分割してください"', () => {
-      const dirs = Array.from({ length: 30 }, (_, i) => `src/module${i}`);
+      // next.ts uses module-level MAX_SCOPE_DIRS (default 100)
+      const dirs = Array.from({ length: 150 }, (_, i) => `src/module${i}`);
       const taskState = createTaskState({
         phase: 'parallel_analysis',
         scope: {
@@ -255,7 +269,8 @@ describe('REQ-3: Scope Size Limits', () => {
       expect(stateManager.updateTaskPhase).not.toHaveBeenCalled();
     });
 
-    test('TC-3-7: next with valid scope (200 files, 20 dirs) → success', () => {
+    test('TC-3-7: next with valid scope (within default limits) → success', () => {
+      // next.ts uses module-level MAX_SCOPE_FILES (default 1000) / MAX_SCOPE_DIRS (default 100)
       const files = Array.from({ length: 200 }, (_, i) => `src/file${i}.ts`);
       const dirs = Array.from({ length: 20 }, (_, i) => `src/module${i}`);
       const taskState = createTaskState({
