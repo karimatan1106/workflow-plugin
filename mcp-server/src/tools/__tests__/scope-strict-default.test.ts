@@ -34,6 +34,9 @@ import { validateScopePostExecution } from '../../validation/scope-validator.js'
 // 環境変数の元の値を保存
 const originalEnv = { ...process.env };
 
+// P-2: git diffキャッシュ（30秒TTL）を各テスト間で無効化するため時刻を進める
+let fakeNow = 2000000;
+
 describe('REQ-2: スコープ検証デフォルト厳格化', () => {
   beforeEach(() => {
     // 環境変数をリセット
@@ -41,12 +44,15 @@ describe('REQ-2: スコープ検証デフォルト厳格化', () => {
     delete process.env.SCOPE_STRICT;
 
     vi.clearAllMocks();
+    // P-2: git diff結果キャッシュを各テスト間で確実に無効化
+    fakeNow += 60000;
+    vi.spyOn(Date, 'now').mockReturnValue(fakeNow);
   });
 
   afterEach(() => {
     // 環境変数を元に戻す
     process.env = { ...originalEnv };
-    vi.resetAllMocks();
+    vi.restoreAllMocks();
   });
 
   describe('TC-2-1: SCOPE_STRICT未設定（デフォルト） → スコープ外変更をブロック', () => {

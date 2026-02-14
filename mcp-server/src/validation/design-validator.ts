@@ -271,6 +271,32 @@ export class DesignValidator {
                   stubs.push({ name, reason: 'AST解析: NotImplementedError のみのスタブメソッドです' });
                 }
               }
+              // return null; のみ
+              if (ts.isReturnStatement(stmt) && stmt.expression) {
+                const returnText = stmt.expression.getText(sourceFile);
+                if (returnText === 'null') {
+                  if (!stubs.some(s => s.name === name)) {
+                    stubs.push({ name, reason: 'AST解析: return null のみのスタブメソッドです' });
+                  }
+                }
+                // return undefined; のみ
+                if (returnText === 'undefined') {
+                  if (!stubs.some(s => s.name === name)) {
+                    stubs.push({ name, reason: 'AST解析: return undefined のみのスタブメソッドです' });
+                  }
+                }
+              }
+              // bare return; のみ
+              if (ts.isReturnStatement(stmt) && !stmt.expression) {
+                if (!stubs.some(s => s.name === name)) {
+                  stubs.push({ name, reason: 'AST解析: 空のreturnのみのスタブメソッドです' });
+                }
+              }
+            } else if (statements.length <= 3) {
+              // 3行以下のメソッドは疑わしいスタブとして警告
+              if (!stubs.some(s => s.name === name)) {
+                stubs.push({ name, reason: `AST解析: メソッドbodyが${statements.length}行のみです（スタブの可能性）` });
+              }
             }
           }
           // bodyがない場合（抽象メソッド等）はスタブではないのでスキップ

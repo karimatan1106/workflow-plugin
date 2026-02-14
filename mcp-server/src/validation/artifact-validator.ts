@@ -4,7 +4,7 @@
  * @spec docs/workflows/ワ-クフロ-プラグインレビュ-指摘事項全件修正/spec.md
  *
  * REQ-B1: セクション密度チェック統合（MIN_SECTION_DENSITY環境変数）
- * REQ-B2: 意味的整合性チェックのキーワード上限環境変数化（SEMANTIC_KEYWORD_LIMIT環境変数）
+ * REQ-B2: 意味的整合性チェックは semantic-checker.ts に移行済み
  */
 
 import * as fs from 'fs';
@@ -15,10 +15,6 @@ const MIN_SECTION_DENSITY_RAW = parseFloat(process.env.MIN_SECTION_DENSITY || '0
 const MIN_DENSITY = 0.1;
 const MAX_DENSITY = 1.0;
 
-/** REQ-B2: 意味的整合性チェックのキーワード数上限（デフォルト: 50） */
-const SEMANTIC_KEYWORD_LIMIT_RAW = parseInt(process.env.SEMANTIC_KEYWORD_LIMIT || '50', 10);
-const MIN_KEYWORD_LIMIT = 1;
-const MAX_KEYWORD_LIMIT = 1000;
 
 /**
  * FR-6: 数値の範囲をバリデート（process.exit除去、RangeErrorをthrow）
@@ -45,16 +41,6 @@ try {
   console.warn(`[artifact-validator] ${error instanceof Error ? error.message : error}, using default ${MIN_DENSITY}`);
 }
 
-// REQ-B2: 範囲バリデーション（グローバルスコープでの実行を削除）
-// FR-6: エラーハンドリングは呼び出し元で実施
-let SEMANTIC_KEYWORD_LIMIT = MIN_KEYWORD_LIMIT;
-try {
-  validateRange(SEMANTIC_KEYWORD_LIMIT_RAW, 'SEMANTIC_KEYWORD_LIMIT', MIN_KEYWORD_LIMIT, MAX_KEYWORD_LIMIT);
-  SEMANTIC_KEYWORD_LIMIT = SEMANTIC_KEYWORD_LIMIT_RAW;
-} catch (error) {
-  console.warn(`[artifact-validator] ${error instanceof Error ? error.message : error}, using default ${MIN_KEYWORD_LIMIT}`);
-}
-
 /**
  * FR-12: 多言語セクション名定義
  */
@@ -79,46 +65,7 @@ export interface ArtifactValidationResult {
   errors: string[];
 }
 
-/**
- * N-gram方式でテキストからキーワードを抽出する（日本語対応）
- * @param text - 対象テキスト
- * @param n - N-gramのサイズ（デフォルト: 2）
- * @returns N-gramのSet
- */
-function extractKeywordsNGram(text: string, n: number = 2): Set<string> {
-  const ngrams = new Set<string>();
-  // 10000文字制限
-  const truncated = text.length > 10000 ? text.substring(0, 10000) : text;
-  for (let i = 0; i <= truncated.length - n; i++) {
-    const gram = truncated.substring(i, i + n);
-    // 空白のみのN-gramは除外
-    if (gram.trim().length > 0) {
-      ngrams.add(gram);
-    }
-  }
-  return ngrams;
-}
-
-/**
- * 既存キーワード抽出とN-gram抽出を統合する
- * @param text - 対象テキスト
- * @returns 統合されたキーワードSet
- */
-function extractKeywordsCombined(text: string): Set<string> {
-  const combined = new Set<string>();
-  // 既存のキーワード抽出があればそれを使用
-  const words = text.match(/[a-zA-Z]{3,}/g) || [];
-  for (const word of words) {
-    combined.add(word.toLowerCase());
-  }
-  // 2-gram追加
-  const bigrams = extractKeywordsNGram(text, 2);
-  for (const gram of bigrams) combined.add(gram);
-  // 3-gram追加
-  const trigrams = extractKeywordsNGram(text, 3);
-  for (const gram of trigrams) combined.add(gram);
-  return combined;
-}
+// CRITICAL-1: N-gram関数は semantic-checker.ts に移行済み（削除）
 
 /**
  * 構造要素判定ヘルパー関数
@@ -297,14 +244,42 @@ export function validateArtifactQuality(
     );
   }
 
-  // 6. 禁止パターンチェック（TODO, TBD, WIP, FIXME）
-  const forbiddenPatterns = ['TODO', 'TBD', 'WIP', 'FIXME'];
+  // 6. 禁止パターンチェック（TODO, TBD, WIP, FIXME + 日本語プレースホルダー）
+  const forbiddenPatterns = [
+    'TODO',
+    'TBD',
+    'WIP',
+    'FIXME',
+    '未定',
+    '未確定',
+    '要検討',
+    '検討中',
+    '対応予定',
+    'サンプル',
+    'ダミー',
+    '仮置き',
+  ];
   const foundForbidden = forbiddenPatterns.filter(pattern =>
     content.includes(pattern)
   );
-  if (foundForbidden.length > 0) {
+
+  // 角括弧プレースホルダーのチェック（Markdownリンク/参照パターンを除外）
+  const bracketPlaceholderPattern = /\[(?!関連|参考|注|例|出典)[^\]]{1,50}\]/g;
+  const bracketMatches = content.match(bracketPlaceholderPattern);
+  const foundBracketPlaceholders: string[] = [];
+  if (bracketMatches) {
+    // 重複排除
+    const uniqueBrackets = Array.from(new Set(bracketMatches));
+    foundBracketPlaceholders.push(...uniqueBrackets);
+  }
+
+  if (foundForbidden.length > 0 || foundBracketPlaceholders.length > 0) {
+    const allPatterns = [...foundForbidden];
+    if (foundBracketPlaceholders.length > 0) {
+      allPatterns.push(`プレースホルダー括弧: ${foundBracketPlaceholders.slice(0, 3).join(', ')}${foundBracketPlaceholders.length > 3 ? '...' : ''}`);
+    }
     errors.push(
-      `${fileName} に禁止パターンが含まれています: ${foundForbidden.join(', ')}`
+      `${fileName} に禁止パターンが含まれています: ${allPatterns.join(', ')}`
     );
   }
 
@@ -808,115 +783,8 @@ export function checkCodePathReferences(
   return { valid: errors.length === 0, errors };
 }
 
-/**
- * REQ-B2: 意味的整合性検証結果
- */
-export interface SemanticConsistencyResult {
-  valid: boolean;
-  errors: string[];
-  warnings: string[];
-}
-
-/**
- * REQ-B2: 日本語ストップワード辞書
- */
-const STOP_WORDS = [
-  'こと', 'ため', 'もの', 'これ', 'それ', 'あれ', 'この', 'その', 'あの',
-  'の', 'は', 'が', 'を', 'に', 'で', 'と', 'から', 'まで', 'など',
-  'する', 'ある', 'いる', 'なる', 'できる', 'れる', 'られる',
-  'です', 'ます', 'である', 'ない', 'ください', 'ため', 'よう',
-];
-
-/**
- * REQ-B2: requirements.mdからキーワードを抽出
- *
- * @param requirementsContent - requirements.mdの内容
- * @returns 抽出されたキーワードのセット
- */
-function extractRequirementKeywords(requirementsContent: string): Set<string> {
-  // REQ-*セクションを抽出
-  const reqSectionPattern = /^###\s+(REQ-[A-Z0-9]+).*?(?=^###|$)/gms;
-  const matches = requirementsContent.matchAll(reqSectionPattern);
-
-  let allSectionText = '';
-  for (const match of matches) {
-    allSectionText += match[0] + '\n';
-  }
-
-  // N-gram方式でキーワード抽出
-  return extractKeywordsCombined(allSectionText);
-}
-
-/**
- * REQ-B2: 意味的整合性チェック
- *
- * requirements.mdのキーワードが後続フェーズの成果物（spec.md, test-design.md, threat-model.md）
- * に適切に含まれているか検証する。
- *
- * @param workflowDir - ワークフロー成果物ディレクトリ
- * @returns 検証結果
- */
-export function validateSemanticConsistency(
-  workflowDir: string
-): SemanticConsistencyResult {
-  const errors: string[] = [];
-  const warnings: string[] = [];
-
-  // ファイルパス
-  const requirementsPath = path.join(workflowDir, 'requirements.md');
-  const specPath = path.join(workflowDir, 'spec.md');
-  const testDesignPath = path.join(workflowDir, 'test-design.md');
-  const threatModelPath = path.join(workflowDir, 'threat-model.md');
-
-  // requirements.md が存在しない場合はスキップ
-  if (!fs.existsSync(requirementsPath)) {
-    return { valid: true, errors: [], warnings: [] };
-  }
-
-  // requirements.md からキーワード抽出
-  const requirementsContent = fs.readFileSync(requirementsPath, 'utf-8');
-  const keywords = extractRequirementKeywords(requirementsContent);
-
-  // キーワードが0件の場合はスキップ
-  if (keywords.size === 0) {
-    return { valid: true, errors: [], warnings: [] };
-  }
-
-  // REQ-B2: 上位N個のキーワードを対象（SEMANTIC_KEYWORD_LIMIT環境変数、デフォルト: 50）
-  const topKeywords = Array.from(keywords).slice(0, SEMANTIC_KEYWORD_LIMIT);
-
-  // 後続フェーズ成果物のチェック
-  const artifactsToCheck = [
-    { path: specPath, name: 'spec.md' },
-    { path: testDesignPath, name: 'test-design.md' },
-    { path: threatModelPath, name: 'threat-model.md' },
-  ];
-
-  for (const artifact of artifactsToCheck) {
-    if (!fs.existsSync(artifact.path)) {
-      continue; // ファイルが存在しない場合はスキップ
-    }
-
-    const content = fs.readFileSync(artifact.path, 'utf-8');
-
-    // 各キーワードの出現回数をカウント
-    for (const keyword of topKeywords) {
-      const occurrences = (content.match(new RegExp(keyword, 'g')) || []).length;
-
-      if (occurrences <= 1) {
-        warnings.push(
-          `${artifact.name} でキーワード「${keyword}」の出現が少ない（${occurrences}回）`
-        );
-      }
-    }
-  }
-
-  return {
-    valid: errors.length === 0,
-    errors,
-    warnings,
-  };
-}
+// CRITICAL-1: semantic-checker.ts に移行済み
+export { validateSemanticConsistency, SemanticConsistencyResult } from './semantic-checker.js';
 
 /**
  * テストファイルの品質を検証する

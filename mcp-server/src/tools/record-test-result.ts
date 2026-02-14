@@ -380,14 +380,16 @@ export function workflowRecordTestResult(
 
     // 変更F: summaryフィールドによるフォールバック処理
     // 既存のフレームワークパターンマッチが失敗した場合のフォールバック
+    let reliable = true;
     if (!counts.passedCount && !counts.failedCount && summary) {
       const summaryCount = extractTestCountFromSummary(summary);
       if (summaryCount) {
         // summaryから件数を抽出できた場合
         counts = { passedCount: summaryCount.total, failedCount: 0 };
       } else if (summary.length > 0) {
-        // summaryがあるが件数抽出失敗時も記録を許可（件数0）
+        // summaryがあるが件数抽出失敗時も記録を許可（件数0だが信頼性なし）
         counts = { passedCount: 0, failedCount: 0 };
+        reliable = false;
       }
     }
 
@@ -403,6 +405,7 @@ export function workflowRecordTestResult(
       output: truncatedOutput,
       passedCount: counts.passedCount,
       failedCount: counts.failedCount,
+      reliable,
     };
 
     // REQ-C2: 新しいハッシュを追加

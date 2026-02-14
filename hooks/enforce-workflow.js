@@ -168,8 +168,6 @@ const WORKFLOW_CONFIG_PATTERNS = [
   /\.claude[\/\\]settings\.json$/i,
   /\.claude[\/\\]state[\/\\].*\.json$/i,
   /\.claude-.*\.json$/i,
-  // BUG-3修正: ワークフロー成果物ディレクトリの操作を全フェーズで許可
-  /docs[\/\\]workflows[\/\\]/i,
 ];
 
 function isWorkflowConfigFile(filePath) {

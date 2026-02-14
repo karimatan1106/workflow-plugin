@@ -14,13 +14,19 @@ vi.mock('fs', () => ({
 
 import * as fs from 'fs';
 
+// P-2: git diffキャッシュ（30秒TTL）を各テスト間で無効化するため時刻を進める
+let fakeNow = 1000000;
+
 describe('REQ-5: スコープ事後検証', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // P-2: git diff結果キャッシュを各テスト間で確実に無効化
+    fakeNow += 60000;
+    vi.spyOn(Date, 'now').mockReturnValue(fakeNow);
   });
 
   afterEach(() => {
-    vi.resetAllMocks();
+    vi.restoreAllMocks();
   });
 
   describe('TC-5-1: スコープ内ファイルのみ → {valid: true}', () => {

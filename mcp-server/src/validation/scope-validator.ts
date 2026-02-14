@@ -38,6 +38,24 @@ const MAX_DEPENDENCY_DEPTH_RAW = parseInt(process.env.MAX_DEPENDENCY_DEPTH || '2
 const MIN_DEPENDENCY_DEPTH = 1;
 const MAX_DEPENDENCY_DEPTH_LIMIT = 50;
 
+/** P-3: BFS走査ノード数上限（1000万行プロジェクト対応） */
+const MAX_BFS_NODES = parseInt(process.env.MAX_BFS_NODES || '1000', 10);
+
+/** P-3: BFS走査から除外するディレクトリパターン */
+const BFS_EXCLUDE_DIRS = [
+  'node_modules',
+  '.git',
+  'dist',
+  'build',
+  '.next',
+  'coverage',
+  '__pycache__',
+];
+
+/** P-2: git diff 結果キャッシュ（30秒TTL） */
+let gitDiffCache: { timestamp: number; files: string[] } | null = null;
+const GIT_DIFF_CACHE_TTL = 30000; // 30 seconds
+
 /**
  * import抽出結果のキャッシュエントリ (REQ-FIX-4)
  */
@@ -512,6 +530,12 @@ export async function trackDependencies(
   const batchSize = options.batchSize || 10;
 
   while (queue.length > 0) {
+    // P-3: BFS ノード数上限チェック（バッチ前に確認）
+    if (visited.size >= MAX_BFS_NODES) {
+      warnings.push(`BFS node limit reached (${MAX_BFS_NODES}). Dependency tracking stopped.`);
+      break;
+    }
+
     const batch = queue.splice(0, Math.min(batchSize, queue.length));
 
     await Promise.all(batch.map(async ({ file, depth, parent }) => {
@@ -548,6 +572,11 @@ export async function trackDependencies(
         for (const imp of imports) {
           const resolved = resolveImportPath(file, imp);
           if (!resolved) continue;
+
+          // P-3: Skip files in excluded directories
+          if (BFS_EXCLUDE_DIRS.some(dir => resolved.includes(`/${dir}/`) || resolved.includes(`\\${dir}\\`))) {
+            continue;
+          }
 
           if (!allFiles.has(resolved)) {
             allFiles.add(resolved);
@@ -708,20 +737,30 @@ export function validateScopePostExecution(
     // FR-5: gitサブモジュールのパスを取得
     const submodulePaths = getSubmodulePaths(projectRoot);
 
-    // 変更ファイルを取得（FR-5: サブモジュール無視）
-    // N-1: Add -c core.quotePath=false to prevent octal escaping of non-ASCII paths
-    // This ensures Japanese task names in paths are returned as UTF-8 strings
-    const diffOutput = execSync('git -c core.quotePath=false diff --name-only --ignore-submodules HEAD', {
-      cwd: projectRoot,
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    }).trim();
+    // P-2: git diff 結果をキャッシュから取得（30秒以内なら再利用）
+    let changedFiles: string[];
+    const now = Date.now();
+    if (gitDiffCache && (now - gitDiffCache.timestamp) < GIT_DIFF_CACHE_TTL) {
+      changedFiles = gitDiffCache.files;
+    } else {
+      // 変更ファイルを取得（FR-5: サブモジュール無視）
+      // N-1: Add -c core.quotePath=false to prevent octal escaping of non-ASCII paths
+      // This ensures Japanese task names in paths are returned as UTF-8 strings
+      const diffOutput = execSync('git -c core.quotePath=false diff --name-only --ignore-submodules HEAD', {
+        cwd: projectRoot,
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      }).trim();
 
-    if (!diffOutput) {
-      return { valid: true, outOfScopeFiles: [], warnings: [] };
+      if (!diffOutput) {
+        return { valid: true, outOfScopeFiles: [], warnings: [] };
+      }
+
+      changedFiles = diffOutput.split('\n').map(f => f.trim()).filter(Boolean);
+
+      // キャッシュを更新
+      gitDiffCache = { timestamp: now, files: changedFiles };
     }
-
-    const changedFiles = diffOutput.split('\n').map(f => f.trim()).filter(Boolean);
 
     for (const changedFile of changedFiles) {
       // 除外パターンに一致する場合はスキップ

@@ -231,7 +231,20 @@ function main(input) {
       }
     }
   } catch (e) {
-    // エラー時は許可（安全側に倒す）
+    logError('予期しないエラー', e.message, e.stack);
+    console.log('');
+    console.log('='.repeat(60));
+    console.log(' spec-first-guard エラー');
+    console.log('='.repeat(60));
+    console.log('');
+    console.log(` エラー: ${e.message}`);
+    console.log('');
+    console.log(' トラブルシューティング:');
+    console.log('   1. .claude-hook-errors.log を確認');
+    console.log('   2. 問題が解決しない場合は Issue を報告');
+    console.log('');
+    console.log('='.repeat(60));
+    process.exit(2);
   }
 
   // それ以外は許可

@@ -16,6 +16,10 @@ const { getCached } = require('./task-cache');
 const STATE_DIR = process.env.STATE_DIR || path.join(process.cwd(), '.claude', 'state');
 const WORKFLOW_DIR = process.env.WORKFLOW_DIR || path.join(STATE_DIR, 'workflows');
 
+/** タスクインデックスキャッシュファイル（1時間TTL） */
+const TASK_INDEX_FILE = path.join(STATE_DIR, 'task-index.json');
+const TASK_INDEX_TTL = 60 * 60 * 1000; // 1 hour
+
 /**
  * JSONファイルを安全に読み込む
  *
@@ -35,17 +39,68 @@ function safeReadJsonFile(filePath) {
 }
 
 /**
+ * タスクインデックスキャッシュを読み込む
+ *
+ * @returns {Array<object>|null} キャッシュされたタスク配列、または null（期限切れ/存在しない）
+ */
+function readTaskIndexCache() {
+  try {
+    const cache = safeReadJsonFile(TASK_INDEX_FILE);
+    if (!cache || !cache.tasks || !cache.updatedAt) {
+      return null;
+    }
+
+    const now = Date.now();
+    const age = now - cache.updatedAt;
+
+    // TTL（1時間）を超えている場合は無効
+    if (age > TASK_INDEX_TTL) {
+      return null;
+    }
+
+    return cache.tasks;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * タスクインデックスキャッシュに書き込む
+ *
+ * @param {Array<object>} tasks - タスク配列
+ */
+function writeTaskIndexCache(tasks) {
+  try {
+    const cache = {
+      tasks: tasks,
+      updatedAt: Date.now()
+    };
+    fs.writeFileSync(TASK_INDEX_FILE, JSON.stringify(cache, null, 2), 'utf8');
+  } catch {
+    // キャッシュ書き込みエラーは無視（パフォーマンス最適化であり必須ではない）
+  }
+}
+
+/**
  * ディレクトリスキャンでアクティブタスクを発見
  *
  * .claude/state/workflows/ 配下のディレクトリをスキャンし、
  * 完了していないタスクの配列を返す。
  *
  * REQ-A1: TTL付きメモリキャッシュで高速化（300秒キャッシュ）
+ * REQ-P1: ファイルベースのtask-index.jsonキャッシュ（1時間TTL）
  *
  * @returns {Array<{taskId: string, taskName: string, workflowDir: string, phase: string, docsDir?: string, scope?: object}>}
  */
 function discoverTasks() {
   return getCached('discover-tasks', undefined, () => {
+    // task-index.jsonキャッシュを試す
+    const cachedTasks = readTaskIndexCache();
+    if (cachedTasks !== null) {
+      return cachedTasks;
+    }
+
+    // キャッシュミス：ファイルシステムスキャン
     if (!fs.existsSync(WORKFLOW_DIR)) {
       return [];
     }
@@ -76,6 +131,9 @@ function discoverTasks() {
       // B-1: taskId descending sort (newest first)
       // taskId is YYYYMMDD_HHMMSS format, string comparison preserves chronological order
       tasks.sort((a, b) => (b.taskId || '').localeCompare(a.taskId || ''));
+
+      // task-index.jsonキャッシュに書き込む
+      writeTaskIndexCache(tasks);
 
       return tasks;
     } catch {

@@ -392,6 +392,33 @@ export function workflowNext(taskId?: string, sessionToken?: string): NextResult
     }
   }
 
+  // DC-5: 早期スコープ検証（implementation/refactoring/parallel_quality遷移時）
+  // 警告のみで遷移はブロックしない
+  if (currentPhase === 'implementation' || currentPhase === 'refactoring' || currentPhase === 'parallel_quality') {
+    const scopeFiles = taskState.scope?.affectedFiles || [];
+    const scopeDirs = taskState.scope?.affectedDirs || [];
+    if (scopeFiles.length > 0 || scopeDirs.length > 0) {
+      try {
+        const scopeResult = validateScopePostExecution(scopeFiles, scopeDirs);
+        if (!scopeResult.valid) {
+          // 警告モード: 警告のみでブロックしない
+          console.warn(`[scope-early] スコープ外変更を検出（早期警告）: ${scopeResult.outOfScopeFiles.join(', ')}`);
+
+          // 監査ログに記録
+          auditLogger.log({
+            event: 'scope_violation_early_warning',
+            taskId: taskState.taskId,
+            phase: currentPhase,
+            outOfScopeFiles: scopeResult.outOfScopeFiles,
+          });
+        }
+      } catch (e) {
+        // エラーは無視（gitが使えない環境等）
+        // 警告モードなので何もしない
+      }
+    }
+  }
+
   // タスクサイズを取得（未設定の場合はlargeとして扱う）
   const taskSize: TaskSize = taskState.taskSize || DEFAULT_TASK_SIZE;
 

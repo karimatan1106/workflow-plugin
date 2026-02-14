@@ -30,7 +30,8 @@ export type AuditEventType =
   | 'bypass_threshold_exceeded' // バイパス使用回数が閾値超過
   | 'hmac_auto_recover'        // HMAC自動復旧成功
   | 'hmac_recover_failed'      // HMAC復旧失敗
-  | 'semantic_check_failed';   // 意味的整合性チェック失敗
+  | 'semantic_check_failed'    // 意味的整合性チェック失敗
+  | 'scope_violation_early_warning'; // スコープ違反の早期警告
 
 /**
  * 監査ログエントリ
@@ -56,6 +57,8 @@ export interface AuditLogEntry {
   extraImplementations?: string[];
   /** 厳格モード（semantic_check_failedの場合） */
   strictMode?: boolean;
+  /** スコープ外ファイル（scope_violation_early_warningの場合） */
+  outOfScopeFiles?: string[];
 }
 
 /**
