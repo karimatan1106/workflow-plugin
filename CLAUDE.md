@@ -108,7 +108,17 @@ research → requirements → parallel_analysis（threat_modeling + planning）
 → docs_update → commit → push → ci_verification → deploy → completed
 ```
 
-注: small/mediumサイズは廃止されました。品質管理の一貫性を保つため、全てのタスクで完全なワークフローを実行します。
+### タスクサイズ選択ガイダンス
+
+タスクの規模に応じて適切なサイズを選択してください:
+
+| サイズ | フェーズ数 | 適用場面 |
+|-------|----------|---------|
+| small | 8 | 単一ファイルの小修正、typo修正、設定変更 |
+| medium | 14 | 複数ファイルの修正、機能追加、バグ修正 |
+| large | 19 | 大規模な機能追加、アーキテクチャ変更、セキュリティ修正 |
+
+デフォルトは large です。`/workflow start <タスク名>` 実行時に MCP サーバーが自動判定します。
 
 ---
 
@@ -377,7 +387,7 @@ parallel_verification のサブフェーズ。エンドツーエンドテスト�
 
 | コマンド | 説明 |
 |---------|------|
-| `/workflow start <タスク名>` | タスクを開始（常に18フェーズで実行） |
+| `/workflow start <タスク名>` | タスクを開始（常に19フェーズで実行） |
 | `/workflow next` | 次のフェーズへ進む |
 | `/workflow status` | 現在の状態を確認 |
 | `/workflow approve design` | 設計レビューを承認（design_reviewフェーズのみ） |
@@ -418,6 +428,11 @@ parallel_verification のサブフェーズ。エンドツーエンドテスト�
     - バックエンド: `src/backend/tests/regression/`
     - フロントエンド: `src/frontend/test/regression/`
     - タスクごとにサブディレクトリを作成
+15. **リグレッションテストのフィルタリング指針**
+    - 既存テストの失敗と今回の変更の因果関係を分析すること
+    - 今回の変更に起因しない既存テストの失敗は `workflow_record_known_bug` で記録
+    - 今回の変更に起因する失敗は必ず修正すること
+    - 判断基準: 変更したファイルと失敗テストの依存関係を確認
 
 ---
 
@@ -545,6 +560,10 @@ cd e2e && npm install playwright
 - 「実行してみてください」
 - 「動作確認できます」
 
+### 技術的制約
+
+完了宣言ルールはCLAUDE.mdの指示として記載されているため、フックによる技術的な強制はできません。AIの自律的な遵守に依存しています。将来的にフック側でメッセージ内容を検査する機構が実装されれば、技術的な強制が可能になります。
+
 ### フェーズ完了報告テンプレート
 
 ```
@@ -625,6 +644,16 @@ cd e2e && npm install playwright
 ```
 
 全サブフェーズ完了後に `/workflow next` で次フェーズへ進む。
+
+### 並列フェーズの依存関係
+
+SUB_PHASE_DEPENDENCIES により、並列フェーズ内のサブフェーズ間依存関係が**技術的に強制**されています。依存先が完了するまで依存元の完了はブロックされます。
+
+| サブフェーズ | 依存先 |
+|------------|--------|
+| planning | threat_modeling |
+
+例: parallel_analysis では planning は threat_modeling の完了を待つ必要があります。
 
 ---
 
@@ -1271,6 +1300,28 @@ docs/
 
 ---
 
+
+## スコープ設定ガイダンス
+
+researchまたはrequirementsフェーズで `workflow_set_scope` を使用して影響範囲を設定すること。
+
+### スコープ設定の重要性
+
+- スコープ未設定の場合、test_implフェーズがスキップされる可能性がある
+- テストファイルを影響範囲に含めることで、TDDサイクルが正しく機能する
+- 実装対象のソースコードディレクトリも含めること
+
+### 設定例
+
+```
+workflow_set_scope({
+  files: ["workflow-plugin/mcp-server/src/phases/definitions.ts"],
+  dirs: ["workflow-plugin/mcp-server/src/"],
+  glob: "workflow-plugin/mcp-server/src/**/*.ts"
+})
+```
+
+---
 
 ## 成果物の配置先
 

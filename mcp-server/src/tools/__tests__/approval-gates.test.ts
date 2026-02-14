@@ -7,7 +7,7 @@
  */
 
 import { describe, test, expect, beforeEach, vi } from 'vitest';
-import { REVIEW_PHASES, APPROVE_TYPE_MAPPING } from '../../phases/definitions.js';
+import { REVIEW_PHASES, APPROVE_TYPE_MAPPING, requiresApproval } from '../../phases/definitions.js';
 
 // stateManagerをモック
 vi.mock('../../state/manager.js', () => ({
@@ -76,17 +76,20 @@ describe('REQ-2: 承認ゲートテスト', () => {
   });
 
   describe('definitions.ts: REVIEW_PHASES の確認', () => {
-    test('REQ-2実装済み: requirements, design_review, test_design が含まれる', () => {
-      // REQ-2実装済み
+    test('REQ-2 + REQ-REVIEW-1: requirements, design_review, test_design, code_review が含まれる', () => {
+      // REQ-REVIEW-1: code_review追加で承認ゲート一元管理
       expect(REVIEW_PHASES).toContain('requirements');
       expect(REVIEW_PHASES).toContain('design_review');
       expect(REVIEW_PHASES).toContain('test_design');
-      expect(REVIEW_PHASES.length).toBe(3);
+      expect(REVIEW_PHASES).toContain('code_review');
+      expect(REVIEW_PHASES.length).toBe(4);
     });
 
-    test('code_reviewはPhaseName[]には含まれない（SubPhaseNameのため）', () => {
-      // code_reviewはSubPhaseNameであり、PhaseName[]であるREVIEW_PHASESには含まれない
-      expect(REVIEW_PHASES).not.toContain('code_review');
+    test('REQ-REVIEW-1: requiresApproval がcode_reviewに対してtrueを返す', () => {
+      // code_reviewはSubPhaseNameだが、REVIEW_PHASESに追加されたため承認が必要
+      expect(requiresApproval('code_review')).toBe(true);
+      // 承認不要なフェーズではfalseを返すことも確認
+      expect(requiresApproval('implementation')).toBe(false);
     });
   });
 

@@ -7,6 +7,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import * as ts from 'typescript';
 import type {
   ValidationResult,
   MissingItem,
@@ -76,11 +77,16 @@ export class DesignValidator {
 
   /**
    * スコープファイル内でスタブを検出（REQ-6）
+   *
+   * FR-6対応: AST解析を追加して、正規表現で検出できないスタブも検出する
+   * - 正規表現ベースの検出は後方互換性のため維持
+   * - AST解析による追加検出を実施（TypeScript Compiler API使用）
    */
   private findStubsInContent(content: string): Array<{name: string; reason: string}> {
     const stubs: Array<{name: string; reason: string}> = [];
     let match;
 
+    // 正規表現ベースの検出（後方互換性のため維持）
     // Empty methods
     const emptyMethod = /\b(\w+)\s*\([^)]*\)\s*\{\s*\}/g;
     while ((match = emptyMethod.exec(content)) !== null) {
@@ -97,6 +103,53 @@ export class DesignValidator {
     const emptyClass = /\bclass\s+(\w+)[^{]*\{\s*\}/g;
     while ((match = emptyClass.exec(content)) !== null) {
       stubs.push({ name: match[1], reason: `空クラス: class ${match[1]}` });
+    }
+
+    // AST解析による追加スタブ検出
+    try {
+      const sourceFile = ts.createSourceFile(
+        'temp.ts',
+        content,
+        ts.ScriptTarget.Latest,
+        true
+      );
+
+      const visitNode = (node: ts.Node): void => {
+        // メソッド宣言・関数宣言でbodyが空またはthrowのみのものを検出
+        if (
+          (ts.isMethodDeclaration(node) || ts.isFunctionDeclaration(node)) &&
+          node.name
+        ) {
+          const name = node.name.getText(sourceFile);
+
+          if (node.body) {
+            const statements = node.body.statements;
+
+            if (statements.length === 0) {
+              // 空のメソッドbody（正規表現でも検出されるが念のため）
+              if (!stubs.some(s => s.name === name)) {
+                stubs.push({ name, reason: 'AST解析: メソッドbodyが空です' });
+              }
+            } else if (statements.length === 1) {
+              const stmt = statements[0];
+              // throwのみのメソッド（NotImplementedError等）
+              if (ts.isThrowStatement(stmt)) {
+                if (!stubs.some(s => s.name === name)) {
+                  stubs.push({ name, reason: 'AST解析: NotImplementedError のみのスタブメソッドです' });
+                }
+              }
+            }
+          }
+          // bodyがない場合（抽象メソッド等）はスタブではないのでスキップ
+        }
+
+        ts.forEachChild(node, visitNode);
+      };
+
+      visitNode(sourceFile);
+    } catch (err) {
+      // AST解析失敗時は正規表現の結果のみ使用（フォールバック）
+      // エラーログは出力しない（サイレントフォールバック）
     }
 
     return stubs;

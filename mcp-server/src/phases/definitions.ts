@@ -168,7 +168,7 @@ export const SUB_PHASE_DEPENDENCIES: Record<string, Partial<Record<SubPhaseName,
   },
   parallel_analysis: {
     threat_modeling: [], // 依存なし
-    planning: ['threat_modeling'], // REQ-B3: threat_modeling完了後に実行推奨
+    planning: ['threat_modeling'], // REQ-B3: threat_modeling完了後に実行（技術的に強制）
   },
   parallel_quality: {
     build_check: [], // 依存なし
@@ -308,7 +308,7 @@ export const SUB_PHASE_EXTENSIONS: Record<SubPhaseName, string> = {
  * これらのフェーズでは、workflow_approveコマンドで
  * 明示的に承認を得ないと次のフェーズに進めない。
  */
-export const REVIEW_PHASES: PhaseName[] = ['requirements', 'design_review', 'test_design'];
+export const REVIEW_PHASES: (PhaseName | SubPhaseName)[] = ['requirements', 'design_review', 'test_design', 'code_review'];
 
 /**
  * 承認タイプとフェーズのマッピング
@@ -381,7 +381,7 @@ export function getNextPhase(currentPhase: PhaseName, taskSize: TaskSize = DEFAU
  * @param phase 判定するフェーズ
  * @returns 承認が必要であればtrue
  */
-export function requiresApproval(phase: PhaseName): boolean {
+export function requiresApproval(phase: PhaseName | SubPhaseName): boolean {
   return REVIEW_PHASES.includes(phase);
 }
 

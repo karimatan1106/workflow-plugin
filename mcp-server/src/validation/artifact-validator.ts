@@ -222,6 +222,10 @@ export const PHASE_ARTIFACT_REQUIREMENTS: Record<string, ArtifactRequirement> = 
     minLines: 20,
     requiredSections: ['E2Eテストシナリオ', 'テスト実行結果'],
   },
+  'test-impl-result.md': {
+    minLines: 20,
+    requiredSections: ['テスト実装', 'テストケース'],
+  },
 
 };
 
@@ -907,6 +911,54 @@ export function validateSemanticConsistency(
 
   return {
     valid: errors.length === 0,
+    errors,
+    warnings,
+  };
+}
+
+/**
+ * テストファイルの品質を検証する
+ * @param content テストファイルの内容
+ * @param filePath テストファイルのパス
+ * @returns 検証結果
+ */
+export function validateTestFileQuality(content: string, filePath: string): {
+  isValid: boolean;
+  errors: string[];
+  warnings: string[];
+} {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  // 拡張子チェック
+  const validExtensions = ['.test.ts', '.test.tsx', '.spec.ts', '.spec.tsx'];
+  const hasValidExtension = validExtensions.some(ext => filePath.endsWith(ext));
+  if (!hasValidExtension) {
+    errors.push(`テストファイルの拡張子が不正です: ${filePath} (期待: ${validExtensions.join(', ')})`);
+  }
+
+  // アサーション存在チェック
+  const assertionPatterns = [/\bexpect\s*\(/, /\bassert\s*\(/, /\bassert\./];
+  const hasAssertions = assertionPatterns.some(pattern => pattern.test(content));
+  if (!hasAssertions) {
+    errors.push('テストファイルにアサーション（expect/assert）が見つかりません');
+  }
+
+  // テストケース数チェック
+  const testCasePatterns = [/\bit\s*\(/, /\btest\s*\(/, /\bdescribe\s*\(/];
+  const testCaseCount = testCasePatterns.reduce((count, pattern) => {
+    const matches = content.match(new RegExp(pattern.source, 'g'));
+    return count + (matches ? matches.length : 0);
+  }, 0);
+
+  if (testCaseCount === 0) {
+    errors.push('テストファイルにテストケース（it/test/describe）が見つかりません');
+  } else if (testCaseCount < 3) {
+    warnings.push(`テストケース数が少ない可能性があります (検出: ${testCaseCount})`);
+  }
+
+  return {
+    isValid: errors.length === 0,
     errors,
     warnings,
   };
