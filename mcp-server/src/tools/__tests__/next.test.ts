@@ -63,7 +63,7 @@ vi.mock('../../phases/definitions.js', async (importOriginal) => {
 
 // design-validatorをモック
 vi.mock('../../validation/design-validator.js', () => ({
-  DesignValidator: vi.fn(() => ({
+  DesignValidator: vi.fn().mockImplementation(() => ({
     validateAll: () => ({
       passed: true,
       missingItems: [],

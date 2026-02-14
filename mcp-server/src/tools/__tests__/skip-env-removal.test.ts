@@ -56,7 +56,7 @@ vi.mock('../../validation/scope-validator.js', () => ({
 
 // design-validatorをモック (デフォルトは失敗)
 vi.mock('../../validation/design-validator.js', () => ({
-  DesignValidator: vi.fn(() => ({
+  DesignValidator: vi.fn().mockImplementation(() => ({
     validateAll: () => ({
       passed: false, // Default to failure
       missingItems: ['spec.md'],
