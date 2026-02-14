@@ -3,6 +3,8 @@
  * @spec docs/workflows/ワ-クフロ-全問題完全解決/spec.md REQ-4
  */
 
+import { createHash } from 'crypto';
+
 export interface TestAuthenticityResult {
   valid: boolean;
   reason?: string;
@@ -175,8 +177,7 @@ export function recordTestOutputHash(
   output: string,
   existingHashes: string[] = []
 ): { valid: boolean; reason?: string; hash: string } {
-  const crypto = require('crypto');
-  const hash = crypto.createHash('sha256').update(output).digest('hex');
+  const hash = createHash('sha256').update(output).digest('hex');
 
   // 重複チェック
   if (existingHashes.includes(hash)) {

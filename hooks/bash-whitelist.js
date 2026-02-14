@@ -322,6 +322,87 @@ function matchesBlacklistEntry(command, entry) {
 }
 
 /**
+ * HIGH-4: コマンドチェーン分割関数（クォート状態を追跡）
+ *
+ * クォート内のセミコロン・&&・||を無視して、正確にコマンドチェーンを分割する
+ * @param {string} cmd - コマンド文字列
+ * @returns {string[]} 分割されたコマンド配列
+ */
+function splitCommandChain(cmd) {
+  const commands = [];
+  let currentCommand = '';
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  let escaped = false;
+
+  for (let i = 0; i < cmd.length; i++) {
+    const char = cmd[i];
+    const nextChar = cmd[i + 1];
+    const next2Chars = cmd.substring(i, i + 2);
+
+    if (escaped) {
+      // エスケープ文字の次の文字は無条件で追加
+      currentCommand += char;
+      escaped = false;
+      continue;
+    }
+
+    if (char === '\\') {
+      // エスケープ開始
+      currentCommand += char;
+      escaped = true;
+      continue;
+    }
+
+    if (char === "'" && !inDoubleQuote) {
+      // シングルクォートの開始/終了
+      inSingleQuote = !inSingleQuote;
+      currentCommand += char;
+      continue;
+    }
+
+    if (char === '"' && !inSingleQuote) {
+      // ダブルクォートの開始/終了
+      inDoubleQuote = !inDoubleQuote;
+      currentCommand += char;
+      continue;
+    }
+
+    // クォート外でのみコマンド区切り文字を検出
+    if (!inSingleQuote && !inDoubleQuote) {
+      if (next2Chars === '&&' || next2Chars === '||') {
+        // && または ||
+        if (currentCommand.trim().length > 0) {
+          commands.push(currentCommand.trim());
+        }
+        currentCommand = '';
+        i++; // 次の文字もスキップ
+        continue;
+      }
+
+      if (char === ';') {
+        // セミコロン
+        if (currentCommand.trim().length > 0) {
+          commands.push(currentCommand.trim());
+        }
+        currentCommand = '';
+        continue;
+      }
+    }
+
+    // 通常の文字を追加
+    currentCommand += char;
+  }
+
+  // 最後のコマンドを追加
+  if (currentCommand.trim().length > 0) {
+    commands.push(currentCommand.trim());
+  }
+
+  return commands;
+}
+
+/**
  * REQ-9: 複合コマンドを分割（クォート内のセミコロンを保護）
  *
  * node -e "var a=1;console.log(a)" のクォート内セミコロンを
@@ -331,35 +412,8 @@ function splitCompoundCommand(command) {
   // NEW-SEC-1: ゼロ幅文字サニタイズ
   command = sanitizeZeroWidthChars(command);
 
-  // Step 1: クォート内容をプレースホルダーに置換
-  const placeholders = [];
-  let processed = command;
-
-  // ダブルクォート内の内容を置換
-  processed = processed.replace(/"([^"]*?)"/g, (match) => {
-    const idx = placeholders.length;
-    placeholders.push(match);
-    return `__QUOTE_PLACEHOLDER_${idx}__`;
-  });
-
-  // シングルクォート内の内容を置換
-  processed = processed.replace(/'([^']*?)'/g, (match) => {
-    const idx = placeholders.length;
-    placeholders.push(match);
-    return `__QUOTE_PLACEHOLDER_${idx}__`;
-  });
-
-  // Step 2: プレースホルダー状態で分割（splitCommandParts と同じロジック）
-  const parts = processed.split(/\s*(?:&&|\|\||;|\|)\s*/).filter(p => p.trim().length > 0);
-
-  // Step 3: プレースホルダーを元に戻す
-  return parts.map(part => {
-    let restored = part;
-    for (let i = 0; i < placeholders.length; i++) {
-      restored = restored.replace(`__QUOTE_PLACEHOLDER_${i}__`, placeholders[i]);
-    }
-    return restored.trim();
-  });
+  // HIGH-4: splitCommandChain を使用
+  return splitCommandChain(command);
 }
 
 /**
@@ -603,13 +657,35 @@ function checkBashWhitelist(command, phase) {
     return indirectResult;
   }
 
-  // REQ-R3: セキュリティ環境変数の変更をブロック
-  for (const envVar of SECURITY_ENV_VARS) {
-    if (commandToCheck.includes(envVar)) {
-      const exportPattern = new RegExp(`\\b(export|unset)\\s+(['"]?${envVar}['"]?)`, 'i');
-      const envCmdPattern = new RegExp(`\\benv\\s+${envVar}=`, 'i');
-      if (exportPattern.test(commandToCheck) || envCmdPattern.test(commandToCheck)) {
-        return { allowed: false, reason: 'セキュリティ設定の変更は許可されていません' };
+  // SEC-4: セキュリティ環境変数保護（早期チェック）
+  // コマンドチェーン分割して各コマンドをチェック
+  const chainParts = splitCommandChain(commandToCheck);
+  for (const part of chainParts) {
+    const trimmedPart = part.trim();
+
+    // export/unset コマンドをチェック
+    if (/^(export|unset)\s+/i.test(trimmedPart)) {
+      for (const envVar of SECURITY_ENV_VARS) {
+        const exportPattern = new RegExp(`^(export|unset)\\s+(['"]?${envVar}['"]?)(\\s|=|$)`, 'i');
+        if (exportPattern.test(trimmedPart)) {
+          return {
+            allowed: false,
+            reason: `セキュリティ環境変数の変更がブロックされました: ${envVar}`
+          };
+        }
+      }
+    }
+
+    // env コマンドをチェック
+    if (/^env\s+/i.test(trimmedPart)) {
+      for (const envVar of SECURITY_ENV_VARS) {
+        const envPattern = new RegExp(`\\benv\\s+${envVar}=`, 'i');
+        if (envPattern.test(trimmedPart)) {
+          return {
+            allowed: false,
+            reason: `セキュリティ環境変数の変更がブロックされました: ${envVar}`
+          };
+        }
       }
     }
   }
@@ -641,10 +717,11 @@ function checkBashWhitelist(command, phase) {
   // 3. フェーズ別ホワイトリストチェック
   const whitelist = getWhitelistForPhase(phase);
 
-  // REQ-9: 複合コマンド（&&, ||, ;）を分割（クォート内保護）
-  const commandParts = splitCompoundCommand(commandToCheck);
+  // HIGH-4: コマンドチェーン分割（クォート状態追跡）
+  const commandParts = splitCommandChain(commandToCheck);
 
-  for (const part of commandParts) {
+  for (let index = 0; index < commandParts.length; index++) {
+    const part = commandParts[index];
     const partTrimmed = part.trim();
 
     // cd コマンドは全フェーズで許可（ディレクトリ移動のみ）
@@ -676,7 +753,7 @@ function checkBashWhitelist(command, phase) {
     if (!partAllowed) {
       return {
         allowed: false,
-        reason: `このコマンドは ${phase} フェーズで許可されていません: ${partTrimmed.substring(0, 80)}`,
+        reason: `コマンドチェーン違反（インデックス ${index}）: ${partTrimmed.substring(0, 80)}`,
       };
     }
   }
@@ -689,6 +766,7 @@ module.exports = {
   checkBashWhitelist,
   getWhitelistForPhase,
   splitCommandParts,     // NEW-SEC-1: テスト用にエクスポート
+  splitCommandChain,     // HIGH-4: テスト用にエクスポート
   splitCompoundCommand,  // REQ-9: テスト用にエクスポート
   detectEncodedCommand,  // REQ-C1: テスト用にエクスポート
   detectIndirectExecution,  // REQ-C1: テスト用にエクスポート

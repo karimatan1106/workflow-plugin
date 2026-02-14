@@ -44,6 +44,7 @@ process.on('unhandledRejection', (reason) => {
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { discoverTasks, findTaskByFilePath } = require('./lib/discover-tasks');
 const { verifyHMAC } = require('./hmac-verify');
 
@@ -58,6 +59,74 @@ const { PHASE_EXTENSIONS, PARALLEL_PHASES, PHASE_DESC } = require('./lib/phase-d
  */
 function isParallelPhase(phase) {
   return phase in PARALLEL_PHASES;
+}
+
+/**
+ * HIGH-3: HMAC整合性検証（sessionToken有無で判断）
+ *
+ * workflow-state.json の内容から HMAC 署名を検証する
+ * @param {object} content - パースされた JSON コンテンツ
+ * @returns {boolean} HMAC が有効なら true
+ */
+function verifyHmacIntegrity(content) {
+  try {
+    const storedHmac = content.stateIntegrity;
+    if (!storedHmac) {
+      return false; // HMAC署名がない
+    }
+
+    // stateIntegrity を除いた内容で HMAC を計算
+    const { stateIntegrity, ...contentWithoutHmac } = content;
+    const canonicalContent = JSON.stringify(contentWithoutHmac, null, 2);
+
+    // HMAC キーを読み込み
+    const hmacKeysPath = path.join(process.cwd(), '.claude', 'state', 'hmac-keys.json');
+    if (!fs.existsSync(hmacKeysPath)) {
+      return false; // HMAC キーファイルがない
+    }
+
+    const hmacKeys = JSON.parse(fs.readFileSync(hmacKeysPath, 'utf8'));
+    const key = hmacKeys.current;
+    if (!key) {
+      return false; // 現在のキーがない
+    }
+
+    // HMAC を計算
+    const computedHmac = crypto.createHmac('sha256', key).update(canonicalContent).digest('hex');
+
+    return computedHmac === storedHmac;
+  } catch (e) {
+    logError('HMAC検証エラー', e.message, e.stack);
+    return false;
+  }
+}
+
+/**
+ * HIGH-3: 外部編集検出のログ記録
+ *
+ * workflow-state.json への外部編集を audit-log.jsonl に記録
+ * @param {string} filePath - 編集されたファイルパス
+ * @param {boolean} hmacValid - HMAC検証結果
+ */
+function logExternalEdit(filePath, hmacValid) {
+  const auditLogPath = path.join(process.cwd(), '.claude', 'state', 'audit-log.jsonl');
+  const entry = {
+    timestamp: new Date().toISOString(),
+    type: 'external_edit',
+    details: {
+      filePath,
+      hmacValid,
+      action: hmacValid ? 'allowed' : 'blocked'
+    },
+    caller: process.pid.toString()
+  };
+
+  try {
+    // audit-log.jsonl に追記
+    fs.appendFileSync(auditLogPath, JSON.stringify(entry) + '\n');
+  } catch (e) {
+    logError('監査ログ書き込みエラー', e.message, e.stack);
+  }
 }
 
 /**
@@ -156,10 +225,51 @@ function checkFileAllowed(filePath, phase) {
 function main(input) {
   try {
     const filePath = input.tool_input?.file_path || '';
+    const newContent = input.tool_input?.content || '';
 
     // ファイルパスがない場合はスキップ
     if (!filePath) {
       process.exit(0);
+    }
+
+    // HIGH-3: workflow-state.json への書き込みは sessionToken チェック
+    if (filePath.includes('workflow-state.json') && newContent) {
+      try {
+        const parsedContent = JSON.parse(newContent);
+
+        // sessionToken が含まれている場合は MCP サーバーからの更新
+        if (parsedContent.sessionToken) {
+          // MCP サーバー更新なので許可（HMAC チェックをバイパス）
+          process.exit(0);
+        }
+
+        // sessionToken がない場合は外部編集 → HMAC 検証
+        const hmacValid = verifyHmacIntegrity(parsedContent);
+        logExternalEdit(filePath, hmacValid);
+
+        if (!hmacValid) {
+          console.log('');
+          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          console.log('🚫 BLOCKED: ワークフロー状態ファイルの不正な編集');
+          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          console.log('');
+          console.log(`ファイル: ${filePath}`);
+          console.log('HMAC 署名検証に失敗しました。');
+          console.log('');
+          console.log('対処方法:');
+          console.log('  1. MCP サーバー経由でワークフロー状態を更新してください');
+          console.log('  2. 手動編集が必要な場合は、ワークフロー状態をリセットしてください');
+          console.log('');
+          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          console.log('');
+          process.exit(2);
+        }
+      } catch (e) {
+        // JSON パースエラーは外部編集とみなす
+        logError('workflow-state.json パースエラー', e.message, e.stack);
+        logExternalEdit(filePath, false);
+        process.exit(2);
+      }
     }
 
     // REQ-10: ワークフロー設定ファイルはフェーズ制限をバイパス

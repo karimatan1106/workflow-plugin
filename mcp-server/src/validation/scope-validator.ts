@@ -20,14 +20,17 @@ import * as path from 'path';
 import { execSync } from 'child_process';
 
 /** REQ-A2: スコープ内ファイル数の上限 */
-const MAX_SCOPE_FILES_RAW = parseInt(process.env.MAX_SCOPE_FILES || '1000', 10);
-const MIN_SCOPE_FILES = 1;
-const MAX_SCOPE_FILES_LIMIT = 10000;
+const MAX_SCOPE_FILES_RAW = parseInt(process.env.MAX_SCOPE_FILES || '10000', 10);
+const MIN_SCOPE_FILES = 10;
+const MAX_SCOPE_FILES_LIMIT = 100000;
 
 /** REQ-A2: スコープ内ディレクトリ数の上限 */
-const MAX_SCOPE_DIRS_RAW = parseInt(process.env.MAX_SCOPE_DIRS || '100', 10);
-const MIN_SCOPE_DIRS = 1;
-const MAX_SCOPE_DIRS_LIMIT = 1000;
+const MAX_SCOPE_DIRS_RAW = parseInt(process.env.MAX_SCOPE_DIRS || '1000', 10);
+const MIN_SCOPE_DIRS = 5;
+const MAX_SCOPE_DIRS_LIMIT = 10000;
+
+/** Globパターン展開のタイムアウト（ミリ秒） */
+const GLOB_EXPANSION_TIMEOUT = 30000; // 30 seconds
 
 /** REQ-A2: 依存関係追跡の深度上限（REQ-R5: デフォルト20に引き上げ） */
 const MAX_DEPENDENCY_DEPTH_RAW = parseInt(process.env.MAX_DEPENDENCY_DEPTH || '20', 10);
@@ -51,20 +54,20 @@ function validateEnvRange(value: number, varName: string, min: number, max: numb
 
 // REQ-A2: 範囲バリデーション（グローバルスコープでの実行を削除）
 // FR-6: エラーハンドリングは呼び出し元で実施
-let MAX_SCOPE_FILES = MIN_SCOPE_FILES;
+let MAX_SCOPE_FILES = 10000;
 try {
   validateEnvRange(MAX_SCOPE_FILES_RAW, 'MAX_SCOPE_FILES', MIN_SCOPE_FILES, MAX_SCOPE_FILES_LIMIT);
   MAX_SCOPE_FILES = MAX_SCOPE_FILES_RAW;
 } catch (error) {
-  console.warn(`[scope-validator] ${error instanceof Error ? error.message : error}, using default ${MIN_SCOPE_FILES}`);
+  console.warn(`[scope-validator] ${error instanceof Error ? error.message : error}, using default 10000`);
 }
 
-let MAX_SCOPE_DIRS = MIN_SCOPE_DIRS;
+let MAX_SCOPE_DIRS = 1000;
 try {
   validateEnvRange(MAX_SCOPE_DIRS_RAW, 'MAX_SCOPE_DIRS', MIN_SCOPE_DIRS, MAX_SCOPE_DIRS_LIMIT);
   MAX_SCOPE_DIRS = MAX_SCOPE_DIRS_RAW;
 } catch (error) {
-  console.warn(`[scope-validator] ${error instanceof Error ? error.message : error}, using default ${MIN_SCOPE_DIRS}`);
+  console.warn(`[scope-validator] ${error instanceof Error ? error.message : error}, using default 1000`);
 }
 
 let MAX_DEPENDENCY_DEPTH = MIN_DEPENDENCY_DEPTH;
@@ -93,6 +96,30 @@ export function normalizePath(filePath: string): string {
   const nfcNormalized = slashNormalized.normalize('NFC');
 
   return nfcNormalized;
+}
+
+/**
+ * Globパターンの妥当性を検証する
+ * @param pattern - 検証するglobパターン
+ * @returns 検証結果
+ */
+export function validateGlobPattern(pattern: string): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+  if (!pattern || pattern.trim().length === 0) {
+    errors.push('Glob pattern is empty');
+  }
+  // 基本的なパターン検証
+  const openBrackets = (pattern.match(/\[/g) || []).length;
+  const closeBrackets = (pattern.match(/\]/g) || []).length;
+  if (openBrackets !== closeBrackets) {
+    errors.push(`Invalid glob pattern: unmatched brackets in "${pattern}"`);
+  }
+  const openBraces = (pattern.match(/\{/g) || []).length;
+  const closeBraces = (pattern.match(/\}/g) || []).length;
+  if (openBraces !== closeBraces) {
+    errors.push(`Invalid glob pattern: unmatched braces in "${pattern}"`);
+  }
+  return { valid: errors.length === 0, errors };
 }
 
 /**

@@ -360,6 +360,22 @@ export function analyzeTypeScriptFile(filePath: string): ASTAnalysisResult | nul
         }
       }
 
+      // インターフェース宣言（TypeScript）
+      if (ts.isInterfaceDeclaration(node) && node.name) {
+        result.classes.push(node.name.text);
+        if (node.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword)) {
+          result.exports.push(node.name.text);
+        }
+      }
+
+      // 型エイリアス宣言（TypeScript）
+      if (ts.isTypeAliasDeclaration(node) && node.name) {
+        result.classes.push(node.name.text);
+        if (node.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword)) {
+          result.exports.push(node.name.text);
+        }
+      }
+
       // 関数宣言
       if (ts.isFunctionDeclaration(node) && node.name) {
         const funcName = node.name.text;

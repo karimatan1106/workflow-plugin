@@ -65,20 +65,22 @@ function validatePhasePermission(phase: string): ToolResult | null {
  *
  * @param files ファイルリスト
  * @param dirs ディレクトリリスト
+ * @param maxFiles 最大ファイル数
+ * @param maxDirs 最大ディレクトリ数
  * @returns エラーオブジェクト、または null（OK の場合）
  */
-function validateScopeSize(files: string[], dirs: string[]): ToolResult | null {
-  if (files.length > MAX_SCOPE_FILES) {
+function validateScopeSize(files: string[], dirs: string[], maxFiles: number, maxDirs: number): ToolResult | null {
+  if (files.length > maxFiles) {
     return {
       success: false,
-      message: `スコープが大きすぎます（ファイル: ${files.length}件、上限: ${MAX_SCOPE_FILES}件）。\nタスクを機能単位に分割してください。`,
+      message: `スコープが大きすぎます（ファイル: ${files.length}件、上限: ${maxFiles}件）。\nタスクを機能単位に分割してください。`,
     };
   }
 
-  if (dirs.length > MAX_SCOPE_DIRS) {
+  if (dirs.length > maxDirs) {
     return {
       success: false,
-      message: `スコープが大きすぎます（ディレクトリ: ${dirs.length}件、上限: ${MAX_SCOPE_DIRS}件）。\nタスクを機能単位に分割してください。`,
+      message: `スコープが大きすぎます（ディレクトリ: ${dirs.length}件、上限: ${maxDirs}件）。\nタスクを機能単位に分割してください。`,
     };
   }
 
@@ -92,14 +94,28 @@ function validateScopeSize(files: string[], dirs: string[]): ToolResult | null {
  * @param files 影響を受けるファイルの配列
  * @param dirs 影響を受けるディレクトリの配列
  * @param sessionToken セッショントークン（オプション、REQ-6）
+ * @param glob globパターン（オプション）
+ * @param addMode 追加モード（オプション、デフォルト: false）
  * @returns 設定結果
  */
 export function workflowSetScope(
   taskId?: string,
   files?: string[],
   dirs?: string[],
-  sessionToken?: string
+  sessionToken?: string,
+  glob?: string,
+  addMode?: boolean
 ): ToolResult {
+  // スコープサイズ制限を環境変数から読み取り
+  const MAX_SCOPE_FILES_LOCAL = Math.min(
+    Math.max(parseInt(process.env.SCOPE_MAX_FILES || '10000', 10) || 10000, 10),
+    100000
+  );
+  const MAX_SCOPE_DIRS_LOCAL = Math.min(
+    Math.max(parseInt(process.env.SCOPE_MAX_DIRS || '1000', 10) || 1000, 5),
+    10000
+  );
+
   // タスク状態を取得
   const result = getTaskByIdOrError(taskId);
   if ('error' in result) {
@@ -113,8 +129,66 @@ export function workflowSetScope(
   if (tokenError) return tokenError as ToolResult;
 
   // 引数検証
-  const affectedFiles = Array.isArray(files) ? files : [];
-  const affectedDirs = Array.isArray(dirs) ? dirs : [];
+  let affectedFiles = Array.isArray(files) ? files : [];
+  let affectedDirs = Array.isArray(dirs) ? dirs : [];
+
+  // globパターンの展開
+  if (glob) {
+    try {
+      // Node.jsのfsモジュールを使用してシンプルなglob展開を実装
+      const expandGlob = (pattern: string, basePath: string): string[] => {
+        const results: string[] = [];
+        const traverse = (dir: string): void => {
+          try {
+            const entries = fs.readdirSync(dir);
+            for (const entry of entries) {
+              const fullPath = path.join(dir, entry);
+              const stat = fs.statSync(fullPath);
+              if (stat.isDirectory()) {
+                traverse(fullPath);
+              } else if (stat.isFile()) {
+                // シンプルなパターンマッチング（* と ** をサポート）
+                const relativePath = path.relative(basePath, fullPath);
+                const regex = new RegExp(
+                  '^' + pattern.replace(/\*\*/g, '.*').replace(/\*/g, '[^/]*') + '$'
+                );
+                if (regex.test(relativePath.replace(/\\/g, '/'))) {
+                  results.push(fullPath);
+                }
+              }
+            }
+          } catch {
+            // ディレクトリ読み取りエラーはスキップ
+          }
+        };
+        traverse(basePath);
+        return results;
+      };
+
+      const projectRoot = process.cwd();
+      const expandedFiles = expandGlob(glob, projectRoot);
+
+      if (addMode) {
+        // 追加モード: 既存スコープとマージ
+        const existingFiles = taskState.scope?.affectedFiles || [];
+        affectedFiles = [...new Set([...existingFiles, ...expandedFiles, ...affectedFiles])];
+      } else {
+        // 置き換えモード
+        affectedFiles = [...new Set([...expandedFiles, ...affectedFiles])];
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message: `glob展開エラー: ${error}`,
+      };
+    }
+  } else if (addMode && taskState.scope) {
+    // globなしでaddMode=trueの場合、既存スコープとマージ
+    const existingFiles = taskState.scope.affectedFiles || [];
+    const existingDirs = taskState.scope.affectedDirs || [];
+    affectedFiles = [...new Set([...existingFiles, ...affectedFiles])];
+    affectedDirs = [...new Set([...existingDirs, ...affectedDirs])];
+  }
 
   if (affectedFiles.length === 0 && affectedDirs.length === 0) {
     return {
@@ -128,7 +202,7 @@ export function workflowSetScope(
   if (phaseError) return phaseError;
 
   // REQ-3: スコープサイズ制限チェック
-  const sizeError = validateScopeSize(affectedFiles, affectedDirs);
+  const sizeError = validateScopeSize(affectedFiles, affectedDirs, MAX_SCOPE_FILES_LOCAL, MAX_SCOPE_DIRS_LOCAL);
   if (sizeError) return sizeError;
 
   // REQ-5: ディレクトリ深度検証
@@ -290,6 +364,14 @@ export const setScopeToolDefinition = {
       sessionToken: {
         type: 'string',
         description: 'セッショントークン（REQ-6: Orchestrator認証用）',
+      },
+      glob: {
+        type: 'string',
+        description: 'globパターン（オプション、例: "src/**/*.ts"）',
+      },
+      addMode: {
+        type: 'boolean',
+        description: '追加モード（true: 既存スコープとマージ、false: 置き換え、デフォルト: false）',
       },
     },
     required: [],

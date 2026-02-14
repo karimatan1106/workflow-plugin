@@ -416,6 +416,17 @@ export function workflowNext(taskId?: string, sessionToken?: string): NextResult
     };
   }
 
+  // parallel_quality → testing 遷移時のcode_review承認チェック
+  if (currentPhase === 'parallel_quality' && nextPhase === 'testing') {
+    const codeReviewAutoApprove = process.env.CODE_REVIEW_APPROVAL === 'false';
+    if (!codeReviewAutoApprove && !taskState.approvals?.code_review) {
+      return {
+        success: false,
+        message: 'code_review承認が必要です。workflow_approve code_review を実行してください',
+      };
+    }
+  }
+
   // スキップ対象フェーズを飛ばす
   const skippedPhases: string[] = [];
   while (nextPhase && phaseSkipReasons[nextPhase]) {

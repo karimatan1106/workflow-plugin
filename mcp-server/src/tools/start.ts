@@ -7,12 +7,12 @@
  */
 
 import * as crypto from 'crypto';
-import { stateManager } from '../state/manager.js';
+import { stateManager, generateSessionToken } from '../state/manager.js';
 import type { StartResult, PhaseName } from '../state/types.js';
 import { DEFAULT_TASK_SIZE } from '../state/types.js';
 import { validateRequiredString, safeExecute } from './helpers.js';
 import { MISSING_PARAM_ERRORS } from '../utils/errors.js';
-import { MANDATORY_PHASES, MAX_SKIP_COUNT, PHASES_LARGE } from '../phases/definitions.js';
+import { MANDATORY_PHASES, MAX_SKIP_COUNT, PHASES_LARGE, PHASES_BY_SIZE } from '../phases/definitions.js';
 
 /** セッショントークン生成バイト数 */
 const SESSION_TOKEN_BYTES = 32;
@@ -22,16 +22,29 @@ const SESSION_TOKEN_BYTES = 32;
  *
  * @param taskName タスク名（日本語可）
  * @param skipPhases スキップするフェーズ（カンマ区切り、REQ-B4/D-1）
+ * @param userIntent ユーザーの意図（オプション、10000文字まで）
+ * @param taskSize タスクサイズ（オプション、デフォルト: large）
  * @returns 開始結果
  *
  * 注: sizeパラメータは廃止されました。全てのタスクはlargeサイズで開始されます。
  */
-export function workflowStart(taskName: string, skipPhases?: string): StartResult {
+export function workflowStart(taskName: string, skipPhases?: string, userIntent?: string, taskSize?: string): StartResult {
   // タスク名の検証
   const nameValidation = validateRequiredString(taskName, MISSING_PARAM_ERRORS.TASK_NAME);
   if ('error' in nameValidation) {
     return nameValidation.error as StartResult;
   }
+
+  // ユーザー意図の処理（10000文字まで）
+  let processedUserIntent = userIntent;
+  if (processedUserIntent && processedUserIntent.length > 10000) {
+    processedUserIntent = processedUserIntent.substring(0, 10000);
+  }
+
+  // タスクサイズの検証
+  const validatedTaskSize = (taskSize && ['small', 'medium', 'large'].includes(taskSize))
+    ? taskSize as 'small' | 'medium' | 'large'
+    : DEFAULT_TASK_SIZE;
 
   // REQ-B4/D-1: スキップフェーズのパースと検証
   let skipPhaseList: string[] = [];
@@ -67,13 +80,15 @@ export function workflowStart(taskName: string, skipPhases?: string): StartResul
     }
   }
 
-  // タスク作成を実行（常にlargeサイズ）
+  // タスク作成を実行
   return safeExecute('タスク開始', () => {
-    const taskState = stateManager.createTask(nameValidation.value, DEFAULT_TASK_SIZE);
+    const taskState = stateManager.createTask(nameValidation.value, validatedTaskSize);
 
     // REQ-6: セッショントークン生成
-    const sessionToken = crypto.randomBytes(SESSION_TOKEN_BYTES).toString('hex');
+    const sessionToken = generateSessionToken();
     taskState.sessionToken = sessionToken;
+    taskState.userIntent = processedUserIntent || nameValidation.value;
+    taskState.taskSize = validatedTaskSize;
 
     // REQ-B4/D-1: スキップフェーズを記録
     if (skipPhaseList.length > 0) {
@@ -88,6 +103,8 @@ export function workflowStart(taskName: string, skipPhases?: string): StartResul
       skipMessage = `\nSkipped phases: ${skipPhaseList.join(', ')}`;
     }
 
+    const validPhases = PHASES_BY_SIZE[validatedTaskSize] || PHASES_LARGE;
+
     return {
       success: true,
       taskId: taskState.taskId,
@@ -95,9 +112,11 @@ export function workflowStart(taskName: string, skipPhases?: string): StartResul
       phase: taskState.phase,
       workflowDir: taskState.workflowDir,
       docsDir: taskState.docsDir,
-      taskSize: taskState.taskSize,
+      taskSize: validatedTaskSize,
+      userIntent: taskState.userIntent,
+      validPhases: validPhases as readonly string[],
       sessionToken,
-      message: `タスク「${taskState.taskName}」を開始しました。フェーズ: research、サイズ: large${skipMessage}`,
+      message: `タスク「${taskState.taskName}」を開始しました。フェーズ: research、サイズ: ${validatedTaskSize}${skipMessage}`,
     };
   }) as StartResult;
 }
@@ -121,6 +140,15 @@ export const startToolDefinition = {
       skipPhases: {
         type: 'string',
         description: 'スキップするフェーズ（カンマ区切り、例: "test_impl,testing,regression_test"）',
+      },
+      userIntent: {
+        type: 'string',
+        description: 'ユーザーの意図（オプション、10000文字まで）',
+      },
+      taskSize: {
+        type: 'string',
+        description: 'タスクサイズ（small/medium/large、デフォルト: large）',
+        enum: ['small', 'medium', 'large'],
       },
     },
     required: ['taskName'],

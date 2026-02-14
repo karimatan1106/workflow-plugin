@@ -62,6 +62,30 @@ export function workflowApprove(taskId?: string, type?: string, sessionToken?: s
 
   // 承認処理を実行
   return safeExecute('承認処理', () => {
+    // CODE_REVIEW_APPROVAL環境変数チェック: false の場合は自動承認
+    const codeReviewAutoApprove = process.env.CODE_REVIEW_APPROVAL === 'false';
+
+    if (typeValidation.value === 'code_review' && codeReviewAutoApprove) {
+      // 自動承認モード: 状態を更新してすぐに次フェーズへ
+      const updatedState = {
+        ...taskState,
+        approvals: {
+          ...taskState.approvals,
+          code_review: true,
+        },
+      };
+      stateManager.writeTaskState(taskState.workflowDir, updatedState);
+      stateManager.updateTaskPhase(taskState.taskId, nextPhase);
+
+      return {
+        success: true,
+        taskId: taskState.taskId,
+        approved: 'code_review',
+        nextPhase,
+        message: `code_reviewを自動承認しました（CODE_REVIEW_APPROVAL=false）。次のフェーズ: ${nextPhase}`,
+      };
+    }
+
     // REQ-B1: 承認フラグを記録
     const updatedState = {
       ...taskState,
@@ -92,7 +116,7 @@ export function workflowApprove(taskId?: string, type?: string, sessionToken?: s
  */
 export const approveToolDefinition = {
   name: 'workflow_approve',
-  description: '指定されたタスクのレビューフェーズを承認します。requirementsフェーズでは "requirements"、design_reviewフェーズでは "design"、test_designフェーズでは "test_design" を指定します。',
+  description: '指定されたタスクのレビューフェーズを承認します。requirementsフェーズでは "requirements"、design_reviewフェーズでは "design"、test_designフェーズでは "test_design"、parallel_qualityフェーズでは "code_review" を指定します。',
   inputSchema: {
     type: 'object',
     properties: {
@@ -102,8 +126,8 @@ export const approveToolDefinition = {
       },
       type: {
         type: 'string',
-        description: '承認タイプ（requirements, design, test_design）',
-        enum: ['requirements', 'design', 'test_design'],
+        description: '承認タイプ（requirements, design, test_design, code_review）',
+        enum: ['requirements', 'design', 'test_design', 'code_review'],
       },
       sessionToken: {
         type: 'string',

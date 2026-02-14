@@ -9,7 +9,7 @@
 
 import { stateManager } from '../state/manager.js';
 import type { StatusResult, PhaseName } from '../state/types.js';
-import { PHASE_DESCRIPTIONS, isParallelPhase } from '../phases/definitions.js';
+import { PHASE_DESCRIPTIONS, isParallelPhase, PHASES_BY_SIZE } from '../phases/definitions.js';
 
 /**
  * 現在のワークフロー状態を取得
@@ -60,6 +60,9 @@ export function workflowStatus(taskId?: string): StatusResult {
   const phase = taskState.phase as PhaseName;
 
   // 基本的な結果を構築
+  const currentTaskSize = taskState.taskSize || 'large';
+  const activePhases = PHASES_BY_SIZE[currentTaskSize];
+
   const result: StatusResult = {
     success: true,
     status: 'active',
@@ -75,7 +78,9 @@ export function workflowStatus(taskId?: string): StatusResult {
       phase: t.phase,
     })),
     message: PHASE_DESCRIPTIONS[phase] || phase,
-    taskSize: taskState.taskSize,
+    taskSize: currentTaskSize,
+    userIntent: taskState.userIntent || taskState.taskName,
+    activePhases: [...activePhases],
   };
 
   // 並列フェーズの場合、サブフェーズ状態を追加

@@ -401,7 +401,7 @@ export class DesignValidator {
     return this.searchInFiles(
       [
         new RegExp(
-          `\\b(?:export\\s+)?(?:default\\s+)?(?:abstract\\s+)?class\\s+${escapedName}\\s*(?:[{<]|extends|implements)`
+          `\\b(?:export\\s+)?(?:default\\s+)?(?:abstract\\s+)?(?:class|interface|type)\\s+${escapedName}\\s*(?:[{<(=]|extends|implements)`
         ),
       ],
       filePaths,

@@ -80,6 +80,47 @@ export interface ArtifactValidationResult {
 }
 
 /**
+ * N-gram方式でテキストからキーワードを抽出する（日本語対応）
+ * @param text - 対象テキスト
+ * @param n - N-gramのサイズ（デフォルト: 2）
+ * @returns N-gramのSet
+ */
+function extractKeywordsNGram(text: string, n: number = 2): Set<string> {
+  const ngrams = new Set<string>();
+  // 10000文字制限
+  const truncated = text.length > 10000 ? text.substring(0, 10000) : text;
+  for (let i = 0; i <= truncated.length - n; i++) {
+    const gram = truncated.substring(i, i + n);
+    // 空白のみのN-gramは除外
+    if (gram.trim().length > 0) {
+      ngrams.add(gram);
+    }
+  }
+  return ngrams;
+}
+
+/**
+ * 既存キーワード抽出とN-gram抽出を統合する
+ * @param text - 対象テキスト
+ * @returns 統合されたキーワードSet
+ */
+function extractKeywordsCombined(text: string): Set<string> {
+  const combined = new Set<string>();
+  // 既存のキーワード抽出があればそれを使用
+  const words = text.match(/[a-zA-Z]{3,}/g) || [];
+  for (const word of words) {
+    combined.add(word.toLowerCase());
+  }
+  // 2-gram追加
+  const bigrams = extractKeywordsNGram(text, 2);
+  for (const gram of bigrams) combined.add(gram);
+  // 3-gram追加
+  const trigrams = extractKeywordsNGram(text, 3);
+  for (const gram of trigrams) combined.add(gram);
+  return combined;
+}
+
+/**
  * 構造要素判定ヘルパー関数
  *
  * Markdown文書の構造要素（区切り線、コードフェンス、テーブル区切り）を判定する。
@@ -98,10 +139,8 @@ export function isStructuralLine(line: string): boolean {
   if (/^[-*_]{3,}$/.test(trimmed)) return true;
   // コードフェンス: ```で始まる行
   if (trimmed.startsWith('```')) return true;
-  // テーブルセパレータ行: |で始まりハイフン・コロンのみを含む（例: |---|---|）
-  if (/^\|[\s\-:|]+\|$/.test(trimmed)) return true;
-  // REQ-D2: テーブルデータ行: |で囲まれた行（パイプ区切りの行全て）
-  if (/^\|.*\|$/.test(trimmed)) return true;
+  // テーブルセパレータ行: |で始まりハイフン・コロン・スペースのみを含む（例: |---|---|）
+  if (/^\s*\|[\s:-]+\|\s*$/.test(trimmed)) return true;
   // Markdownラベルパターン: **太字**: のような構造ラベル
   if (/^\*\*[^*]+\*\*[:：]?\s*$/.test(trimmed)) return true;
   // リスト先頭のMarkdownラベル: - **太字**: のような構造ラベル
@@ -765,29 +804,17 @@ const STOP_WORDS = [
  * @returns 抽出されたキーワードのセット
  */
 function extractRequirementKeywords(requirementsContent: string): Set<string> {
-  const keywords = new Set<string>();
-
   // REQ-*セクションを抽出
   const reqSectionPattern = /^###\s+(REQ-[A-Z0-9]+).*?(?=^###|$)/gms;
   const matches = requirementsContent.matchAll(reqSectionPattern);
 
+  let allSectionText = '';
   for (const match of matches) {
-    const sectionText = match[0];
-
-    // 3文字以上の単語を抽出（名詞・動詞・形容詞相当）
-    // ひらがな・カタカナ・漢字・英数字の組み合わせ
-    const wordPattern = /[\u4e00-\u9faf\u3040-\u309f\u30a0-\u30ffa-zA-Z0-9]{3,}/g;
-    const words = sectionText.match(wordPattern) || [];
-
-    for (const word of words) {
-      // ストップワード除外
-      if (!STOP_WORDS.includes(word)) {
-        keywords.add(word);
-      }
-    }
+    allSectionText += match[0] + '\n';
   }
 
-  return keywords;
+  // N-gram方式でキーワード抽出
+  return extractKeywordsCombined(allSectionText);
 }
 
 /**

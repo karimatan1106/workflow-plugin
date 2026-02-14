@@ -15,14 +15,14 @@
  * タスクサイズ
  *
  * ワークフローのフェーズ数を決定する:
+ * - small: 8フェーズ（簡易ワークフロー）
+ * - medium: 14フェーズ（中規模ワークフロー）
  * - large: 19フェーズ（全ワークフロー）
- *
- * 注: small/mediumは廃止されました。全てのタスクはlargeサイズで実行されます。
  */
-export type TaskSize = 'large';
+export type TaskSize = 'small' | 'medium' | 'large';
 
 /** デフォルトのタスクサイズ */
-export const DEFAULT_TASK_SIZE: TaskSize = 'large';
+export const DEFAULT_TASK_SIZE = 'large' as const;
 
 // ============================================================================
 // フェーズ関連
@@ -138,6 +138,8 @@ export interface TestBaseline {
   totalTests: number;
   /** 成功したテスト数 */
   passedTests: number;
+  /** 除外するテスト名の配列（regression_testで新規失敗と見なさないテスト） */
+  excludedTests?: string[];
 }
 
 /**
@@ -260,7 +262,17 @@ export interface TaskState {
     requirements?: boolean;
     design?: boolean;
     test_design?: boolean;
+    code_review?: boolean;
   };
+  /** ユーザー意図（タスク開始時に記録） */
+  userIntent?: string;
+  /** テスト削除履歴 */
+  testRemovalHistory?: Array<{
+    testName: string;
+    reason: string;
+    removedAt: string;
+    removedBy?: string;
+  }>;
   /**
    * フェーズスキップ理由（REQ-C3: 動的フェーズスキップ機構）
    * スキップされたフェーズとその理由のマップ
@@ -340,6 +352,10 @@ export interface StatusResult extends ToolResult {
   isParallelPhase?: boolean;
   /** タスクサイズ */
   taskSize?: TaskSize;
+  /** ユーザー意図 */
+  userIntent?: string;
+  /** アクティブなフェーズリスト */
+  activePhases?: string[];
 }
 
 /**

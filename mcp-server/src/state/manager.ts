@@ -33,6 +33,55 @@ import { taskCache, isCacheEnabled } from './cache.js';
 
 import { getCurrentKey, verifyWithAnyKey, signWithCurrentKey, loadKeys, attemptHmacRecovery } from './hmac.js';
 import { normalizePath } from '../validation/scope-validator.js';
+
+/**
+ * セッショントークン生成
+ *
+ * 28バイトのランダムデータ + 8文字のタイムスタンプで64文字のトークンを生成する。
+ *
+ * @returns 64文字のセッショントークン
+ */
+export function generateSessionToken(): string {
+  const random = crypto.randomBytes(28).toString('hex');
+  const timestamp = Math.floor(Date.now() / 1000).toString(16).padStart(8, '0');
+  return random + timestamp;
+}
+
+/**
+ * セッショントークンの検証
+ *
+ * トークンの形式、一致、有効期限（1時間）を確認する。
+ *
+ * @param token 検証するトークン
+ * @param storedToken 保存されているトークン
+ * @returns 有効ならtrue、無効ならfalse
+ */
+export function isSessionTokenValid(token: string, storedToken: string): boolean {
+  if (!token || token.length !== 64) return false;
+  if (token !== storedToken) return false;
+  const timestampHex = token.substring(56, 64);
+  const tokenTime = parseInt(timestampHex, 16);
+  const now = Math.floor(Date.now() / 1000);
+  return (now - tokenTime) <= 3600;
+}
+
+/**
+ * 監査ログの書き込み
+ *
+ * JSONLファイルに監査ログエントリを追記する。
+ *
+ * @param entry ログエントリ
+ */
+export function writeAuditLog(entry: Record<string, unknown>): void {
+  try {
+    const logPath = path.join(process.cwd(), '.claude', 'state', 'audit-log.jsonl');
+    const logEntry = JSON.stringify({ timestamp: new Date().toISOString(), ...entry }) + '\n';
+    fs.appendFileSync(logPath, logEntry);
+  } catch {
+    // Audit log write failure should not halt workflow
+  }
+}
+
 /**
  * REQ-1: 同期的ファイルロック取得
  * acquireLockはasyncのため、同期APIに合わせた簡易ロック実装
@@ -284,6 +333,11 @@ export class WorkflowStateManager {
 
     if (!state) {
       return null;
+    }
+
+    // Set userIntent to taskName if not already set
+    if (!state.userIntent) {
+      state.userIntent = state.taskName;
     }
 
     if (state.stateIntegrity) {

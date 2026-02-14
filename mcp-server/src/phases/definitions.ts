@@ -15,6 +15,45 @@ import { DEFAULT_TASK_SIZE } from '../state/types.js';
 // ============================================================================
 
 /**
+ * Small: 8フェーズ（簡易ワークフロー）
+ *
+ * 軽微な修正・ドキュメント更新向け。設計フェーズをスキップ。
+ */
+export const PHASES_SMALL: PhaseName[] = [
+  'research',
+  'requirements',
+  'parallel_analysis',
+  'implementation',
+  'testing',
+  'commit',
+  'push',
+  'completed',
+];
+
+/**
+ * Medium: 14フェーズ（中規模ワークフロー）
+ *
+ * 通常の機能追加向け。設計フェーズとTDDサイクルを含む。
+ */
+export const PHASES_MEDIUM: PhaseName[] = [
+  'research',
+  'requirements',
+  'parallel_analysis',
+  'parallel_design',
+  'design_review',
+  'test_design',
+  'test_impl',
+  'implementation',
+  'refactoring',
+  'parallel_quality',
+  'testing',
+  'commit',
+  'push',
+  'ci_verification',
+  'completed',
+];
+
+/**
  * Large: 19フェーズ（全ワークフロー）
  *
  * TDD方式を採用した完全なワークフロー。
@@ -49,10 +88,22 @@ export const PHASES = PHASES_LARGE;
  * サイズ別フェーズマップ
  *
  * タスクサイズに応じたフェーズ配列を取得するためのマップ。
- * 注: small/mediumは廃止されました。largeのみサポートします。
  */
 export const PHASES_BY_SIZE: Record<TaskSize, PhaseName[]> = {
+  small: PHASES_SMALL,
+  medium: PHASES_MEDIUM,
   large: PHASES_LARGE,
+};
+
+/**
+ * サイズ別必須フェーズマップ
+ *
+ * タスクサイズに応じた必須フェーズ（スキップ不可）を定義。
+ */
+export const MANDATORY_PHASES_BY_SIZE: Record<TaskSize, PhaseName[]> = {
+  small: ['research', 'requirements', 'parallel_analysis'],
+  medium: ['research', 'requirements', 'parallel_analysis'],
+  large: ['research', 'requirements', 'parallel_analysis', 'completed'],
 };
 
 // ============================================================================
@@ -66,7 +117,7 @@ export const PHASES_BY_SIZE: Record<TaskSize, PhaseName[]> = {
  * @returns TaskSize型であればtrue
  */
 export function isValidTaskSize(size: unknown): size is TaskSize {
-  return size === 'large';
+  return size === 'small' || size === 'medium' || size === 'large';
 }
 
 /**
@@ -269,6 +320,7 @@ export const APPROVE_TYPE_MAPPING: Record<string, { expectedPhase: PhaseName; ne
   requirements: { expectedPhase: 'requirements', nextPhase: 'parallel_analysis' },
   design: { expectedPhase: 'design_review', nextPhase: 'test_design' },
   test_design: { expectedPhase: 'test_design', nextPhase: 'test_impl' },
+  code_review: { expectedPhase: 'parallel_quality', nextPhase: 'testing' },
 };
 
 // ============================================================================
