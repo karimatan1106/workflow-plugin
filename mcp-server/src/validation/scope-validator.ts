@@ -18,6 +18,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
+import * as crypto from 'crypto';
 
 /** REQ-A2: スコープ内ファイル数の上限 */
 const MAX_SCOPE_FILES_RAW = parseInt(process.env.MAX_SCOPE_FILES || '10000', 10);
@@ -36,6 +37,41 @@ const GLOB_EXPANSION_TIMEOUT = 30000; // 30 seconds
 const MAX_DEPENDENCY_DEPTH_RAW = parseInt(process.env.MAX_DEPENDENCY_DEPTH || '20', 10);
 const MIN_DEPENDENCY_DEPTH = 1;
 const MAX_DEPENDENCY_DEPTH_LIMIT = 50;
+
+/**
+ * import抽出結果のキャッシュエントリ (REQ-FIX-4)
+ */
+interface ImportCacheEntry {
+  hash: string;
+  imports: string[];
+}
+
+/** REQ-FIX-4: import抽出結果のキャッシュ */
+const importCache = new Map<string, ImportCacheEntry>();
+const IMPORT_CACHE_MAX_SIZE = 10000;
+
+/**
+ * import抽出をキャッシュ付きで実行(REQ-FIX-4)
+ */
+function extractImportsWithCache(filePath: string, content: string): string[] {
+  const hash = crypto.createHash('md5').update(content).digest('hex');
+  const cacheKey = `${filePath}:${hash}`;
+
+  const cached = importCache.get(cacheKey);
+  if (cached && cached.hash === hash) {
+    return cached.imports;
+  }
+
+  const imports = extractImports(content, filePath);
+
+  if (importCache.size >= IMPORT_CACHE_MAX_SIZE) {
+    const firstKey = importCache.keys().next().value as string;
+    if (firstKey) importCache.delete(firstKey);
+  }
+
+  importCache.set(cacheKey, { hash, imports });
+  return imports;
+}
 
 /**
  * FR-6: 環境変数の範囲をバリデート（process.exit除去、RangeErrorをthrow）
@@ -425,7 +461,7 @@ function isFileInScope(filePath: string, affectedDirs: string[]): boolean {
 }
 
 /**
- * REQ-5 + FR-8 + REQ-A2: 依存関係を追跡
+ * REQ-5 + FR-8 + REQ-A2 + REQ-FIX-4: 依存関係を追跡
  *
  * FR-8拡張:
  * - SCOPE_MAX_DEPTH 環境変数サポート
@@ -437,16 +473,20 @@ function isFileInScope(filePath: string, affectedDirs: string[]): boolean {
  * - MAX_SCOPE_FILES によるファイル数制限（デフォルト: 1000）
  * - 制限超過時の警告出力
  *
+ * REQ-FIX-4拡張:
+ * - import抽出キャッシュ追加
+ * - バッチ並列BFS処理
+ *
  * @param affectedFiles 変更対象ファイルの配列
  * @param affectedDirs スコープディレクトリ（文字列または配列）
- * @param options オプション（maxDepth等）
+ * @param options オプション（maxDepth, batchSize等）
  * @returns 追跡結果
  */
-export function trackDependencies(
+export async function trackDependencies(
   affectedFiles: string[],
   affectedDirs: string | string[],
-  options: { maxDepth?: number } = {},
-): DependencyTrackingResult {
+  options: { maxDepth?: number; batchSize?: number } = {},
+): Promise<DependencyTrackingResult> {
   // FR-8: SCOPE_MAX_DEPTH 環境変数サポート
   // REQ-A2: MAX_DEPENDENCY_DEPTH をデフォルト上限として使用
   const envMaxDepth = process.env.SCOPE_MAX_DEPTH ? parseInt(process.env.SCOPE_MAX_DEPTH, 10) : undefined;
@@ -469,60 +509,70 @@ export function trackDependencies(
   let queue: Array<{ file: string; depth: number; parent?: string }> =
     affectedFiles.map(f => ({ file: f, depth: 0 }));
 
+  const batchSize = options.batchSize || 10;
+
   while (queue.length > 0) {
-    const { file, depth, parent } = queue.shift()!;
+    const batch = queue.splice(0, Math.min(batchSize, queue.length));
 
-    // REQ-A2: ファイル数制限チェック
-    if (allFiles.size >= MAX_SCOPE_FILES) {
-      warnings.push(`File count limit reached (${MAX_SCOPE_FILES}). Dependency tracking stopped.`);
-      break;
-    }
+    await Promise.all(batch.map(async ({ file, depth, parent }) => {
+      // REQ-A2: ファイル数制限チェック
+      if (allFiles.size >= MAX_SCOPE_FILES) {
+        return;
+      }
 
-    // FR-8: 循環依存検出
-    if (visitStack.has(file)) {
-      warnings.push(`Circular dependency detected: ${parent} -> ${file}`);
-      continue;
-    }
+      // FR-8: 循環依存検出
+      if (visitStack.has(file)) {
+        warnings.push(`Circular dependency detected: ${parent} -> ${file}`);
+        return;
+      }
 
-    if (visited.has(file)) continue;
-    visited.add(file);
+      if (visited.has(file)) return;
+      visited.add(file);
 
-    if (depth >= maxDepth) {
-      warnings.push(`Max dependency depth ${maxDepth} reached for ${file}. Stopping traversal.`);
-      continue;
-    }
+      if (depth >= maxDepth) {
+        warnings.push(`Max dependency depth ${maxDepth} reached for ${file}. Stopping traversal.`);
+        return;
+      }
 
-    // Read file and extract imports
-    try {
-      if (!fs.existsSync(file)) continue;
-      const content = fs.readFileSync(file, 'utf-8');
-      const imports = extractImports(content, file);
+      try {
+        if (!fs.existsSync(file)) return;
 
-      visitStack.add(file);
+        // REQ-FIX-4: 非同期ファイル読み込み
+        const content = await fs.promises.readFile(file, 'utf-8');
 
-      for (const imp of imports) {
-        const resolved = resolveImportPath(file, imp);
-        if (!resolved) continue;
+        // REQ-FIX-4: キャッシュ付きimport抽出
+        const imports = extractImportsWithCache(file, content);
 
-        if (!allFiles.has(resolved)) {
-          allFiles.add(resolved);
-          importedFiles.push(resolved);
+        visitStack.add(file);
 
-          // Check if in scope
-          if (!isFileInScope(resolved, dirs)) {
-            warnings.push(`${resolved} out of scope (imported from ${file})`);
+        for (const imp of imports) {
+          const resolved = resolveImportPath(file, imp);
+          if (!resolved) continue;
+
+          if (!allFiles.has(resolved)) {
+            allFiles.add(resolved);
+            importedFiles.push(resolved);
+
+            if (!isFileInScope(resolved, dirs)) {
+              warnings.push(`${resolved} out of scope (imported from ${file})`);
+            }
+          }
+
+          if (!visited.has(resolved)) {
+            queue.push({ file: resolved, depth: depth + 1, parent: file });
           }
         }
 
-        if (!visited.has(resolved)) {
-          queue.push({ file: resolved, depth: depth + 1, parent: file });
-        }
+        visitStack.delete(file);
+      } catch {
+        visitStack.delete(file);
       }
+    }));
 
-      visitStack.delete(file);
-    } catch {
-      // File read error - skip
-      visitStack.delete(file);
+    // Check file limit after batch
+    if (allFiles.size >= MAX_SCOPE_FILES) {
+      warnings.push(`File count limit reached (${MAX_SCOPE_FILES}). Dependency tracking stopped.`);
+      break;
     }
   }
 

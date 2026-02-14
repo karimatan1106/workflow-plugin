@@ -396,7 +396,8 @@ export function workflowNext(taskId?: string, sessionToken?: string): NextResult
   const taskSize: TaskSize = taskState.taskSize || DEFAULT_TASK_SIZE;
 
   // REQ-C3: 動的フェーズスキップ判定（自動検出）
-  const phaseSkipReasons = calculatePhaseSkips(taskState.scope || {});
+  // REQ-FIX-2: userIntentをcalculatePhaseSkipsに渡してスキップオーバーライドを有効化
+  const phaseSkipReasons = calculatePhaseSkips(taskState.scope || {}, taskState.userIntent);
 
   // REQ-B4/D-1: ユーザー指定のスキップフェーズをマージ
   if (taskState.skippedPhases && taskState.skippedPhases.length > 0) {

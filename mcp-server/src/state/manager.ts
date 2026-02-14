@@ -311,6 +311,8 @@ export function _resetSignatureKeyCache(): void {
 export class WorkflowStateManager {
   /** ワークフローディレクトリのパス */
   private workflowDir: string;
+  /** タスクインデックスファイルのパス(REQ-FIX-5) */
+  private indexPath: string;
 
   /**
    * コンストラクタ
@@ -319,6 +321,7 @@ export class WorkflowStateManager {
    */
   constructor(workflowDir: string = WORKFLOW_DIR) {
     this.workflowDir = workflowDir;
+    this.indexPath = path.join(STATE_DIR, 'task-index.json');
   }
 
   // ==========================================================================
@@ -421,6 +424,54 @@ export class WorkflowStateManager {
   // ==========================================================================
 
   /**
+   * task-index.jsonを読み込む(REQ-FIX-5)
+   */
+  private loadTaskIndex(): Record<string, string> {
+    if (!fs.existsSync(this.indexPath)) {
+      return {};
+    }
+
+    try {
+      const data = fs.readFileSync(this.indexPath, 'utf-8');
+      return JSON.parse(data);
+    } catch (err) {
+      console.warn('[StateManager] Failed to load task index, rebuilding...', err);
+      return this.rebuildTaskIndex();
+    }
+  }
+
+  /**
+   * task-index.jsonを保存(REQ-FIX-5)
+   */
+  private saveTaskIndex(index: Record<string, string>): void {
+    try {
+      fs.mkdirSync(path.dirname(this.indexPath), { recursive: true });
+      fs.writeFileSync(this.indexPath, JSON.stringify(index, null, 2));
+    } catch (err) {
+      console.warn('[StateManager] Failed to save task index:', err);
+    }
+  }
+
+  /**
+   * task-index.jsonを再構築(REQ-FIX-5)
+   */
+  private rebuildTaskIndex(): Record<string, string> {
+    console.log('[StateManager] Rebuilding task index...');
+    const tasks = this.discoverTasks();
+    const index: Record<string, string> = {};
+
+    for (const task of tasks) {
+      const taskDirName = `${task.taskId}_${task.taskName}`;
+      const relativePath = path.join('workflows', taskDirName);
+      index[task.taskId] = relativePath;
+    }
+
+    this.saveTaskIndex(index);
+    console.log(`[StateManager] Rebuilt task index with ${tasks.length} entries`);
+    return index;
+  }
+
+  /**
    * ディレクトリスキャンでアクティブタスクを発見
    *
    * .claude/state/workflows/ 配下のディレクトリをスキャンし、
@@ -484,8 +535,43 @@ export class WorkflowStateManager {
    * @returns タスク状態、または存在しない場合はnull
    */
   getTaskById(taskId: string): TaskState | null {
+    // REQ-FIX-5: インデックスから直接パスを取得
+    const index = this.loadTaskIndex();
+    const relativePath = index[taskId];
+
+    if (relativePath) {
+      const taskPath = path.join(STATE_DIR, relativePath);
+      const stateFile = path.join(taskPath, 'workflow-state.json');
+
+      if (fs.existsSync(stateFile)) {
+        try {
+          return this.readTaskState(taskPath);
+        } catch (err) {
+          console.warn(`[StateManager] Failed to read task ${taskId}, removing from index:`, err);
+          delete index[taskId];
+          this.saveTaskIndex(index);
+        }
+      } else {
+        console.warn(`[StateManager] Task ${taskId} not found, removing from index`);
+        delete index[taskId];
+        this.saveTaskIndex(index);
+      }
+    }
+
+    // フォールバック: インデックスにない場合は全スキャン
+    console.warn(`[StateManager] Task ${taskId} not in index, falling back to full scan`);
     const tasks = this.discoverTasks();
-    return tasks.find(t => t.taskId === taskId) ?? null;
+    const task = tasks.find(t => t.taskId === taskId) ?? null;
+
+    if (task) {
+      const taskDirName = `${task.taskId}_${task.taskName}`;
+      const newRelativePath = path.join('workflows', taskDirName);
+      index[taskId] = newRelativePath;
+      this.saveTaskIndex(index);
+      console.log(`[StateManager] Added task ${taskId} to index`);
+    }
+
+    return task;
   }
 
   /**
@@ -599,6 +685,12 @@ export class WorkflowStateManager {
     // 成果物テンプレート作成
     this.createArtifactTemplates(docsDir);
 
+    // REQ-FIX-5: インデックスに追加
+    const index = this.loadTaskIndex();
+    const relativePath = path.relative(STATE_DIR, taskDir);
+    index[taskState.taskId] = relativePath;
+    this.saveTaskIndex(index);
+
     // 注: GlobalStateへの登録は廃止されました。
     // タスクはディレクトリスキャンで発見されるため、
     // グローバル状態ファイルへの登録は不要です。
@@ -673,6 +765,14 @@ export class WorkflowStateManager {
       atomicWriteJson(stateFile, stateWithSignature);
     } finally {
       releaseLock();
+    }
+
+    // REQ-FIX-5: completedフェーズの場合、インデックスから削除
+    if (phase === 'completed') {
+      const index = this.loadTaskIndex();
+      delete index[taskId];
+      this.saveTaskIndex(index);
+      console.log(`[StateManager] Removed completed task ${taskId} from index`);
     }
 
     // FR-11: キャッシュ無効化

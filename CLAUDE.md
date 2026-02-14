@@ -198,6 +198,9 @@ Task({
     - タスク名: {taskName}
     - 出力先: docs/workflows/{taskName}/
 
+    ## ユーザーの意図
+    {userIntent}
+
     ## 入力
     以下のファイルを読み込んでください:
     - ★ {重要度Highファイルパス} （全文読み込み）

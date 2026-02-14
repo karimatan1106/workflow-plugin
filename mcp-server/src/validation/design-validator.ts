@@ -8,6 +8,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as ts from 'typescript';
+import * as crypto from 'crypto';
 import type {
   ValidationResult,
   MissingItem,
@@ -18,6 +19,15 @@ import type {
 import { parseSpec } from './parsers/spec-parser.js';
 import { parseStateMachine, parseFlowchart } from './parsers/mermaid-parser.js';
 import { analyzeTypeScriptFile, type ASTAnalysisResult, type FunctionSignature } from './ast-analyzer.js';
+
+/**
+ * AST解析結果キャッシュエントリ (REQ-FIX-3)
+ */
+interface ASTCacheEntry {
+  hash: string;
+  result: ASTAnalysisResult;
+  timestamp: number;
+}
 
 /**
  * 設計-実装整合性検証クラス
@@ -36,6 +46,11 @@ export class DesignValidator {
   private workflowDir: string;
   private projectRoot: string;
   private fileCache: Map<string, { content: string; cleanContent: string }> = new Map();
+  private astCache: Map<string, ASTCacheEntry> = new Map();
+  private readonly CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+  private cacheHits = 0;
+  private cacheMisses = 0;
+  private totalTimeMs = 0;
 
   /**
    * コンストラクタ
@@ -46,6 +61,124 @@ export class DesignValidator {
   constructor(workflowDir: string, projectRoot?: string) {
     this.workflowDir = workflowDir;
     this.projectRoot = projectRoot || process.cwd();
+    this.loadPersistedCache();
+    this.evictExpiredCache();
+  }
+
+  /**
+   * ファイルのMD5ハッシュを計算（REQ-FIX-3）
+   */
+  private hashFile(fullPath: string): string {
+    try {
+      const content = fs.readFileSync(fullPath, 'utf-8');
+      return crypto.createHash('md5').update(content).digest('hex');
+    } catch {
+      return '';
+    }
+  }
+
+  /**
+   * キャッシュ付きAST解析（REQ-FIX-3）
+   */
+  private analyzeWithCache(fullPath: string): ASTAnalysisResult | null {
+    const startTime = Date.now();
+    const currentHash = this.hashFile(fullPath);
+    const cached = this.astCache.get(fullPath);
+
+    if (cached && cached.hash === currentHash) {
+      this.cacheHits++;
+      return cached.result;
+    }
+
+    this.cacheMisses++;
+    const result = analyzeTypeScriptFile(fullPath);
+    const elapsed = Date.now() - startTime;
+    this.totalTimeMs += elapsed;
+
+    if (result) {
+      this.astCache.set(fullPath, {
+        hash: currentHash,
+        result,
+        timestamp: Date.now(),
+      });
+    }
+
+    if (elapsed > 50) {
+      console.warn(`[Design Validator] AST analysis took ${elapsed}ms for ${path.relative(this.projectRoot, fullPath)}`);
+    }
+
+    return result;
+  }
+
+  /**
+   * 永続化されたキャッシュを読み込む（REQ-FIX-3）
+   */
+  private loadPersistedCache(): void {
+    const cachePath = path.join(this.projectRoot, '.claude/cache/ast-analysis.json');
+    if (!fs.existsSync(cachePath)) {
+      return;
+    }
+
+    try {
+      const data = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
+      for (const [filePath, entry] of Object.entries(data)) {
+        this.astCache.set(filePath, entry as ASTCacheEntry);
+      }
+      console.log(`[Design Validator] Loaded ${this.astCache.size} cached AST entries`);
+    } catch (err) {
+      console.warn(`[Design Validator] Failed to load persisted cache: ${err}`);
+    }
+  }
+
+  /**
+   * キャッシュを永続化する（REQ-FIX-3）
+   */
+  private persistCache(): void {
+    const cachePath = path.join(this.projectRoot, '.claude/cache/ast-analysis.json');
+    const data = Object.fromEntries(this.astCache);
+
+    try {
+      fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+      fs.writeFileSync(cachePath, JSON.stringify(data, null, 2));
+      console.log(`[Design Validator] Persisted ${this.astCache.size} AST entries to cache`);
+    } catch (err) {
+      console.warn(`[Design Validator] Failed to persist cache: ${err}`);
+    }
+  }
+
+  /**
+   * 期限切れキャッシュエントリを削除（REQ-FIX-3）
+   */
+  private evictExpiredCache(): void {
+    const now = Date.now();
+    let evictedCount = 0;
+
+    for (const [filePath, entry] of this.astCache.entries()) {
+      if (now - entry.timestamp > this.CACHE_TTL_MS) {
+        this.astCache.delete(filePath);
+        evictedCount++;
+      }
+    }
+
+    if (evictedCount > 0) {
+      console.log(`[Design Validator] Evicted ${evictedCount} expired cache entries`);
+    }
+  }
+
+  /**
+   * キャッシュメトリクスを取得（REQ-FIX-3）
+   */
+  public getMetrics(): { hitRate: number; avgTimeMs: number; hits: number; misses: number } {
+    const total = this.cacheHits + this.cacheMisses;
+    const hitRate = total > 0 ? this.cacheHits / total : 0;
+    const avgTimeMs = this.cacheMisses > 0 ? this.totalTimeMs / this.cacheMisses : 0;
+
+    return {
+      hitRate,
+      avgTimeMs,
+      hits: this.cacheHits,
+      misses: this.cacheMisses,
+    };
   }
 
   /**
@@ -276,6 +409,9 @@ export class DesignValidator {
     // キャッシュクリア（REQ-3）
     this.clearCache();
 
+    // REQ-FIX-3: AST解析キャッシュの永続化
+    this.persistCache();
+
     return result;
   }
 
@@ -409,13 +545,8 @@ export class DesignValidator {
 
       // FR-6: TypeScript/JavaScriptファイルの場合、AST解析を試行
       if (/\.(ts|tsx|js|jsx)$/.test(fullPath) && identifierName) {
-        const startTime = Date.now();
-        const astResult = analyzeTypeScriptFile(fullPath);
-        const elapsed = Date.now() - startTime;
-
-        if (elapsed > 50) {
-          console.warn(`[Design Validator] AST analysis took ${elapsed}ms for ${filePath}`);
-        }
+        // REQ-FIX-3: キャッシュ付きAST解析に変更
+        const astResult = this.analyzeWithCache(fullPath);
 
         if (astResult) {
           // AST解析成功: 識別子が抽出リストに含まれているかチェック

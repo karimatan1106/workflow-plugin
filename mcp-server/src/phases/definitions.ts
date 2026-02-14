@@ -456,7 +456,15 @@ export const MAX_SKIP_COUNT = Math.floor(PHASES_LARGE.length * 0.5);
  * @param scope タスクスコープ（affectedFiles配列）
  * @returns スキップすべきフェーズとその理由のマップ
  */
-export function calculatePhaseSkips(scope: { affectedFiles?: string[]; files?: string[] }): Record<string, string> {
+// REQ-FIX-2: userIntentキーワードによるスキップオーバーライド
+// @spec docs/workflows/レビュ-指摘6件の根本原因修正/spec.md
+const TEST_KEYWORDS = ['テスト', 'test', '試験', 'testing'];
+const IMPL_KEYWORDS = ['実装', 'implementation', 'implement', '開発'];
+
+export function calculatePhaseSkips(
+  scope: { affectedFiles?: string[]; files?: string[] },
+  userIntent?: string
+): Record<string, string> {
   const files = scope.affectedFiles || scope.files || [];
   const phaseSkipReasons: Record<string, string> = {};
 
@@ -464,12 +472,6 @@ export function calculatePhaseSkips(scope: { affectedFiles?: string[]; files?: s
   if (files.length === 0) {
     return phaseSkipReasons;
   }
-
-  // 拡張子を抽出
-  const extensions = files.map(f => {
-    const match = f.match(/\.([^.]+)$/);
-    return match ? match[1] : '';
-  }).filter(Boolean);
 
   // コードファイルの拡張子
   const codeExtensions = ['ts', 'tsx', 'js', 'jsx', 'py', 'java', 'cpp', 'c', 'go', 'rs'];
@@ -483,10 +485,6 @@ export function calculatePhaseSkips(scope: { affectedFiles?: string[]; files?: s
     return codeExtensions.includes(ext) && !testPatterns.test(f);
   });
   const hasTestFiles = files.some(f => testPatterns.test(f));
-  const hasOnlyDocs = files.every(f => {
-    const ext = f.split('.').pop() || '';
-    return docExtensions.includes(ext);
-  });
 
   // コードファイルがない場合
   if (!hasCodeFiles) {
@@ -503,6 +501,21 @@ export function calculatePhaseSkips(scope: { affectedFiles?: string[]; files?: s
   if (!hasCodeFiles && !hasTestFiles) {
     phaseSkipReasons['testing'] = 'テスト対象ファイルが影響範囲に含まれないため';
     phaseSkipReasons['regression_test'] = 'テスト対象ファイルが影響範囲に含まれないため';
+  }
+
+  // REQ-FIX-2: userIntentによるスキップオーバーライド
+  // ユーザーの明示指示はスコープベースの判定より優先される
+  if (userIntent) {
+    const intentLower = userIntent.toLowerCase();
+    if (TEST_KEYWORDS.some(kw => intentLower.includes(kw.toLowerCase()))) {
+      delete phaseSkipReasons['test_impl'];
+      delete phaseSkipReasons['testing'];
+      delete phaseSkipReasons['regression_test'];
+    }
+    if (IMPL_KEYWORDS.some(kw => intentLower.includes(kw.toLowerCase()))) {
+      delete phaseSkipReasons['implementation'];
+      delete phaseSkipReasons['refactoring'];
+    }
   }
 
   return phaseSkipReasons;

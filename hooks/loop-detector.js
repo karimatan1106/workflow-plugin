@@ -24,16 +24,38 @@ function ensureStateDir() {
   }
 }
 
-// エラーをログファイルに書き出す
-function logError(type, message, stack) {
+// FR-6.2: JSON Lines形式のエラーログ (REQ-FIX-6)
+/**
+ * エラーをログファイルに書き出す
+ *
+ * .claude/state/hook-errors.logにJSON Lines形式で記録する。
+ *
+ * @param {string} category エラーカテゴリ
+ * @param {string} message エラーメッセージ
+ * @param {string} details エラー詳細(スタックトレース等)
+ */
+function logError(category, message, details = '') {
   const timestamp = new Date().toISOString();
-  const entry = `[${timestamp}] [${HOOK_NAME}] ${type}: ${message}\n${stack ? `  Stack: ${stack}\n` : ''}\n`;
+  const logEntry = {
+    timestamp,
+    hook: HOOK_NAME,
+    category,
+    message,
+    details
+  };
+
+  const logPath = require('path').join(STATE_DIR, 'hook-errors.log');
+  const logLine = JSON.stringify(logEntry) + '\n';
+
   try {
     ensureStateDir();
-    require('fs').appendFileSync(ERROR_LOG, entry);
-  } catch (e) { /* ignore */ }
-  console.error(`[${HOOK_NAME}] ${type}: ${message}`);
-  if (stack) console.error(`  スタック: ${stack}`);
+    require('fs').appendFileSync(logPath, logLine);
+  } catch (e) {
+    // ログ書き込み失敗時も処理を続行(fail-safe)
+  }
+
+  console.error(`[${HOOK_NAME}] ${category}: ${message}`);
+  if (details) console.error(`  詳細: ${details}`);
 }
 
 // グローバルエラーハンドラ
@@ -360,9 +382,10 @@ function checkLoop(filePath) {
  */
 function main(input) {
   try {
-    // 入力の検証
+    // 入力の検証（REQ-FIX-6: fail-closed）
     if (!input || typeof input !== 'object') {
-      process.exit(0);
+      logError('入力検証エラー', '入力がオブジェクト型ではありません', null);
+      process.exit(2);
     }
 
     const toolName = input.tool_name;
@@ -375,15 +398,18 @@ function main(input) {
 
     const filePath = toolInput.file_path || '';
 
-    // ファイルパスがない場合は許可
+    // REQ-FIX-6: ファイルパスがない場合はブロック（fail-closed）
     if (!filePath) {
-      process.exit(0);
+      logError('入力検証エラー', 'file_pathが空です', `toolName=${toolName}`);
+      process.exit(2);
     }
 
     // ループ検出
     checkLoop(filePath);
   } catch (e) {
-    // エラー時は許可（安全側に倒す）
+    // REQ-FIX-6: エラー時はブロック（fail-closed）
+    logError('予期しないエラー', e.message, e.stack);
+    process.exit(2);
   }
 
   // 正常終了
@@ -405,9 +431,11 @@ if (require.main === module) {
   let inputData = '';
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', (chunk) => (inputData += chunk));
-  process.stdin.on('error', () => {
+  process.stdin.on('error', (err) => {
     clearTimeout(timeout);
-    process.exit(0);
+    // REQ-FIX-6: stdin エラー時はブロック（fail-closed）
+    logError('stdin エラー', err.message, err.stack);
+    process.exit(2);
   });
   process.stdin.on('end', () => {
     clearTimeout(timeout);
@@ -415,8 +443,9 @@ if (require.main === module) {
       const input = JSON.parse(inputData);
       main(input);
     } catch (e) {
-      // stdin からの入力がない場合は許可
-      process.exit(0);
+      // REQ-FIX-6: JSON パースエラー時はブロック（fail-closed）
+      logError('JSON パースエラー', e.message, e.stack);
+      process.exit(2);
     }
   });
 } else {

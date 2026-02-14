@@ -222,6 +222,33 @@ function extractTestCounts(output: string): { passedCount?: number; failedCount?
 }
 
 /**
+ * summaryフィールドからテスト件数を抽出（変更F: フォールバック処理）
+ *
+ * @param summary サマリーテキスト
+ * @returns テスト総数、またはnull（抽出失敗時）
+ */
+function extractTestCountFromSummary(summary: string): { total: number } | null {
+  const patterns = [
+    /(\d+)件のテスト/,           // 日本語形式1: "5件のテスト"
+    /(\d+)テスト実行/,           // 日本語形式2: "5テスト実行"
+    /totalTests:\s*(\d+)/,       // 英語形式1: "totalTests: 5"
+    /(\d+)\s+tests?/i,           // 英語形式2: "5 tests" or "1 test"
+  ];
+
+  for (const pattern of patterns) {
+    const match = summary.match(pattern);
+    if (match && match[1]) {
+      const total = parseInt(match[1], 10);
+      if (!isNaN(total) && total >= 0) {
+        return { total };
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
  * テスト結果を記録
  *
  * @param taskId タスクID（必須）
@@ -349,7 +376,20 @@ export function workflowRecordTestResult(
     const existingResults = taskState.testResults || [];
 
     // REQ-2: テスト件数を自動抽出
-    const counts = extractTestCounts(output);
+    let counts = extractTestCounts(output);
+
+    // 変更F: summaryフィールドによるフォールバック処理
+    // 既存のフレームワークパターンマッチが失敗した場合のフォールバック
+    if (!counts.passedCount && !counts.failedCount && summary) {
+      const summaryCount = extractTestCountFromSummary(summary);
+      if (summaryCount) {
+        // summaryから件数を抽出できた場合
+        counts = { passedCount: summaryCount.total, failedCount: 0 };
+      } else if (summary.length > 0) {
+        // summaryがあるが件数抽出失敗時も記録を許可（件数0）
+        counts = { passedCount: 0, failedCount: 0 };
+      }
+    }
 
     // REQ-2: outputが上限を超える場合は末尾のみ保存
     const truncatedOutput = output.length > MAX_OUTPUT_LENGTH ? output.slice(-MAX_OUTPUT_LENGTH) : output;

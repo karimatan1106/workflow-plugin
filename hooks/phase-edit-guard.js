@@ -1406,9 +1406,10 @@ function displayScopeViolationMessage(filePath, checkResult) {
  */
 function main(input) {
   try {
-    // 入力の検証（不正な入力は許可して処理を進める）
+    // 入力の検証（REQ-FIX-6: 不正な入力はブロック - fail-closed）
     if (!input || typeof input !== 'object') {
-      process.exit(EXIT_CODES.SUCCESS);
+      logError('入力検証エラー', '入力がオブジェクト型ではありません', null);
+      process.exit(EXIT_CODES.BLOCK);
     }
 
     const toolName = input.tool_name;
