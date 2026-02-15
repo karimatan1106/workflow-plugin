@@ -6,6 +6,8 @@
  * @spec docs/workflows/ワ-クフロ-並列タスク対応/spec.md
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
 import { stateManager } from '../state/manager.js';
 import type { ApproveResult } from '../state/types.js';
 import { APPROVE_TYPE_MAPPING } from '../phases/definitions.js';
@@ -62,6 +64,37 @@ export function workflowApprove(taskId?: string, type?: string, sessionToken?: s
 
   // 承認処理を実行
   return safeExecute('承認処理', () => {
+    // REQ-H: design承認時の品質ゲートチェック
+    if (typeValidation.value === 'design') {
+      const docsDir = taskState.docsDir;
+      if (docsDir) {
+        const requiredArtifacts = ['spec.md', 'state-machine.mmd', 'flowchart.mmd'];
+        const missingArtifacts: string[] = [];
+        const warnings: string[] = [];
+
+        for (const artifact of requiredArtifacts) {
+          const artifactPath = path.join(docsDir, artifact);
+          if (!fs.existsSync(artifactPath)) {
+            missingArtifacts.push(artifact);
+          } else {
+            const content = fs.readFileSync(artifactPath, 'utf8');
+            const lines = content.split('\n').length;
+            if (artifact === 'spec.md' && lines < 20) {
+              warnings.push(`${artifact} の内容が短い可能性があります (${lines}行)`);
+            }
+          }
+        }
+
+        if (missingArtifacts.length > 0) {
+          return {
+            success: false,
+            message: `設計レビュー承認失敗: 必須成果物が不足しています`,
+            details: missingArtifacts.map(a => `${a}が見つかりません`),
+          } as ApproveResult;
+        }
+      }
+    }
+
     // CODE_REVIEW_APPROVAL環境変数チェック: false の場合は自動承認
     const codeReviewAutoApprove = process.env.CODE_REVIEW_APPROVAL === 'false';
 

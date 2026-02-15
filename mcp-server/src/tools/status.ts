@@ -93,6 +93,21 @@ export function workflowStatus(taskId?: string): StatusResult {
     result.isParallelPhase = true;
   }
 
+  // REQ-C: scope情報をレスポンスに追加
+  if (taskState.scope) {
+    (result as any).scope = taskState.scope;
+  } else {
+    (result as any).scope = { files: [], dirs: [], glob: '' };
+  }
+
+  // REQ-C: approvals情報をレスポンスに追加
+  (result as any).approvals = taskState.approvals || {
+    requirements: false,
+    design: false,
+    test_design: false,
+    code_review: false,
+  };
+
   // REQ-C3: スキップされたフェーズ情報を追加
   if (taskState.phaseSkipReasons && Object.keys(taskState.phaseSkipReasons).length > 0) {
     const skippedPhases = Object.entries(taskState.phaseSkipReasons)

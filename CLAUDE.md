@@ -112,13 +112,18 @@ research → requirements → parallel_analysis（threat_modeling + planning）
 
 タスクの規模に応じて適切なサイズを選択してください:
 
-| サイズ | フェーズ数 | 適用場面 |
-|-------|----------|---------|
-| small | 8 | 単一ファイルの小修正、typo修正、設定変更 |
-| medium | 14 | 複数ファイルの修正、機能追加、バグ修正 |
-| large | 19 | 大規模な機能追加、アーキテクチャ変更、セキュリティ修正 |
+| サイズ | フェーズ数 | 適用場面 | 例 |
+|-------|----------|---------|-----|
+| small | 8 | 単一ファイルの小修正、軽微な変更 | typo修正、定数変更、コメント追加 |
+| medium | 14 | 複数ファイルの修正、中規模の機能追加 | 既存機能の拡張、バグ修正、リファクタリング |
+| large | 19 | 大規模な機能追加、アーキテクチャ変更 | 新機能実装、セキュリティ修正、システム設計変更 |
 
 デフォルトは large です。`/workflow start <タスク名>` 実行時に MCP サーバーが自動判定します。
+
+**サイズ選択の判断基準:**
+- **small**: 変更ファイル数が1-2個、設計不要、既存テストで十分
+- **medium**: 変更ファイル数が3-10個、簡易設計、新規テスト追加が必要
+- **large**: 変更ファイル数が10個以上、または設計図・脅威モデリングが必要
 
 ---
 
@@ -166,7 +171,7 @@ research → requirements → parallel_analysis（threat_modeling + planning）
 | research | Explore | haiku | - | - | research.md |
 | requirements | general-purpose | sonnet | research.md | 全文 | requirements.md |
 | threat_modeling | general-purpose | sonnet | requirements.md | 全文 | threat-model.md |
-| planning | Plan | sonnet | requirements.md | 全文 | spec.md |
+| planning | general-purpose | sonnet | requirements.md | 全文 | spec.md |
 | state_machine | general-purpose | haiku | spec.md | 全文 | state-machine.mmd |
 | flowchart | general-purpose | haiku | spec.md | 全文 | flowchart.mmd |
 | ui_design | general-purpose | sonnet | spec.md | 全文 | ui-design.md |
@@ -189,6 +194,8 @@ research → requirements → parallel_analysis（threat_modeling + planning）
 
 各フェーズでsubagentを起動する際は以下の形式を使用：
 
+**重要**: Orchestratorは必ず `workflow_status` でタスク情報（userIntent含む）を取得し、プロンプトに埋め込むこと。
+
 ```
 Task({
   prompt: `
@@ -196,10 +203,9 @@ Task({
 
     ## タスク情報
     - タスク名: {taskName}
+    - タスクID: {taskId}
     - 出力先: docs/workflows/{taskName}/
-
-    ## ユーザーの意図
-    {userIntent}
+    - ユーザーの意図: {userIntent}
 
     ## 入力
     以下のファイルを読み込んでください:
@@ -1560,6 +1566,29 @@ workflow_set_scope({
 | 順序 | ドキュメント | 必須 | 説明 |
 |:---:|-------------|:---:|------|
 | 1 | `{docsDir}/code-review.md` | - | コードレビュー結果（指摘事項） |
+
+**設計-実装整合性チェックリスト（必須確認項目）:**
+
+code_reviewフェーズでは、以下の6項目を必ず確認すること:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  設計-実装整合性チェックリスト                               │
+├─────────────────────────────────────────────────────────────┤
+│  1. spec.mdの全機能が実装されているか                       │
+│  2. state-machine.mmdの全状態遷移が実装されているか         │
+│  3. flowchart.mmdの全処理フローが実装されているか           │
+│  4. ui-design.mdの全UI要素が実装されているか                │
+│  5. 設計書にない「勝手な追加機能」がないか                  │
+│  6. 未実装項目がある場合はimplementationフェーズに差し戻し  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**code-review.mdに記載すべき内容:**
+- 設計-実装整合性: OK / NG（未実装項目があればリスト化）
+- コード品質: 問題点と改善提案
+- セキュリティ: 潜在的な脆弱性
+- パフォーマンス: ボトルネックの指摘
 
 ---
 

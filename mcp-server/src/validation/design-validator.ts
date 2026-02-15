@@ -502,6 +502,28 @@ export class DesignValidator {
       }
     }
 
+    // REQ-B: セマンティック検証
+    if (fs.existsSync(stateMachinePath)) {
+      const smSemantic = fs.readFileSync(stateMachinePath, 'utf-8');
+      const stateNames = this.extractStateNames(smSemantic);
+      for (const sn of stateNames) {
+        if (sn.length <= 2) continue;
+        if (!this.searchStateNameInProject(sn)) {
+          result.warnings.push(`state-machine.mmd: 状態 "${sn}" が実装コード内に見つかりません`);
+        }
+      }
+    }
+    if (fs.existsSync(flowchartPath)) {
+      const fcSemantic = fs.readFileSync(flowchartPath, 'utf-8');
+      const nodeLabels = this.extractNodeNames(fcSemantic);
+      for (const nl of nodeLabels) {
+        if (nl.length <= 2) continue;
+        if (!this.searchStateNameInProject(nl)) {
+          result.warnings.push(`flowchart.mmd: ノード "${nl}" が実装コード内に見つかりません`);
+        }
+      }
+    }
+
     // サマリー計算
     result.summary.missing = result.missingItems.length;
     result.summary.implemented = result.summary.total - result.summary.missing;
@@ -758,6 +780,101 @@ export class DesignValidator {
       filePaths,
       enumName  // AST検索用の識別子名
     );
+  }
+
+  /**
+   * REQ-B: Mermaid stateDiagram-v2から状態名を抽出
+   *
+   * @param content Mermaid stateDiagram-v2形式の文字列
+   * @returns 抽出された状態名の配列（重複排除済み）
+   */
+  extractStateNames(content: string): string[] {
+    const states = new Set<string>();
+
+    // パターン1: StateName --> OtherState: label
+    const transitionPattern = /(\w+)\s*-->|-->\s*(\w+)/gm;
+    let match;
+    while ((match = transitionPattern.exec(content)) !== null) {
+      if (match[1] && match[1] !== '[*]' && !match[1].startsWith('state')) {
+        states.add(match[1]);
+      }
+      if (match[2] && match[2] !== '[*]') {
+        states.add(match[2]);
+      }
+    }
+
+    // パターン2: state "label" as StateName
+    const stateAsPattern = /state\s+"[^"]+"\s+as\s+(\w+)/gm;
+    while ((match = stateAsPattern.exec(content)) !== null) {
+      if (match[1]) states.add(match[1]);
+    }
+
+    return Array.from(states);
+  }
+
+  /**
+   * REQ-B: Mermaid flowchartからノード名（ラベル）を抽出
+   *
+   * @param content Mermaid flowchart形式の文字列
+   * @returns 抽出されたノードラベルの配列（重複排除済み）
+   */
+  extractNodeNames(content: string): string[] {
+    const nodes = new Set<string>();
+
+    // パターン: A[ラベル], B{ラベル}, C([ラベル]), D((ラベル)), E{{ラベル}}
+    const nodePattern = /\w+\[([^\]]+)\]|\w+\{([^}]+)\}|\w+\(\[([^\]]+)\]\)|\w+\(\(([^)]+)\)\)|\w+\{\{([^}]+)\}\}/gm;
+    let match;
+    while ((match = nodePattern.exec(content)) !== null) {
+      const label = match[1] || match[2] || match[3] || match[4] || match[5];
+      if (label) nodes.add(label.trim());
+    }
+
+    return Array.from(nodes);
+  }
+
+  /**
+   * REQ-B: プロジェクト内で状態名/ノード名を検索
+   *
+   * @param name 検索する名前
+   * @returns 見つかった場合true
+   */
+  private searchStateNameInProject(name: string): boolean {
+    // プロジェクトルートの src/ ディレクトリ内を検索
+    const srcDir = path.join(this.projectRoot, 'src');
+    if (!fs.existsSync(srcDir)) {
+      return true; // src/ がない場合は検証スキップ
+    }
+
+    try {
+      return this.searchInDir(srcDir, name);
+    } catch {
+      return true; // エラー時は検証スキップ
+    }
+  }
+
+  /**
+   * ディレクトリ内を再帰的に検索
+   */
+  private searchInDir(dir: string, name: string): boolean {
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules') {
+          if (this.searchInDir(fullPath, name)) return true;
+        } else if (entry.isFile() && /\.(ts|js|tsx|jsx)$/.test(entry.name)) {
+          try {
+            const content = fs.readFileSync(fullPath, 'utf8');
+            if (content.includes(name)) return true;
+          } catch {
+            // ファイル読み取りエラーは無視
+          }
+        }
+      }
+    } catch {
+      // ディレクトリ読み取りエラーは無視
+    }
+    return false;
   }
 }
 

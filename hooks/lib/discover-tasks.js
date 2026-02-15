@@ -16,9 +16,9 @@ const { getCached } = require('./task-cache');
 const STATE_DIR = process.env.STATE_DIR || path.join(process.cwd(), '.claude', 'state');
 const WORKFLOW_DIR = process.env.WORKFLOW_DIR || path.join(STATE_DIR, 'workflows');
 
-/** タスクインデックスキャッシュファイル（1時間TTL） */
+/** タスクインデックスキャッシュファイル（30秒TTL - REQ-F） */
 const TASK_INDEX_FILE = path.join(STATE_DIR, 'task-index.json');
-const TASK_INDEX_TTL = 60 * 60 * 1000; // 1 hour
+const TASK_INDEX_TTL = 30 * 1000; // 30 seconds (REQ-F: shortened from 1 hour)
 
 /**
  * JSONファイルを安全に読み込む
@@ -61,10 +61,22 @@ function readTaskIndexCache() {
     const now = Date.now();
     const age = now - cache.updatedAt;
 
-    // TTL（環境変数でオーバーライド可能、デフォルト1時間）
+    // TTL（環境変数でオーバーライド可能、デフォルト30秒）
     const ttl = parseInt(process.env.TASK_INDEX_TTL_MS || TASK_INDEX_TTL, 10);
     if (age > ttl) {
       return null;
+    }
+
+    // REQ-F: mtimeチェック - ファイルが更新されている場合はキャッシュ無効化
+    try {
+      const stat = fs.statSync(TASK_INDEX_FILE);
+      const fileMtime = stat.mtimeMs;
+      if (fileMtime > cache.updatedAt) {
+        console.debug('[discover-tasks] cache invalidated: file mtime (%d) > cache updatedAt (%d)', fileMtime, cache.updatedAt);
+        return null;
+      }
+    } catch {
+      // statSync失敗時はキャッシュを使用（ファイル削除時など）
     }
 
     // REQ-1: tasks配列の各要素に必須フィールドが含まれることを検証
