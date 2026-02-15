@@ -430,10 +430,28 @@ export class WorkflowStateManager {
     if (!fs.existsSync(this.indexPath)) {
       return {};
     }
-
     try {
       const data = fs.readFileSync(this.indexPath, 'utf-8');
-      return JSON.parse(data);
+      const parsed = JSON.parse(data);
+      // Hook側スキーマ: { tasks: [...], updatedAt }
+      if (parsed.tasks && Array.isArray(parsed.tasks)) {
+        const index: Record<string, string> = {};
+        for (const task of parsed.tasks) {
+          if (task.taskId && task.workflowDir) {
+            const relativePath = path.relative(
+              path.dirname(this.indexPath),
+              task.workflowDir
+            );
+            index[task.taskId] = relativePath;
+          }
+        }
+        return index;
+      }
+      // レガシーマップ形式のフォールバック
+      if (typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed;
+      }
+      return {};
     } catch (err) {
       console.warn('[StateManager] Failed to load task index, rebuilding...', err);
       return this.rebuildTaskIndex();
@@ -443,31 +461,28 @@ export class WorkflowStateManager {
   /**
    * task-index.jsonを保存(REQ-FIX-5)
    */
-  private saveTaskIndex(index: Record<string, string>): void {
-    try {
-      fs.mkdirSync(path.dirname(this.indexPath), { recursive: true });
-      fs.writeFileSync(this.indexPath, JSON.stringify(index, null, 2));
-    } catch (err) {
-      console.warn('[StateManager] Failed to save task index:', err);
-    }
+  private saveTaskIndex(_index: Record<string, string>): void {
+    // REQ-1: MCP serverはtask-index.jsonへの書き込みを停止
+    // Hook側（discover-tasks.js）が唯一の書き込み権限を持つ
+    // フェーズ遷移時はworkflow-state.jsonのみを更新し、
+    // Hook側が次回実行時にworkflow-state.jsonから最新状態を読み取る
+    return;
   }
 
   /**
    * task-index.jsonを再構築(REQ-FIX-5)
    */
   private rebuildTaskIndex(): Record<string, string> {
-    console.log('[StateManager] Rebuilding task index...');
+    console.log('[StateManager] Rebuilding task index (in-memory only)...');
     const tasks = this.discoverTasks();
     const index: Record<string, string> = {};
-
     for (const task of tasks) {
       const taskDirName = `${task.taskId}_${task.taskName}`;
       const relativePath = path.join('workflows', taskDirName);
       index[task.taskId] = relativePath;
     }
-
-    this.saveTaskIndex(index);
-    console.log(`[StateManager] Rebuilt task index with ${tasks.length} entries`);
+    // REQ-1: ファイルには書き込まず、インメモリのみ
+    console.log(`[StateManager] Rebuilt task index with ${tasks.length} entries (in-memory)`);
     return index;
   }
 

@@ -57,6 +57,17 @@ let gitDiffCache: { timestamp: number; files: string[] } | null = null;
 const GIT_DIFF_CACHE_TTL = 30000; // 30 seconds
 
 /**
+ * git diffキャッシュをリセットする（テスト専用）
+ *
+ * vitestの同一プロセス内でテスト間のキャッシュ干渉を防止するために使用する。
+ * beforeEachまたはafterEachフック内で呼び出すこと。
+ * 本番コードでの使用は想定していない。
+ */
+export function resetGitDiffCache(): void {
+  gitDiffCache = null;
+}
+
+/**
  * import抽出結果のキャッシュエントリ (REQ-FIX-4)
  */
 interface ImportCacheEntry {

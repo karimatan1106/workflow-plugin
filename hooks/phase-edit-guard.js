@@ -1191,7 +1191,7 @@ function analyzeBashCommand(command) {
   }
 
   // B-2: git commitのHeredoc形式を誤検出から除外
-  if (/^git\s+commit\s+.*\$\(\s*cat\s+<</.test(command)) {
+  if (/git\s+commit\s+.*\$\(\s*cat\s+<</.test(command)) {
     return { isModifying: false, filePath: null, isExplicitlyAllowed: true };
   }
 
@@ -1218,6 +1218,10 @@ function analyzeBashCommand(command) {
   // 最初にファイル修正コマンドをチェック（優先度高）
   // これにより "cat file.txt | tee output.log" のようなケースを正しく検出
   for (const part of commandParts) {
+    // REQ-2修正: 分割後の各パーツにもB-2例外を適用
+    if (/^\s*git\s+commit\s+.*\$\(\s*cat\s+<</.test(part)) {
+      continue; // このパーツはgit commit HEREDOCなのでスキップ
+    }
     for (const pattern of FILE_MODIFYING_COMMANDS) {
       if (pattern.test(part)) {
         debugLog('ファイル修正Bashコマンド検出:', part.substring(0, 50));
