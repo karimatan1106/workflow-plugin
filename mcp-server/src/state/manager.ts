@@ -491,6 +491,63 @@ export class WorkflowStateManager {
   }
 
   /**
+   * 単一タスクのフェーズをtask-index.jsonで直接更新する（軽量版）
+   *
+   * FIX-1: キャッシュ競合問題を解決
+   * - saveTaskIndex()はdiscoverTasks()経由で全タスクをスキャンしてキャッシュを読む
+   *   このため、フェーズ遷移時にstaleなキャッシュが返される可能性がある
+   * - updateTaskIndexForSingleTask()は該当タスクのphaseフィールドのみを直接更新
+   *   キャッシュスキャンを避け、高速かつ原因Aの競合を防止する
+   *
+   * @spec docs/workflows/task-index-jsonキャッシュ同期の根本原因修正/spec.md
+   * @param taskId 更新対象のタスクID
+   * @param phase 新しいフェーズ
+   * @param taskState 更新後のタスク状態（HMAC付き）
+   */
+  private updateTaskIndexForSingleTask(
+    taskId: string,
+    phase: PhaseName,
+    taskState: TaskState
+  ): void {
+    try {
+      const indexPath = path.join(STATE_DIR, 'task-index.json');
+      const releaseLock = acquireLockSync(indexPath);
+      try {
+        let taskList: { schemaVersion: number; tasks: any[]; updatedAt: number };
+        if (fs.existsSync(indexPath)) {
+          const content = fs.readFileSync(indexPath, 'utf8');
+          taskList = JSON.parse(content);
+        } else {
+          taskList = { schemaVersion: 2, tasks: [], updatedAt: Date.now() };
+        }
+
+        // FIX-1: ロック内でIndex.jsonを読み込み・更新・書き込み（レースコンディション防止）
+        if (phase === 'completed') {
+          taskList.tasks = taskList.tasks.filter((t: any) => t.taskId !== taskId);
+          console.log(`[StateManager] Removed completed task ${taskId} from index`);
+        } else {
+          const idx = taskList.tasks.findIndex((t: any) => t.taskId === taskId);
+          const updatedEntry = { ...taskState, stateIntegrity: generateStateHmac(taskState) };
+          if (idx >= 0) {
+            taskList.tasks[idx] = updatedEntry;
+          } else {
+            taskList.tasks.push(updatedEntry);
+          }
+        }
+        taskList.updatedAt = Date.now();
+
+        atomicWriteJson(indexPath, taskList);
+      } finally {
+        releaseLock();
+      }
+    } catch (err) {
+      // FIX-1: キャッシュ同期エラーはログするが、フェーズ遷移自体は成功した
+      // workflow-state.jsonは正常に更新されているため、フック側がフォールバックスキャンで対応
+      console.error('[updateTaskIndexForSingleTask] Failed to update index (non-critical):', err);
+    }
+  }
+
+  /**
    * task-index.jsonを再構築(REQ-FIX-5)
    */
   private rebuildTaskIndex(): Record<string, string> {
@@ -803,15 +860,10 @@ export class WorkflowStateManager {
       releaseLock();
     }
 
-    // REQ-1: フェーズ遷移時にtask-index.jsonを更新（Hookスキーマ形式）
-    const index = this.loadTaskIndex();
-    if (phase === 'completed') {
-      // completedフェーズの場合、インデックスから削除
-      delete index[taskId];
-      console.log(`[StateManager] Removed completed task ${taskId} from index`);
-    }
-    // 全フェーズ遷移でtask-index.jsonを更新（Hook側キャッシュと同期）
-    this.saveTaskIndex(index);
+    // FIX-1: フェーズ遷移時にtask-index.jsonを軽量更新
+    // saveTaskIndex()はdiscoverTasks()経由で古いキャッシュを読む問題があるため、
+    // 該当タスクのみを直接更新する軽量版を使用する
+    this.updateTaskIndexForSingleTask(taskId, phase, taskState);
 
     // FR-11: キャッシュ無効化
     taskCache.invalidate('task-list');

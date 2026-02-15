@@ -1436,6 +1436,64 @@ function main(input) {
     if (workflowState) {
       const phase = workflowState.phase;
 
+      // ★★★ FIX-2: commit/pushフェーズのgit操作を早期許可 ★★★
+      // 根本原因: staleなtask-index.jsonが古いフェーズを返す場合がある
+      // - task-index.jsonはnpm package管理（キャッシュ競合あり）
+      // - 複数の並列フック実行時にキャッシュが同期しないケースがある
+      // 対策: commit/pushフェーズのgit操作は状態確認と関係なく許可
+      // - ホワイトリスト判定よりも前に、フェーズ値をそのまま参照
+      // - これにより、たとえ古いフェーズが返されても正しい操作が許可される
+      if (phase === 'commit' || phase === 'push') {
+        const lowerCmd = command.toLowerCase();
+
+        if (phase === 'commit') {
+          // commit フェーズ: git add, git commit, git tag を許可
+          if (/\bgit\s+add\b/.test(lowerCmd)) {
+            debugLog('B-2: git add allowed (commit phase)');
+            process.exit(EXIT_CODES.SUCCESS);
+          }
+          if (/\bgit\s+commit\b/.test(lowerCmd)) {
+            // --amend と --no-verify は本フェーズでも禁止（ワークフロー要件）
+            if (/--amend/.test(lowerCmd)) {
+              console.log('');
+              console.log(SEPARATOR_LINE);
+              console.log(' git commit --amend is blocked by workflow');
+              console.log(SEPARATOR_LINE);
+              process.exit(EXIT_CODES.BLOCK);
+            }
+            if (/--no-verify/.test(lowerCmd)) {
+              console.log('');
+              console.log(SEPARATOR_LINE);
+              console.log(' git commit --no-verify is blocked by workflow');
+              console.log(SEPARATOR_LINE);
+              process.exit(EXIT_CODES.BLOCK);
+            }
+            debugLog('B-2: git commit allowed (commit phase)');
+            process.exit(EXIT_CODES.SUCCESS);
+          }
+          if (/\bgit\s+tag\b/.test(lowerCmd)) {
+            debugLog('B-2: git tag allowed (commit phase)');
+            process.exit(EXIT_CODES.SUCCESS);
+          }
+        }
+
+        if (phase === 'push') {
+          // push フェーズ: git push を許可（--force 除く）
+          if (/\bgit\s+push\b/.test(lowerCmd)) {
+            // --force/-f は本フェーズでも禁止（ワークフロー要件）
+            if (/--force/.test(lowerCmd) || /\s-f\b/.test(lowerCmd)) {
+              console.log('');
+              console.log(SEPARATOR_LINE);
+              console.log(' git push --force/-f is blocked by workflow');
+              console.log(SEPARATOR_LINE);
+              process.exit(EXIT_CODES.BLOCK);
+            }
+            debugLog('B-2: git push allowed (push phase)');
+            process.exit(EXIT_CODES.SUCCESS);
+          }
+        }
+      }
+
       // ホワイトリストチェック実行
       const whitelistResult = checkBashWhitelist(command, phase);
       if (!whitelistResult.allowed) {
@@ -1484,52 +1542,6 @@ function main(input) {
     if (workflowState) {
       const phase = workflowState.phase;
       const rule = getPhaseRule(phase, workflowState.workflowState);
-
-      // B-2: commit/pushフェーズでのgit操作ホワイトリスト
-      if (phase === 'commit' || phase === 'push') {
-        const lowerCmd = command.toLowerCase();
-        if (phase === 'commit') {
-          if (/\bgit\s+add\b/.test(lowerCmd)) {
-            debugLog('B-2: git add allowed (commit phase)');
-            process.exit(EXIT_CODES.SUCCESS);
-          }
-          if (/\bgit\s+commit\b/.test(lowerCmd)) {
-            if (/--amend/.test(lowerCmd)) {
-              console.log('');
-              console.log(SEPARATOR_LINE);
-              console.log(' git commit --amend is blocked by workflow');
-              console.log(SEPARATOR_LINE);
-              process.exit(EXIT_CODES.BLOCK);
-            }
-            if (/--no-verify/.test(lowerCmd)) {
-              console.log('');
-              console.log(SEPARATOR_LINE);
-              console.log(' git commit --no-verify is blocked by workflow');
-              console.log(SEPARATOR_LINE);
-              process.exit(EXIT_CODES.BLOCK);
-            }
-            debugLog('B-2: git commit allowed (commit phase)');
-            process.exit(EXIT_CODES.SUCCESS);
-          }
-          if (/\bgit\s+tag\b/.test(lowerCmd)) {
-            debugLog('B-2: git tag allowed (commit phase)');
-            process.exit(EXIT_CODES.SUCCESS);
-          }
-        }
-        if (phase === 'push') {
-          if (/\bgit\s+push\b/.test(lowerCmd)) {
-            if (/--force/.test(lowerCmd) || /\s-f\b/.test(lowerCmd)) {
-              console.log('');
-              console.log(SEPARATOR_LINE);
-              console.log(' git push --force/-f is blocked by workflow');
-              console.log(SEPARATOR_LINE);
-              process.exit(EXIT_CODES.BLOCK);
-            }
-            debugLog('B-2: git push allowed (push phase)');
-            process.exit(EXIT_CODES.SUCCESS);
-          }
-        }
-      }
 
       // 読み取り専用フェーズでは、明示的に許可されたコマンド以外はブロック
       if (rule && rule.readOnly) {
