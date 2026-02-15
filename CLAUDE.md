@@ -221,7 +221,7 @@ Task({
 
     ## サマリー
 
-    （50行以内で、このドキュメントの要点を記述）
+    （200行以内で、このドキュメントの要点を記述）
     - 目的: このドキュメントの目的
     - 主要な決定事項: 重要な設計決定や技術選定
     - 次フェーズで必要な情報: 後続フェーズで必須となる情報
@@ -651,7 +651,7 @@ cd e2e && npm install playwright
 ```typescript
 /**
  * コンポーネント/サービス名
- * @spec docs/workflows/xxx.md       // ワークフロー成果物
+ * @spec docs/spec/features/xxx.md // 機能仕様書
  * @spec docs/spec/api/xxx.md     // API仕様書（APIの場合）
  * @spec docs/spec/screens/xxx.md // 画面仕様書（画面の場合）
  */
@@ -1224,7 +1224,7 @@ const { data, error } = await api.POST('/api/v1/users', {
 | ディレクトリ | 役割 | 例 |
 |-------------|------|-----|
 | `docs/spec/` | プロダクト仕様（永続的） | 機能仕様、画面仕様、API仕様 |
-| `docs/workflows/` | ワークフロー成果物（作業記録） | 調査結果、設計検討、テスト設計 |
+| `docs/workflows/` | ワークフロー作業フォルダ（**一時的・.gitignore対象**） | 調査結果、設計検討、テスト設計 |
 | `docs/architecture/` | システム設計 | ADR、概要、設計図 |
 | `docs/security/` | セキュリティ関連 | 脅威モデル |
 | `docs/testing/` | テスト関連 | テスト計画、結果 |
@@ -1373,6 +1373,13 @@ workflow_set_scope({
 ワークフロー開始時に以下が自動的に作成されます:
 - `workflowDir`: `.claude/state/workflows/{taskId}_{taskName}/` - 内部状態管理用
 - `docsDir`: `docs/workflows/{taskName}/` - 作業成果物配置用（環境変数 `DOCS_DIR` でオーバーライド可能）
+
+**重要: `docs/workflows/` は一時的な作業フォルダです**
+- `.gitignore` に `**/docs/workflows/` が登録されており、Git pushされません
+- タスク完了後に削除される前提のフォルダです
+- 永続的な仕様書は `docs/spec/`, `docs/security/`, `docs/testing/` 等に配置してください
+- `@spec` コメントでは `docs/workflows/` を参照しないこと（永続パスを使用）
+- プラグインの品質評価やレビュー時、`docs/workflows/` の内容は評価対象外です
 
 ### フェーズ別ドキュメント作成ガイド
 

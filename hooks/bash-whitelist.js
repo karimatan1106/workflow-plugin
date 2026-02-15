@@ -524,6 +524,76 @@ function detectIndirectExecution(command, phase) {
 }
 
 /**
+ * REQ-4: コマンド置換・プロセス置換・変数展開の検出
+ * バイパス対策として、これらのパターンを検出してブロックする
+ */
+function detectSubstitutionPatterns(command) {
+  // プロセス置換パターン: <(...) または >(...)
+  const processSubstitutionPattern = /[<>]\s*\(/;
+  if (processSubstitutionPattern.test(command)) {
+    return {
+      allowed: false,
+      reason: 'プロセス置換 (<(...) または >(...)) は禁止されています'
+    };
+  }
+
+  // 変数展開内のコマンド置換: ${...$(...)...}
+  const varExpansionCmdPattern = /\$\{[^}]*\$\(/;
+  if (varExpansionCmdPattern.test(command)) {
+    return {
+      allowed: false,
+      reason: '変数展開内のコマンド置換 (${var:-$(cmd)}) は禁止されています'
+    };
+  }
+
+  // ネストしたコマンド置換の深さチェック
+  // $( ... $( ... ) ... ) のような多重ネストを検出
+  let depth = 0;
+  let maxDepth = 0;
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+
+  for (let i = 0; i < command.length; i++) {
+    const char = command[i];
+    const next = command[i + 1];
+
+    // クォート状態の追跡
+    if (char === "'" && !inDoubleQuote) {
+      inSingleQuote = !inSingleQuote;
+      continue;
+    }
+    if (char === '"' && !inSingleQuote) {
+      inDoubleQuote = !inDoubleQuote;
+      continue;
+    }
+
+    // シングルクォート内ではコマンド置換は展開されないのでスキップ
+    if (inSingleQuote) continue;
+
+    // $( の検出
+    if (char === '$' && next === '(') {
+      depth++;
+      maxDepth = Math.max(maxDepth, depth);
+      i++; // skip '('
+    }
+    // ) の検出（コマンド置換の終了）
+    else if (char === ')' && depth > 0) {
+      depth--;
+    }
+  }
+
+  // ネストの深さが2以上（コマンド置換の中にさらにコマンド置換）は禁止
+  if (maxDepth >= 2) {
+    return {
+      allowed: false,
+      reason: 'ネストしたコマンド置換 ($(... $(... ) ...)) は禁止されています'
+    };
+  }
+
+  return { allowed: true };
+}
+
+/**
  * D-6: git -C オプションを正規化
  */
 function normalizeGitCommand(cmd) {
@@ -661,6 +731,12 @@ function checkBashWhitelist(command, phase) {
     return indirectResult;
   }
 
+  // REQ-4: コマンド置換・プロセス置換・変数展開の検出
+  const substitutionResult = detectSubstitutionPatterns(commandToCheck);
+  if (!substitutionResult.allowed) {
+    return substitutionResult;
+  }
+
   // SEC-4 + SEC-ENV-1: セキュリティ環境変数保護（統一チェック）
   const chainParts = splitCommandChain(commandToCheck);
   for (const part of chainParts) {
@@ -758,6 +834,7 @@ module.exports = {
   splitCompoundCommand,  // REQ-9: テスト用にエクスポート
   detectEncodedCommand,  // REQ-C1: テスト用にエクスポート
   detectIndirectExecution,  // REQ-C1: テスト用にエクスポート
+  detectSubstitutionPatterns,  // REQ-4: テスト用にエクスポート
   validateMkdirTarget,     // BUG-3: テスト用にエクスポート
   checkSecurityEnvVar,     // SEC-ENV-1: テスト用にエクスポート
   BASH_WHITELIST,

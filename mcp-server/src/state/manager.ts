@@ -460,13 +460,34 @@ export class WorkflowStateManager {
 
   /**
    * task-index.jsonを保存(REQ-FIX-5)
+   *
+   * REQ-1修正: Hookスキーマ形式（v2）で書き込む。
+   * tasks配列の各要素はworkflow-state.jsonの全フィールドを含める必要がある。
+   * これはenforce-workflow.jsのHMAC検証がtask-index.jsonのタスクエントリに対して行われるため。
    */
   private saveTaskIndex(_index: Record<string, string>): void {
-    // REQ-1: MCP serverはtask-index.jsonへの書き込みを停止
-    // Hook側（discover-tasks.js）が唯一の書き込み権限を持つ
-    // フェーズ遷移時はworkflow-state.jsonのみを更新し、
-    // Hook側が次回実行時にworkflow-state.jsonから最新状態を読み取る
-    return;
+    try {
+      const tasks = this.discoverTasks();
+      const taskList = {
+        schemaVersion: 2,
+        tasks: tasks.map(task => ({
+          ...task,  // 全フィールドを保持（HMAC検証のため）
+        })),
+        updatedAt: Date.now(),
+      };
+      const indexPath = path.join(STATE_DIR, 'task-index.json');
+
+      // ロックを取得してアトミックに書き込む
+      const releaseLock = acquireLockSync(indexPath);
+      try {
+        atomicWriteJson(indexPath, taskList);
+      } finally {
+        releaseLock();
+      }
+    } catch (err) {
+      // 書き込み失敗は警告のみ（フック側がフォールバックスキャンで対応）
+      console.error('[saveTaskIndex] Failed to write task-index.json:', err);
+    }
   }
 
   /**
@@ -782,13 +803,15 @@ export class WorkflowStateManager {
       releaseLock();
     }
 
-    // REQ-FIX-5: completedフェーズの場合、インデックスから削除
+    // REQ-1: フェーズ遷移時にtask-index.jsonを更新（Hookスキーマ形式）
+    const index = this.loadTaskIndex();
     if (phase === 'completed') {
-      const index = this.loadTaskIndex();
+      // completedフェーズの場合、インデックスから削除
       delete index[taskId];
-      this.saveTaskIndex(index);
       console.log(`[StateManager] Removed completed task ${taskId} from index`);
     }
+    // 全フェーズ遷移でtask-index.jsonを更新（Hook側キャッシュと同期）
+    this.saveTaskIndex(index);
 
     // FR-11: キャッシュ無効化
     taskCache.invalidate('task-list');

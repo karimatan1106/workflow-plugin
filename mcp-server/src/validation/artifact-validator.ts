@@ -2,9 +2,12 @@
  * 成果物品質検証モジュール
  * @spec docs/workflows/ワークフロー全問題完全解決/spec.md REQ-3
  * @spec docs/workflows/ワ-クフロ-プラグインレビュ-指摘事項全件修正/spec.md
+ * @spec docs/workflows/ワークフロー10M対応全問題根本原因修正/spec.md REQ-5, REQ-8, REQ-12
  *
  * REQ-B1: セクション密度チェック統合（MIN_SECTION_DENSITY環境変数）
  * REQ-B2: 意味的整合性チェックは semantic-checker.ts に移行済み
+ * REQ-5: バリデーションタイムアウト（10秒制限）
+ * REQ-12: サマリー行数制限 50→200行
  */
 
 import * as fs from 'fs';
@@ -14,6 +17,12 @@ import * as path from 'path';
 const MIN_SECTION_DENSITY_RAW = parseFloat(process.env.MIN_SECTION_DENSITY || '0.3');
 const MIN_DENSITY = 0.1;
 const MAX_DENSITY = 1.0;
+
+/** REQ-5: バリデーションタイムアウト（デフォルト: 10000ms = 10秒） */
+const VALIDATION_TIMEOUT_MS = parseInt(process.env.VALIDATION_TIMEOUT_MS || '10000', 10);
+
+/** REQ-12: サマリーセクションの最大行数（デフォルト: 200行） */
+const MAX_SUMMARY_LINES = parseInt(process.env.MAX_SUMMARY_LINES || '200', 10);
 
 
 /**
@@ -179,30 +188,33 @@ export const PHASE_ARTIFACT_REQUIREMENTS: Record<string, ArtifactRequirement> = 
 };
 
 /**
- * 成果物の品質を検証する
+ * 成果物の品質を検証する（内部実装）
  *
- * 検証項目:
- * 1. ファイル存在チェック
- * 2. 空ファイルチェック（0バイト）
- * 3. 最小行数チェック（空白行を除外）
- * 4. 必須セクションチェック
- * 5. 禁止パターン検出（TODO, TBD, WIP, FIXME）
- * 6. ダミーテキスト検出（同一行の3回以上繰り返し）
- * 7. ヘッダーのみ検出（.mdの場合、非ヘッダー行5行未満）
- * 8. Mermaid図のキーワードチェック（.mmdの場合）
+ * REQ-5: タイムアウトチェックを含む同期バリデーション実行
  *
  * @param filePath 検証対象ファイルパス
  * @param requirements 品質要件
+ * @param startTime 開始時刻（タイムアウト計測用）
  * @returns 検証結果
  */
-export function validateArtifactQuality(
+function validateArtifactQualityCore(
   filePath: string,
-  requirements: ArtifactRequirement
+  requirements: ArtifactRequirement,
+  startTime: number
 ): ArtifactValidationResult {
   const errors: string[] = [];
   const fileName = path.basename(filePath);
 
+  // REQ-5: タイムアウトチェックヘルパー
+  const checkTimeout = () => {
+    const elapsed = Date.now() - startTime;
+    if (elapsed > VALIDATION_TIMEOUT_MS) {
+      throw new Error(`バリデーションタイムアウト（${VALIDATION_TIMEOUT_MS}ms超過）`);
+    }
+  };
+
   // 1. ファイル存在チェック
+  checkTimeout();
   if (!fs.existsSync(filePath)) {
     errors.push(`${fileName} が存在しません`);
     return { passed: false, errors };
@@ -286,6 +298,7 @@ export function validateArtifactQuality(
   // 7. ダミーテキスト検出（同一行の3回以上繰り返し）
   // コードフェンス内の行は除外する（コード例は構文上の繰り返しが自然に発生する）
   // .mmd ファイル（Mermaid図）は構文上の繰り返し（閉じ括弧等）が自然に発生するため除外
+  checkTimeout(); // REQ-5: タイムアウトチェック
   if (!filePath.endsWith('.mmd')) {
     const lineCountMap = new Map<string, number>();
     let insideCodeFence = false;
@@ -355,6 +368,7 @@ export function validateArtifactQuality(
   }
 
   // 13. FR-7: コードパス参照チェック（spec.mdのみ）
+  checkTimeout(); // REQ-5: タイムアウトチェック
   if (fileName === 'spec.md') {
     const codePathResult = checkCodePathReferences(content);
     if (!codePathResult.valid) {
@@ -362,10 +376,49 @@ export function validateArtifactQuality(
     }
   }
 
+  // 14. REQ-12: サマリーセクション行数チェック（Markdownファイルのみ）
+  checkTimeout(); // REQ-5: タイムアウトチェック
+  if (filePath.endsWith('.md')) {
+    const summaryResult = checkSummaryLength(content, MAX_SUMMARY_LINES);
+    if (!summaryResult.valid) {
+      errors.push(...summaryResult.errors);
+    }
+  }
+
   return {
     passed: errors.length === 0,
     errors,
   };
+}
+
+/**
+ * 成果物の品質を検証する（公開API）
+ *
+ * REQ-5: タイムアウト処理を含むバリデーション実行
+ *
+ * @param filePath 検証対象ファイルパス
+ * @param requirements 品質要件
+ * @returns 検証結果
+ */
+export function validateArtifactQuality(
+  filePath: string,
+  requirements: ArtifactRequirement
+): ArtifactValidationResult {
+  const startTime = Date.now();
+
+  try {
+    return validateArtifactQualityCore(filePath, requirements, startTime);
+  } catch (error) {
+    // REQ-5: タイムアウトエラーをキャッチして適切なエラーメッセージを返す
+    if (error instanceof Error && error.message.includes('タイムアウト')) {
+      return {
+        passed: false,
+        errors: [error.message],
+      };
+    }
+    // その他のエラーは再スロー
+    throw error;
+  }
 }
 
 /**
@@ -777,6 +830,58 @@ export function checkCodePathReferences(
   if (!hasCodeReference) {
     errors.push(
       '実装ドキュメントにソースコードパスへの参照が見つかりません（src/, tests/, e2e/ など）'
+    );
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
+/**
+ * REQ-12: サマリーセクションの行数検証
+ *
+ * Markdownファイルの「## サマリー」セクションが指定行数以内かチェックする。
+ *
+ * @param content - Markdownファイル内容
+ * @param maxLines - サマリーセクションの最大行数（デフォルト: 200）
+ * @returns 検証結果
+ */
+export function checkSummaryLength(
+  content: string,
+  maxLines: number = 200
+): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+
+  // ## サマリー セクションを抽出
+  const summaryPattern = /^##\s+サマリー\s*$/mi;
+  const match = summaryPattern.exec(content);
+
+  if (!match) {
+    // サマリーセクションがない場合は検証をスキップ
+    return { valid: true, errors: [] };
+  }
+
+  // サマリーセクションの開始位置
+  const summaryStartIndex = match.index + match[0].length;
+
+  // 次のセクション（## で始まる行）までを抽出
+  const afterSummary = content.substring(summaryStartIndex);
+  const nextSectionPattern = /^##\s+/m;
+  const nextSectionMatch = nextSectionPattern.exec(afterSummary);
+
+  let summaryContent: string;
+  if (nextSectionMatch) {
+    summaryContent = afterSummary.substring(0, nextSectionMatch.index);
+  } else {
+    summaryContent = afterSummary;
+  }
+
+  // サマリーセクションの行数をカウント（空白行を除く）
+  const summaryLines = summaryContent.split('\n').filter(line => line.trim().length > 0);
+  const lineCount = summaryLines.length;
+
+  if (lineCount > maxLines) {
+    errors.push(
+      `サマリーセクションの行数が制限を超えています（${lineCount}行 > ${maxLines}行）`
     );
   }
 

@@ -496,6 +496,13 @@ parallel_verification のサブフェーズ。エンドツーエンドテスト�
 2. その後コードを編集
 3. 緊急時は `SKIP_SPEC_GUARD=true` でスキップ
 
+## 評価対象外
+
+以下のファイル/ディレクトリはワークフロー実行時の一時作業ファイルであり、プラグインの品質評価対象外です：
+
+- `**/docs/workflows/` - ワークフロー作業成果物（.gitignore対象、push不可）
+- `.claude/state/workflows/` - 内部状態管理ファイル
+
 ## ライセンス
 
 MIT

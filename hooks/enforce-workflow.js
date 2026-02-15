@@ -31,6 +31,59 @@ function logError(type, message, stack) {
   if (stack) console.error(`  スタック: ${stack}`);
 }
 
+/**
+ * REQ-3: エラーカテゴリ分類
+ *
+ * エラーを3つのカテゴリに分類:
+ * - "security": HMAC検証失敗、フェーズ違反、メッセージに"HMAC"/"署名"含む → 常にexit(2)
+ * - "temporary": ENOENT, EACCES, ETIMEDOUT → WORKFLOW_FAIL_MODEに応じてexit(0)またはexit(2)
+ * - "unknown": その他 → securityと同じ扱い
+ *
+ * @param {Error} error - エラーオブジェクト
+ * @returns {"security"|"temporary"|"unknown"} エラーカテゴリ
+ */
+function classifyError(error) {
+  const message = (error.message || '').toLowerCase();
+  const code = error.code || '';
+
+  // セキュリティエラー: HMAC、署名、フェーズ違反
+  if (message.includes('hmac') || message.includes('署名') || message.includes('signature') ||
+      message.includes('integrity') || message.includes('改竄') || message.includes('tamper')) {
+    return 'security';
+  }
+
+  // 一時的エラー: ファイルシステムアクセスエラー
+  if (code === 'ENOENT' || code === 'EACCES' || code === 'ETIMEDOUT') {
+    return 'temporary';
+  }
+
+  // その他は不明（セキュリティと同じ扱い）
+  return 'unknown';
+}
+
+/**
+ * REQ-3: エラーカテゴリに応じた終了コード決定
+ *
+ * @param {"security"|"temporary"|"unknown"} category - エラーカテゴリ
+ * @returns {number} 終了コード (0 or 2)
+ */
+function getExitCodeForError(category) {
+  if (category === 'security' || category === 'unknown') {
+    // セキュリティエラーと不明エラーは常にexit(2)
+    return 2;
+  }
+
+  // temporaryエラーはWORKFLOW_FAIL_MODEに応じて決定
+  const failMode = process.env.WORKFLOW_FAIL_MODE || 'closed';
+  if (failMode === 'open') {
+    console.error('[enforce-workflow] WORKFLOW_FAIL_MODE=open: allowing temporary error');
+    return 0;
+  } else {
+    // デフォルト（closed）はexit(2)
+    return 2;
+  }
+}
+
 // グローバルエラーハンドラ（REQ-3: Fail Closed）
 process.on('uncaughtException', (err) => {
   logError('未捕捉エラー', err.message, err.stack);
@@ -280,17 +333,20 @@ function main(input) {
     // ★★★ REQ-3: discoverTasks()を使用してアクティブタスクを取得 ★★★
     const tasks = discoverTasks();
 
-    // ★★★ FR-2: HMAC検証 ★★★
-    // 各タスク状態に対してHMAC署名を検証
-    for (const task of tasks) {
-      if (!verifyHMAC(task)) {
+    // ★★★ REQ-2: HMAC検証の最適化 - 編集対象タスクのみ検証 ★★★
+    // ファイルパスからタスクを推論
+    const targetTask = findTaskByFilePath(filePath);
+
+    // HMAC検証は対象タスクのみ（O(1)化）
+    if (targetTask) {
+      if (!verifyHMAC(targetTask)) {
         console.log('');
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         console.log('🚫 BLOCKED: タスク状態の署名検証失敗');
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         console.log('');
-        console.log(`タスクID: ${task.taskId}`);
-        console.log(`タスク名: ${task.taskName}`);
+        console.log(`タスクID: ${targetTask.taskId}`);
+        console.log(`タスク名: ${targetTask.taskName}`);
         console.log('');
         console.log('タスク状態ファイルが改竄されている可能性があります。');
         console.log('');

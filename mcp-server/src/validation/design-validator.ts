@@ -1,8 +1,10 @@
 /**
  * 設計-実装整合性検証クラス
  * @spec docs/spec/features/design-validator.md
+ * @spec docs/workflows/ワークフロー10M対応全問題根本原因修正/spec.md REQ-8
  *
  * FR-6対応: TypeScript Compiler APIによるAST解析統合
+ * REQ-8: ASTキャッシュLRU化（100エントリ上限）
  */
 
 import * as fs from 'fs';
@@ -30,6 +32,76 @@ interface ASTCacheEntry {
 }
 
 /**
+ * REQ-8: LRUキャッシュの最大エントリ数（デフォルト: 100）
+ */
+const AST_CACHE_MAX_ENTRIES = parseInt(process.env.AST_CACHE_MAX_ENTRIES || '100', 10);
+
+/**
+ * REQ-8: LRUキャッシュ実装
+ *
+ * Map型のキーをgetでアクセスするたびにdeleteして再setすることでLRU順を維持する。
+ * 最大エントリ数を超えた場合、最も古いエントリを削除する。
+ */
+class LRUCache<K, V> {
+  private cache = new Map<K, V>();
+  private maxSize: number;
+
+  constructor(maxSize: number) {
+    this.maxSize = maxSize;
+  }
+
+  get(key: K): V | undefined {
+    const value = this.cache.get(key);
+    if (value !== undefined) {
+      // LRU: アクセスされたエントリを末尾に移動
+      this.cache.delete(key);
+      this.cache.set(key, value);
+    }
+    return value;
+  }
+
+  set(key: K, value: V): void {
+    // 既存エントリを削除してから再挿入（LRU順維持）
+    this.cache.delete(key);
+
+    // サイズ上限チェック
+    if (this.cache.size >= this.maxSize) {
+      // 最も古いエントリ（先頭）を削除
+      const oldestKey = this.cache.keys().next().value;
+      if (oldestKey !== undefined) {
+        this.cache.delete(oldestKey);
+      }
+    }
+
+    this.cache.set(key, value);
+  }
+
+  get size(): number {
+    return this.cache.size;
+  }
+
+  clear(): void {
+    this.cache.clear();
+  }
+
+  has(key: K): boolean {
+    return this.cache.has(key);
+  }
+
+  delete(key: K): boolean {
+    return this.cache.delete(key);
+  }
+
+  entries(): IterableIterator<[K, V]> {
+    return this.cache.entries();
+  }
+
+  [Symbol.iterator](): IterableIterator<[K, V]> {
+    return this.cache.entries();
+  }
+}
+
+/**
  * 設計-実装整合性検証クラス
  *
  * ワークフロー成果物（spec.md、state-machine.mmd、flowchart.mmd）と
@@ -46,7 +118,8 @@ export class DesignValidator {
   private workflowDir: string;
   private projectRoot: string;
   private fileCache: Map<string, { content: string; cleanContent: string }> = new Map();
-  private astCache: Map<string, ASTCacheEntry> = new Map();
+  // REQ-8: ASTキャッシュをLRU化（100エントリ上限）
+  private astCache!: LRUCache<string, ASTCacheEntry>;
   private readonly CACHE_TTL_MS = 24 * 60 * 60 * 1000;
   private cacheHits = 0;
   private cacheMisses = 0;
@@ -61,6 +134,8 @@ export class DesignValidator {
   constructor(workflowDir: string, projectRoot?: string) {
     this.workflowDir = workflowDir;
     this.projectRoot = projectRoot || process.cwd();
+    // REQ-8: LRUキャッシュを初期化
+    this.astCache = new LRUCache(AST_CACHE_MAX_ENTRIES);
     this.loadPersistedCache();
     this.evictExpiredCache();
   }

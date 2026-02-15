@@ -27,6 +27,8 @@ export interface HmacKeyEntry {
   key: string;
   /** 作成日時（ISO 8601） */
   createdAt: string;
+  /** 有効期限（ISO 8601、REQ-6: 30日後） */
+  expiresAt?: string;
 }
 
 /**
@@ -66,18 +68,21 @@ function getLegacyKeyFilePath(): string {
 }
 
 /**
- * 新しい鍵を生成
+ * 新しい鍵を生成（REQ-6: expiresAt追加）
  */
 export function generateKey(generation = 1): HmacKeyEntry {
+  const now = new Date();
+  const expiryDate = new Date(now.getTime() + (30 * 24 * 60 * 60 * 1000)); // 30日後
   return {
     generation,
     key: crypto.randomBytes(32).toString('hex'),
-    createdAt: new Date().toISOString(),
+    createdAt: now.toISOString(),
+    expiresAt: expiryDate.toISOString(),
   };
 }
 
 /**
- * 鍵ファイルから鍵配列を読み込む
+ * 鍵ファイルから鍵配列を読み込む（REQ-6: expiresAt自動補完）
  * hooks側(hmac-verify.js)と同一の配列形式 [{generation, key, createdAt}] を使用。
  * レガシー形式（{version, keys}オブジェクト）からの自動マイグレーション対応。
  */
@@ -90,17 +95,37 @@ export function loadKeys(): HmacKeyEntry[] {
 
       // hooks互換の配列形式
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        // REQ-6: expiresAt未設定の鍵は自動補完
+        const keys = parsed.map((entry) => {
+          if (!entry.expiresAt && entry.createdAt) {
+            const createdDate = new Date(entry.createdAt);
+            const expiryDate = new Date(createdDate.getTime() + (30 * 24 * 60 * 60 * 1000));
+            return { ...entry, expiresAt: expiryDate.toISOString() };
+          }
+          return entry;
+        });
+
+        // 補完があった場合は保存
+        if (keys.some((k, i) => k.expiresAt && !parsed[i].expiresAt)) {
+          saveKeys(keys);
+        }
+
+        return keys;
       }
 
       // レガシーオブジェクト形式 {version, keys} からのマイグレーション
       const legacy = parsed as LegacyHmacKeyFile;
       if (legacy.keys && legacy.keys.length > 0) {
-        const migrated: HmacKeyEntry[] = legacy.keys.map((k, i) => ({
-          generation: i + 1,
-          key: k.key,
-          createdAt: k.createdAt,
-        }));
+        const migrated: HmacKeyEntry[] = legacy.keys.map((k, i) => {
+          const createdDate = new Date(k.createdAt);
+          const expiryDate = new Date(createdDate.getTime() + (30 * 24 * 60 * 60 * 1000));
+          return {
+            generation: i + 1,
+            key: k.key,
+            createdAt: k.createdAt,
+            expiresAt: expiryDate.toISOString(),
+          };
+        });
         saveKeys(migrated);
         return migrated;
       }
@@ -115,10 +140,15 @@ export function loadKeys(): HmacKeyEntry[] {
     try {
       const legacyKey = fs.readFileSync(legacyKeyPath, 'utf-8').trim();
       if (legacyKey) {
+        // ファイルのmtimeを使用
+        const stats = fs.statSync(legacyKeyPath);
+        const createdDate = stats.mtime;
+        const expiryDate = new Date(createdDate.getTime() + (30 * 24 * 60 * 60 * 1000));
         const entry: HmacKeyEntry = {
           generation: 1,
           key: legacyKey,
-          createdAt: new Date().toISOString(),
+          createdAt: createdDate.toISOString(),
+          expiresAt: expiryDate.toISOString(),
         };
         saveKeys([entry]);
         return [entry];

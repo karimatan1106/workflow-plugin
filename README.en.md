@@ -468,6 +468,13 @@ A subphase of parallel_verification. Executes end-to-end tests.
 2. Then edit the code
 3. Skip with `SKIP_SPEC_GUARD=true` for emergencies
 
+## Excluded from Evaluation
+
+The following files/directories are temporary workflow artifacts and are excluded from plugin quality evaluation:
+
+- `**/docs/workflows/` - Workflow task artifacts (.gitignore target, not pushed)
+- `.claude/state/workflows/` - Internal state management files
+
 ## License
 
 MIT

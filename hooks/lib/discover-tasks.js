@@ -41,7 +41,9 @@ function safeReadJsonFile(filePath) {
 /**
  * タスクインデックスキャッシュを読み込む
  *
- * @returns {Array<object>|null} キャッシュされたタスク配列、または null（期限切れ/存在しない）
+ * REQ-1: schemaVersion検証を追加（v2のみ受け入れ）
+ *
+ * @returns {Array<object>|null} キャッシュされたタスク配列、または null（期限切れ/存在しない/スキーマ不一致）
  */
 function readTaskIndexCache() {
   try {
@@ -50,12 +52,30 @@ function readTaskIndexCache() {
       return null;
     }
 
+    // REQ-1: schemaVersionチェック（v2のみ受け入れ）
+    if (cache.schemaVersion !== 2) {
+      console.debug('[discover-tasks] cache schema version mismatch (expected: 2, got: %s), falling back to full scan', cache.schemaVersion);
+      return null;
+    }
+
     const now = Date.now();
     const age = now - cache.updatedAt;
 
-    // TTL（1時間）を超えている場合は無効
-    if (age > TASK_INDEX_TTL) {
+    // TTL（環境変数でオーバーライド可能、デフォルト1時間）
+    const ttl = parseInt(process.env.TASK_INDEX_TTL_MS || TASK_INDEX_TTL, 10);
+    if (age > ttl) {
       return null;
+    }
+
+    // REQ-1: tasks配列の各要素に必須フィールドが含まれることを検証
+    if (!Array.isArray(cache.tasks)) {
+      return null;
+    }
+    for (const task of cache.tasks) {
+      if (!task.taskId || !task.taskName || !task.workflowDir || !task.phase) {
+        console.debug('[discover-tasks] cache task missing required fields, falling back to full scan');
+        return null;
+      }
     }
 
     return cache.tasks;
@@ -67,13 +87,32 @@ function readTaskIndexCache() {
 /**
  * タスクインデックスキャッシュに書き込む
  *
+ * REQ-1: mtimeチェックを追加（MCP serverが更新した場合は上書きしない）
+ *
  * @param {Array<object>} tasks - タスク配列
  */
 function writeTaskIndexCache(tasks) {
   try {
+    const now = Date.now();
+
+    // REQ-1: mtimeチェック - キャッシュファイルが既に新しい場合は上書きしない
+    if (fs.existsSync(TASK_INDEX_FILE)) {
+      try {
+        const existingCache = safeReadJsonFile(TASK_INDEX_FILE);
+        if (existingCache && existingCache.updatedAt && existingCache.updatedAt > now - 1000) {
+          // 1秒以内に更新されている場合は、MCP serverによる更新とみなしてスキップ
+          console.debug('[discover-tasks] cache recently updated by MCP server, skipping write');
+          return;
+        }
+      } catch {
+        // mtime読み取りエラーは無視して書き込み続行
+      }
+    }
+
     const cache = {
+      schemaVersion: 2,
       tasks: tasks,
-      updatedAt: Date.now()
+      updatedAt: now
     };
     fs.writeFileSync(TASK_INDEX_FILE, JSON.stringify(cache, null, 2), 'utf8');
   } catch {
