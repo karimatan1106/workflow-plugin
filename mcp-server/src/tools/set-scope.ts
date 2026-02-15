@@ -314,12 +314,16 @@ export function workflowSetScope(
 
   // スコープ設定を実行
   return safeExecute('影響範囲設定', () => {
+    // 既存のpreExistingChangesを保持（FIX-1）
+    const existingPreExistingChanges = taskState.scope?.preExistingChanges ?? [];
+
     // TaskStateにスコープを記録
     const updatedState = {
       ...taskState,
       scope: {
         affectedFiles,
         affectedDirs,
+        preExistingChanges: existingPreExistingChanges,
       },
     };
 

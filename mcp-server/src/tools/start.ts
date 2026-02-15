@@ -115,7 +115,7 @@ export function workflowStart(taskName: string, skipPhases?: string, userIntent?
     if (!taskState.scope) {
       taskState.scope = { affectedFiles: [], affectedDirs: [] };
     }
-    (taskState.scope as any).preExistingChanges = preExistingChanges;
+    taskState.scope.preExistingChanges = preExistingChanges;
 
     stateManager.writeTaskState(taskState.workflowDir, taskState);
 

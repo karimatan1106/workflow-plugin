@@ -224,6 +224,8 @@ export interface TaskState {
     affectedFiles: string[];
     /** 影響を受けるディレクトリのパスリスト */
     affectedDirs: string[];
+    /** ワークフロー開始前の既存変更ファイル（FIX-1） */
+    preExistingChanges?: string[];
   };
   /** テスト結果記録（REQ-2） */
   testResults?: Array<{

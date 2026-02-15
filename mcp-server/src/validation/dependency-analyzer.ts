@@ -9,6 +9,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { spawnSync } from 'child_process';
 
 /** ファイル拡張子の候補リスト */
 const SUPPORTED_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx'] as const;
@@ -138,6 +139,55 @@ export function analyzeImports(
 }
 
 /**
+ * FIX-2: git追跡状態を確認
+ *
+ * @param dir - ディレクトリパス（絶対パス）
+ * @returns git追跡されている場合true
+ */
+function checkGitTracked(dir: string): boolean {
+  try {
+    // パス正規化
+    const normalized = path.normalize(dir);
+
+    // プロジェクトルート取得と配下検証
+    const cwd = process.cwd();
+    const cwdNormalized = path.normalize(cwd);
+
+    // 絶対パスの整合性確認（OSパスセパレータで正規化して比較）
+    if (!normalized.startsWith(cwdNormalized + path.sep) && normalized !== cwdNormalized) {
+      return false;
+    }
+
+    // 相対パス変換
+    const relativePath = path.relative(cwdNormalized, normalized);
+
+    // パストラバーサル拒否（複数形式の確認）
+    if (relativePath.includes('..') || relativePath.startsWith('/') || relativePath.startsWith('\\')) {
+      return false;
+    }
+
+    // git ls-filesで安全に検査（パス分離で防御）
+    const result = spawnSync('git', ['ls-files', '--', relativePath], {
+      cwd: cwdNormalized,
+      timeout: 1000,
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    // エラーまたは非0ステータスの場合はfalse
+    if (result.error || result.status !== 0) {
+      return false;
+    }
+
+    // 標準出力が空でなければgit追跡されている
+    return result.stdout.trim().length > 0;
+  } catch (e) {
+    // エラー時はfalse
+    return false;
+  }
+}
+
+/**
  * スコープの存在チェック
  *
  * @param files - ファイルパスの配列
@@ -158,7 +208,12 @@ export function validateScopeExists(
   }
 
   for (const dir of dirs) {
-    if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
+    if (!fs.existsSync(dir)) {
+      // FIX-2: git追跡されていればOK
+      if (!checkGitTracked(dir)) {
+        nonExistentDirs.push(dir);
+      }
+    } else if (!fs.statSync(dir).isDirectory()) {
       nonExistentDirs.push(dir);
     }
   }

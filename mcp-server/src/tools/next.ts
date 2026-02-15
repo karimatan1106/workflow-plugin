@@ -362,7 +362,7 @@ export function workflowNext(taskId?: string, sessionToken?: string): NextResult
     const scopeDirs = taskState.scope?.affectedDirs || [];
     if (scopeFiles.length > 0 || scopeDirs.length > 0) {
       try {
-        const preExistingChanges = (taskState.scope as any)?.preExistingChanges || [];
+        const preExistingChanges = taskState.scope?.preExistingChanges || [];
         const scopeResult = validateScopePostExecution(scopeFiles, scopeDirs, process.cwd(), preExistingChanges);
         if (!scopeResult.valid) {
           // REQ-2: SCOPE_STRICTはデフォルトtrue（厳格モード）
@@ -400,7 +400,7 @@ export function workflowNext(taskId?: string, sessionToken?: string): NextResult
     const scopeDirs = taskState.scope?.affectedDirs || [];
     if (scopeFiles.length > 0 || scopeDirs.length > 0) {
       try {
-        const preExistingChanges = (taskState.scope as any)?.preExistingChanges || [];
+        const preExistingChanges = taskState.scope?.preExistingChanges || [];
         const scopeResult = validateScopePostExecution(scopeFiles, scopeDirs, process.cwd(), preExistingChanges);
         if (!scopeResult.valid) {
           // 警告モード: 警告のみでブロックしない

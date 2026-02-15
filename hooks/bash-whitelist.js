@@ -87,6 +87,7 @@ const BASH_WHITELIST = {
   git: [
     'git add', 'git commit', 'git push', 'git pull', 'git fetch',
     'git checkout --', 'git restore',
+    'rm -f', // FIX-3: commitフェーズで一時ファイル削除を許可（-f オプション限定）
   ],
 };
 

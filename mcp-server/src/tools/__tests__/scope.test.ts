@@ -78,6 +78,7 @@ describe('workflowSetScope', () => {
         scope: {
           affectedFiles: files,
           affectedDirs: [],
+          preExistingChanges: [],
         },
       })
     );
