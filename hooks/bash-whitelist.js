@@ -86,6 +86,7 @@ const BASH_WHITELIST = {
   // コミット（commit, push）
   git: [
     'git add', 'git commit', 'git push', 'git pull', 'git fetch',
+    'git checkout --', 'git restore',
   ],
 };
 
@@ -133,6 +134,10 @@ const BASH_BLACKLIST = [
   // 危険なコマンド
   { pattern: 'rm -rf', type: 'contains' },
   { pattern: 'chmod +x', type: 'contains' },
+  // FIX-5: git checkout/restore の危険パターン
+  { pattern: 'git checkout -b', type: 'contains' },
+  { pattern: 'git checkout .', type: 'contains' },
+  { pattern: 'git restore .', type: 'contains' },
 ];
 
 /**

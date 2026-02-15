@@ -734,7 +734,8 @@ function isInSubmodule(filePath: string, submodulePaths: string[]): boolean {
 export function validateScopePostExecution(
   scopeFiles: string[],
   scopeDirs: string[],
-  projectRoot: string = process.cwd()
+  projectRoot: string = process.cwd(),
+  preExistingChanges: string[] = []
 ): ScopePostValidationResult {
   const warnings: string[] = [];
   const outOfScopeFiles: string[] = [];
@@ -776,6 +777,13 @@ export function validateScopePostExecution(
     for (const changedFile of changedFiles) {
       // 除外パターンに一致する場合はスキップ
       if (isExcludedFile(changedFile)) continue;
+
+      // FIX-2: ワークフロー開始前から存在していた変更をスキップ
+      if (preExistingChanges.length > 0) {
+        const normalizedChanged = normalizePath(changedFile);
+        const isPreExisting = preExistingChanges.some(pe => normalizePath(pe) === normalizedChanged);
+        if (isPreExisting) continue;
+      }
 
       // FR-5: gitサブモジュール内のファイルをスキップ
       if (isInSubmodule(changedFile, submodulePaths)) continue;

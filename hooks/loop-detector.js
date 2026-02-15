@@ -83,8 +83,8 @@ const PHASE_EDIT_LIMITS = {
   research: 3,
   requirements: 3,
   test_impl: 7,
-  implementation: 10,
-  refactoring: 10,
+  implementation: 20,
+  refactoring: 20,
   default: 5,
 };
 
@@ -429,15 +429,20 @@ if (require.main === module) {
 
   // 非同期stdin読み取り
   let inputData = '';
+  let eventHandled = false;
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', (chunk) => (inputData += chunk));
-  process.stdin.on('error', (err) => {
+  process.stdin.once('error', (err) => {
+    if (eventHandled) return;
+    eventHandled = true;
     clearTimeout(timeout);
     // REQ-FIX-6: stdin エラー時はブロック（fail-closed）
     logError('stdin エラー', err.message, err.stack);
     process.exit(2);
   });
   process.stdin.on('end', () => {
+    if (eventHandled) return;
+    eventHandled = true;
     clearTimeout(timeout);
     try {
       const input = JSON.parse(inputData);

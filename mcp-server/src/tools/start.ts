@@ -7,6 +7,7 @@
  */
 
 import * as crypto from 'crypto';
+import { execSync } from 'child_process';
 import { stateManager, generateSessionToken } from '../state/manager.js';
 import type { StartResult, PhaseName } from '../state/types.js';
 import { DEFAULT_TASK_SIZE } from '../state/types.js';
@@ -95,6 +96,26 @@ export function workflowStart(taskName: string, skipPhases?: string, userIntent?
       taskState.skippedPhases = skipPhaseList;
       taskState.skipReason = 'user-specified';
     }
+
+    // FIX-2: ワークフロー開始時の既存変更ファイルを記録
+    let preExistingChanges: string[] = [];
+    try {
+      const diffOutput = execSync('git -c core.quotePath=false diff --name-only --ignore-submodules HEAD', {
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      }).trim();
+      if (diffOutput) {
+        preExistingChanges = diffOutput.split('\n').map(f => f.trim()).filter(Boolean);
+      }
+    } catch (e) {
+      console.warn('[workflow_start] git diff failed, preExistingChanges will be empty:', e);
+    }
+
+    // scopeオブジェクトにpreExistingChangesを保存
+    if (!taskState.scope) {
+      taskState.scope = { affectedFiles: [], affectedDirs: [] };
+    }
+    (taskState.scope as any).preExistingChanges = preExistingChanges;
 
     stateManager.writeTaskState(taskState.workflowDir, taskState);
 

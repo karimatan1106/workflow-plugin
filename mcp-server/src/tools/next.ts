@@ -362,7 +362,8 @@ export function workflowNext(taskId?: string, sessionToken?: string): NextResult
     const scopeDirs = taskState.scope?.affectedDirs || [];
     if (scopeFiles.length > 0 || scopeDirs.length > 0) {
       try {
-        const scopeResult = validateScopePostExecution(scopeFiles, scopeDirs);
+        const preExistingChanges = (taskState.scope as any)?.preExistingChanges || [];
+        const scopeResult = validateScopePostExecution(scopeFiles, scopeDirs, process.cwd(), preExistingChanges);
         if (!scopeResult.valid) {
           // REQ-2: SCOPE_STRICTはデフォルトtrue（厳格モード）
           const isStrict = process.env.SCOPE_STRICT !== 'false';
@@ -399,7 +400,8 @@ export function workflowNext(taskId?: string, sessionToken?: string): NextResult
     const scopeDirs = taskState.scope?.affectedDirs || [];
     if (scopeFiles.length > 0 || scopeDirs.length > 0) {
       try {
-        const scopeResult = validateScopePostExecution(scopeFiles, scopeDirs);
+        const preExistingChanges = (taskState.scope as any)?.preExistingChanges || [];
+        const scopeResult = validateScopePostExecution(scopeFiles, scopeDirs, process.cwd(), preExistingChanges);
         if (!scopeResult.valid) {
           // 警告モード: 警告のみでブロックしない
           console.warn(`[scope-early] スコープ外変更を検出（早期警告）: ${scopeResult.outOfScopeFiles.join(', ')}`);
