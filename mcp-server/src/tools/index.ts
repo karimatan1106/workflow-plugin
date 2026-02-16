@@ -54,6 +54,18 @@ export { workflowRecordTestResult, recordTestResultToolDefinition } from './reco
 /** 差し戻しツール */
 export { workflowBack, backToolDefinition } from './back.js';
 
+/** P0-3: 事前検証ツール */
+export { workflowPreValidate, preValidateToolDefinition } from './pre-validate.js';
+
+/** P0-1: フィードバック記録ツール */
+export { workflowRecordFeedback, recordFeedbackToolDefinition } from './record-feedback.js';
+
+/** P1-2: サブタスク作成ツール */
+export { workflowCreateSubtask, createSubtaskToolDefinition } from './create-subtask.js';
+
+/** P1-2: タスクリンクツール */
+export { workflowLinkTasks, linkTasksToolDefinition } from './link-tasks.js';
+
 // ============================================================================
 // ツール定義のリスト
 // ============================================================================
@@ -80,4 +92,8 @@ export const allToolDefinitions = [
   { name: 'workflow_set_scope', module: 'set-scope' },
   { name: 'workflow_record_test_result', module: 'record-test-result' },
   { name: 'workflow_back', module: 'back' },
+  { name: 'workflow_pre_validate', module: 'pre-validate' },
+  { name: 'workflow_record_feedback', module: 'record-feedback' },
+  { name: 'workflow_create_subtask', module: 'create-subtask' },
+  { name: 'workflow_link_tasks', module: 'link-tasks' },
 ] as const;

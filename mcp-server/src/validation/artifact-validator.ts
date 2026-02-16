@@ -938,3 +938,210 @@ export function validateTestFileQuality(content: string, filePath: string): {
     warnings,
   };
 }
+
+// ============================================================================
+// P0-2: キーワードトレーサビリティ検証
+// ============================================================================
+
+/** ソースフェーズからファイル名へのマッピング */
+const SOURCE_PHASE_FILES: Record<string, string> = {
+  requirements: 'requirements.md',
+  spec: 'spec.md',
+  'test-design': 'test-design.md',
+};
+
+/** ターゲットフェーズからファイル名へのマッピング */
+const TARGET_PHASE_FILES: Record<string, string> = {
+  spec: 'spec.md',
+  'test-design': 'test-design.md',
+};
+
+/** 英語ストップワード */
+const ENGLISH_STOP_WORDS = new Set([
+  'the', 'a', 'an', 'of', 'to', 'in', 'for', 'and', 'or', 'but', 'is', 'are',
+  'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did',
+  'will', 'would', 'could', 'should', 'may', 'might', 'shall', 'can', 'need',
+  'not', 'no', 'nor', 'at', 'by', 'from', 'with', 'as', 'on', 'it', 'its',
+  'this', 'that', 'these', 'those', 'which', 'what', 'who', 'whom', 'whose',
+  'where', 'when', 'why', 'how', 'all', 'each', 'every', 'both', 'few',
+  'more', 'most', 'other', 'some', 'such', 'than', 'too', 'very',
+  'if', 'then', 'else', 'so', 'because', 'although', 'while', 'until',
+  'about', 'above', 'after', 'before', 'between', 'into', 'through',
+  'during', 'without', 'also', 'just', 'only', 'own', 'same',
+]);
+
+/** 日本語ストップワード */
+const JAPANESE_STOP_WORDS = new Set([
+  'こと', 'もの', 'ため', 'よう', 'さ', 'の', 'は', 'が', 'を', 'に',
+  'で', 'と', 'も', 'な', 'し', 'する', 'ある', 'いる', 'なる', 'れる',
+  'できる', 'この', 'その', 'あの', 'それ', 'これ', 'あれ', 'など',
+  'また', 'および', 'または', 'ただし', 'なお', 'すなわち',
+]);
+
+/**
+ * テキストからキーワードを抽出する
+ *
+ * Markdown装飾を除去し、技術用語・名詞句を抽出する。
+ * 大文字で始まる単語、ハイフン結合語、カタカナ語、漢字2文字以上を対象とする。
+ *
+ * @param text ソーステキスト
+ * @returns 正規化されたキーワード配列（重複排除済み）
+ */
+function extractKeywords(text: string): string[] {
+  // Remove markdown formatting
+  let cleaned = text
+    .replace(/^#{1,6}\s+/gm, '') // headings
+    .replace(/\*\*([^*]+)\*\*/g, '$1') // bold
+    .replace(/\*([^*]+)\*/g, '$1') // italic
+    .replace(/`([^`]+)`/g, '$1') // inline code
+    .replace(/```[\s\S]*?```/g, '') // code blocks
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // links
+    .replace(/^\s*[-*+]\s+/gm, '') // list markers
+    .replace(/^\s*\d+\.\s+/gm, '') // ordered list markers
+    .replace(/\|/g, ' ') // table separators
+    .replace(/---+/g, '') // horizontal rules
+    .replace(/^\s*>/gm, ''); // blockquotes
+
+  const keywords = new Set<string>();
+
+  // Extract English technical terms (PascalCase, camelCase, UPPER_CASE, hyphenated)
+  const englishTerms = cleaned.match(/[A-Z][a-zA-Z]+(?:[A-Z][a-zA-Z]+)*/g) || [];
+  for (const term of englishTerms) {
+    const lower = term.toLowerCase();
+    if (!ENGLISH_STOP_WORDS.has(lower) && lower.length >= 3) {
+      keywords.add(lower);
+    }
+  }
+
+  // Extract hyphenated terms
+  const hyphenated = cleaned.match(/[a-zA-Z]+-[a-zA-Z]+(?:-[a-zA-Z]+)*/g) || [];
+  for (const term of hyphenated) {
+    const lower = term.toLowerCase();
+    if (lower.length >= 5) {
+      keywords.add(lower);
+    }
+  }
+
+  // Extract UPPER_CASE identifiers
+  const upperCase = cleaned.match(/[A-Z]{2,}(?:_[A-Z]{2,})*/g) || [];
+  for (const term of upperCase) {
+    const lower = term.toLowerCase();
+    if (!ENGLISH_STOP_WORDS.has(lower) && lower.length >= 3) {
+      keywords.add(lower);
+    }
+  }
+
+  // Extract katakana words (3+ chars)
+  const katakana = cleaned.match(/[\u30A0-\u30FF]{3,}/g) || [];
+  for (const term of katakana) {
+    if (!JAPANESE_STOP_WORDS.has(term)) {
+      keywords.add(term);
+    }
+  }
+
+  // Extract kanji words (2+ chars)
+  const kanji = cleaned.match(/[\u4E00-\u9FFF]{2,}/g) || [];
+  for (const term of kanji) {
+    if (!JAPANESE_STOP_WORDS.has(term)) {
+      keywords.add(term);
+    }
+  }
+
+  return Array.from(keywords);
+}
+
+/**
+ * キーワードトレーサビリティ検証
+ *
+ * 要件定義から実装までのキーワードトレーサビリティを検証する。
+ *
+ * @param docsDir ドキュメントディレクトリパス
+ * @param sourcePhase トレース元フェーズ名 (requirements, spec, test-design)
+ * @param targetPhase トレース先フェーズ名 (spec, test-design, implementation)
+ * @param minCoverage 最小カバレッジ閾値 (デフォルト: 0.8)
+ * @returns キーワードトレーサビリティ結果
+ */
+export function validateKeywordTraceability(
+  docsDir: string,
+  sourcePhase: string,
+  targetPhase: string,
+  minCoverage: number = 0.8
+): { passed: boolean; coverage: number; missingKeywords: string[]; errors: string[]; warnings?: string[] } {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  // Resolve source file
+  const sourceFileName = SOURCE_PHASE_FILES[sourcePhase];
+  if (!sourceFileName) {
+    return { passed: false, coverage: 0, missingKeywords: [], errors: [`不正なソースフェーズ: ${sourcePhase}`] };
+  }
+  const sourceFilePath = path.join(docsDir, sourceFileName);
+  if (!fs.existsSync(sourceFilePath)) {
+    return { passed: false, coverage: 0, missingKeywords: [], errors: [`ソースファイルが見つかりません: ${sourceFilePath}`] };
+  }
+
+  // Read source
+  let sourceText: string;
+  try {
+    sourceText = fs.readFileSync(sourceFilePath, 'utf-8');
+  } catch (e) {
+    return { passed: false, coverage: 0, missingKeywords: [], errors: [`ソースファイルの読み込みに失敗: ${e instanceof Error ? e.message : String(e)}`] };
+  }
+
+  // Extract keywords
+  const keywords = extractKeywords(sourceText);
+  if (keywords.length === 0) {
+    return { passed: true, coverage: 1.0, missingKeywords: [], errors: [], warnings: ['ソースドキュメントからキーワードが抽出できませんでした'] };
+  }
+
+  // Resolve target file(s)
+  let targetText = '';
+  const targetFileName = TARGET_PHASE_FILES[targetPhase];
+  if (targetFileName) {
+    const targetFilePath = path.join(docsDir, targetFileName);
+    if (!fs.existsSync(targetFilePath)) {
+      return { passed: false, coverage: 0, missingKeywords: keywords, errors: [`ターゲットファイルが見つかりません: ${targetFilePath}`] };
+    }
+    try {
+      targetText = fs.readFileSync(targetFilePath, 'utf-8');
+    } catch (e) {
+      return { passed: false, coverage: 0, missingKeywords: keywords, errors: [`ターゲットファイルの読み込みに失敗: ${e instanceof Error ? e.message : String(e)}`] };
+    }
+  } else if (targetPhase === 'implementation') {
+    // For implementation, we just pass - actual code files would need scope info
+    // This is a simplified version that checks if target docs exist
+    warnings.push('implementation対象のコードスキャンはスコープ情報が必要なため省略されました');
+    return { passed: true, coverage: 1.0, missingKeywords: [], errors: [], warnings };
+  } else {
+    return { passed: false, coverage: 0, missingKeywords: [], errors: [`不正なターゲットフェーズ: ${targetPhase}`] };
+  }
+
+  // Check coverage
+  const targetLower = targetText.toLowerCase();
+  const foundKeywords: string[] = [];
+  const missingKeywords: string[] = [];
+
+  for (const keyword of keywords) {
+    if (targetLower.includes(keyword.toLowerCase())) {
+      foundKeywords.push(keyword);
+    } else {
+      missingKeywords.push(keyword);
+    }
+  }
+
+  const coverage = foundKeywords.length / keywords.length;
+
+  // Check threshold
+  const isStrict = process.env.SEMANTIC_TRACE_STRICT !== 'false';
+  if (coverage < minCoverage) {
+    if (isStrict) {
+      errors.push(`キーワードカバレッジが閾値未満です: ${(coverage * 100).toFixed(1)}% < ${(minCoverage * 100).toFixed(1)}%`);
+      return { passed: false, coverage, missingKeywords, errors, warnings };
+    } else {
+      warnings.push(`キーワードカバレッジが低い: ${(coverage * 100).toFixed(1)}% (閾値: ${(minCoverage * 100).toFixed(1)}%)`);
+      return { passed: true, coverage, missingKeywords, errors: [], warnings };
+    }
+  }
+
+  return { passed: true, coverage, missingKeywords, errors: [], warnings };
+}

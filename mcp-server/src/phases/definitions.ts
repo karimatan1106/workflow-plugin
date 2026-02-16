@@ -9,6 +9,8 @@
 
 import type { PhaseName, SubPhaseName, TaskSize } from '../state/types.js';
 import { DEFAULT_TASK_SIZE } from '../state/types.js';
+import * as path from 'path';
+import { parseCLAUDEMdByPhase } from './claude-md-parser.js';
 
 // ============================================================================
 // フェーズ順序定義
@@ -814,8 +816,8 @@ export function resolvePhaseGuide(phase: string, docsDir?: string): PhaseGuide |
   const guide = PHASE_GUIDES[phase];
   if (!guide) return undefined;
 
-  // シャローコピーを作成
-  const resolved = { ...guide };
+  // シャローコピーを作成（PhaseGuide型として明示的に型付け）
+  const resolved: PhaseGuide = { ...guide };
 
   if (docsDir) {
     // outputFileのプレースホルダーを置換
@@ -842,6 +844,34 @@ export function resolvePhaseGuide(phase: string, docsDir?: string): PhaseGuide |
       }
       resolved.subPhases = resolvedSubPhases;
     }
+  }
+
+  // P1-1: CLAUDE.md分割配信
+  const claudeMdPath = process.env.CLAUDE_MD_PATH || path.join(process.cwd(), 'CLAUDE.md');
+  try {
+    const parseResult = parseCLAUDEMdByPhase(claudeMdPath, phase);
+    if (parseResult.content) {
+      resolved.content = parseResult.content;
+    }
+    if (parseResult.sections.length > 0) {
+      resolved.claudeMdSections = parseResult.sections;
+    }
+
+    // サブフェーズにもCLAUDE.mdコンテンツを設定
+    if (resolved.subPhases) {
+      for (const [key, subGuide] of Object.entries(resolved.subPhases)) {
+        const subParseResult = parseCLAUDEMdByPhase(claudeMdPath, key);
+        if (subParseResult.content) {
+          subGuide.content = subParseResult.content;
+        }
+        if (subParseResult.sections.length > 0) {
+          subGuide.claudeMdSections = subParseResult.sections;
+        }
+      }
+    }
+  } catch (e) {
+    // CLAUDE.mdパースエラーは既存動作に影響させない
+    console.warn(`[resolvePhaseGuide] CLAUDE.md parse error: ${e instanceof Error ? e.message : String(e)}`);
   }
 
   return resolved;

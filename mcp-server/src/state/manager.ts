@@ -870,6 +870,19 @@ export class WorkflowStateManager {
   }
 
   /**
+   * P1-3: タスクインデックスの公開同期メソッド
+   *
+   * フェーズ遷移を伴わない状態変更後にtask-index.jsonを更新する公開API。
+   *
+   * @param taskId タスクID
+   * @param phase 現在のフェーズ
+   * @param taskState 更新後のタスク状態
+   */
+  syncTaskIndex(taskId: string, phase: PhaseName, taskState: TaskState): void {
+    this.updateTaskIndexForSingleTask(taskId, phase, taskState);
+  }
+
+  /**
    * 並列フェーズのサブフェーズを初期化
    *
    * 指定されたフェーズが並列フェーズの場合、

@@ -51,12 +51,13 @@ export function workflowBack(
     };
   }
 
-  // タスクサイズを取得
+  // タスクサイズを取得（デフォルト: large）
   const taskSize: TaskSize = taskState.taskSize || DEFAULT_TASK_SIZE;
   const phases = PHASES_BY_SIZE[taskSize];
 
   // targetPhaseが有効なフェーズかチェック
-  if (!phases.includes(targetPhase as PhaseName)) {
+  const targetPhaseTyped = targetPhase as PhaseName;
+  if (!phases.includes(targetPhaseTyped)) {
     return {
       success: false,
       message: `不正なフェーズ名: ${targetPhase}`,
@@ -65,7 +66,7 @@ export function workflowBack(
 
   // targetPhaseが現在のフェーズより前かチェック
   const currentIndex = getPhaseIndex(fromPhase, taskSize);
-  const targetIndex = getPhaseIndex(targetPhase as PhaseName, taskSize);
+  const targetIndex = getPhaseIndex(targetPhaseTyped, taskSize);
 
   if (targetIndex >= currentIndex) {
     return {
@@ -107,6 +108,13 @@ export function workflowBack(
     };
 
     stateManager.writeTaskState(taskState.workflowDir, updatedState);
+
+    // P1-3: task-index.json同期
+    try {
+      stateManager.syncTaskIndex(taskState.taskId, targetPhase as PhaseName, updatedState);
+    } catch (e) {
+      console.warn('[workflow_back] task-index sync warning:', e);
+    }
 
     // REQ-C4: リカバリガイダンスを生成
     const guidance = generateRecoveryGuidance(targetPhase as PhaseName, resetReason);

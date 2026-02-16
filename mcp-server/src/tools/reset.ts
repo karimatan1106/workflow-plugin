@@ -40,7 +40,9 @@ const ARTIFACT_PATTERNS = [
  * @returns 移動した成果物ファイルのリスト
  */
 function resetAllArtifactsSync(workflowDir: string, taskId: string): string[] {
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  // ISO 8601タイムスタンプをファイルシステム対応形式に変換（コロン・ドット→ハイフン）
+  const isoTimestamp = new Date().toISOString();
+  const timestamp = isoTimestamp.replace(/[:.]/g, '-');
   const backupDir = path.join(workflowDir, `backup_${taskId}_${timestamp}`);
 
   // バックアップディレクトリを作成
@@ -49,9 +51,11 @@ function resetAllArtifactsSync(workflowDir: string, taskId: string): string[] {
   }
 
   const movedFiles: string[] = [];
+  // ワークフローディレクトリ名からタスク名を抽出（例: 20260216_162605_タスク名 → タスク名）
   const taskName = path.basename(workflowDir).split('_').slice(1).join('_');
   const docsPath = path.join(workflowDir, '..', '..', 'docs', 'workflows', taskName);
 
+  // 各成果物ファイルをバックアップディレクトリに移動
   for (const pattern of ARTIFACT_PATTERNS) {
     const filePath = path.join(docsPath, pattern);
     if (fs.existsSync(filePath)) {
@@ -93,6 +97,16 @@ export function workflowReset(taskId?: string, reason?: string, sessionToken?: s
     resetAllArtifactsSync(taskState.workflowDir, taskState.taskId);
 
     stateManager.resetTask(taskState.taskId, reason);
+
+    // P1-3: task-index.json同期
+    try {
+      const resetState = stateManager.getTaskById(taskState.taskId);
+      if (resetState) {
+        stateManager.syncTaskIndex(taskState.taskId, 'research', resetState);
+      }
+    } catch (e) {
+      console.warn('[workflow_reset] task-index sync warning:', e);
+    }
 
     return {
       success: true,

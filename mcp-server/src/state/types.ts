@@ -268,6 +268,12 @@ export interface TaskState {
   };
   /** ユーザー意図（タスク開始時に記録） */
   userIntent?: string;
+  /** P1-2: 親タスクID（サブタスクの場合） */
+  parentTaskId?: string;
+  /** P1-2: 子タスクIDリスト（親タスクの場合） */
+  childTaskIds?: string[];
+  /** P1-2: タスク種別（親子関係の有無） */
+  taskType?: 'parent' | 'child' | 'standalone';
   /** テスト削除履歴 */
   testRemovalHistory?: Array<{
     testName: string;
@@ -359,6 +365,10 @@ export interface PhaseGuide {
   model?: string;
   /** サブフェーズガイド（並列フェーズの場合） */
   subPhases?: Record<string, PhaseGuide>;
+  /** P1-1: CLAUDE.mdから抽出したフェーズ固有コンテンツ */
+  content?: string;
+  /** P1-1: CLAUDE.mdから抽出したセクション名リスト */
+  claudeMdSections?: string[];
 }
 
 /**
@@ -517,4 +527,41 @@ export interface ResetResult extends ToolResult {
   toPhase?: PhaseName;
   /** リセット理由 */
   reason?: string;
+}
+
+/**
+ * P0-3: 事前検証結果
+ * @spec docs/spec/features/workflow-mcp-server.md
+ */
+export interface PreValidateResult extends ToolResult {
+  passed?: boolean;
+  errors?: string[];
+  warnings?: string[];
+  checkedRules?: string[];
+}
+
+/**
+ * P0-1: フィードバック記録結果
+ * @spec docs/spec/features/workflow-mcp-server.md
+ */
+export interface RecordFeedbackResult extends ToolResult {
+  updatedUserIntent?: string;
+}
+
+/**
+ * P1-2: サブタスク作成結果
+ * @spec docs/spec/features/workflow-mcp-server.md
+ */
+export interface CreateSubtaskResult extends ToolResult {
+  childTaskId?: string;
+  parentTaskId?: string;
+}
+
+/**
+ * P1-2: タスクリンク結果
+ * @spec docs/spec/features/workflow-mcp-server.md
+ */
+export interface LinkTasksResult extends ToolResult {
+  parentTaskId?: string;
+  childTaskId?: string;
 }

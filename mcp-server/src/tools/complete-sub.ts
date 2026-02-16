@@ -200,6 +200,16 @@ export function workflowCompleteSub(taskId?: string, subPhase?: string, sessionT
     // サブフェーズを完了としてマーク
     stateManager.updateSubPhaseStatus(taskState.taskId, subPhaseName, 'completed');
 
+    // P1-3: task-index.json同期
+    try {
+      const syncState = stateManager.getTaskById(taskState.taskId);
+      if (syncState) {
+        stateManager.syncTaskIndex(taskState.taskId, syncState.phase, syncState);
+      }
+    } catch (e) {
+      console.warn('[workflow_complete_sub] task-index sync warning:', e);
+    }
+
     // 残りの未完了サブフェーズを取得
     const remaining = stateManager.getIncompleteSubPhases(taskState.taskId);
     const allCompleted = remaining.length === 0;

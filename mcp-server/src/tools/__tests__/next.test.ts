@@ -74,14 +74,14 @@ vi.mock('../../validation/design-validator.js', () => ({
   formatValidationError: vi.fn(),
 }));
 
-// semantic-checkerをモック（CRITICAL-1: キーワードトレーサビリティ方式への変更対応）
-// テスト用のモックコンテンツでは要件/仕様間のキーワード一致が保証されないため、
-// 意味的整合性チェックをバイパスする
-vi.mock('../../validation/semantic-checker.js', () => ({
+// artifact-validatorをモック（P0-2: キーワードトレーサビリティ対応）
+vi.mock('../../validation/artifact-validator.js', () => ({
+  validateArtifactQuality: vi.fn(() => ({ passed: true, errors: [] })),
+  PHASE_ARTIFACT_REQUIREMENTS: {},
   validateSemanticConsistency: vi.fn(() => ({ valid: true, errors: [], warnings: [] })),
-  extractKeywordsFromMarkdown: vi.fn(() => []),
-  validateKeywordTraceability: vi.fn(() => ({ warnings: [] })),
+  validateKeywordTraceability: vi.fn(() => ({ passed: true, warnings: [], errors: [], missingKeywords: [] })),
 }));
+
 
 // fsモジュールをモック（成果物チェック用）
 vi.mock('fs', async () => {

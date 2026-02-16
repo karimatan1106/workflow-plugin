@@ -23,7 +23,7 @@ import {
 import { getTaskByIdOrError, safeExecute, verifySessionToken } from './helpers.js';
 import { STATE_ERRORS } from '../utils/errors.js';
 import { DesignValidator, formatValidationError } from '../validation/design-validator.js';
-import { validateArtifactQuality, PHASE_ARTIFACT_REQUIREMENTS, validateSemanticConsistency } from '../validation/artifact-validator.js';
+import { validateArtifactQuality, PHASE_ARTIFACT_REQUIREMENTS, validateSemanticConsistency, validateKeywordTraceability } from '../validation/artifact-validator.js';
 import { validateScopePostExecution } from '../validation/scope-validator.js';
 import { auditLogger } from '../audit/logger.js';
 
@@ -354,6 +354,32 @@ export function workflowNext(taskId?: string, sessionToken?: string): NextResult
           strictMode: false,
         });
       }
+    }
+  }
+
+  // P0-2: キーワードトレーサビリティ検証
+  const docsDir = taskState.docsDir || taskState.workflowDir;
+  const keywordTraceMapping: Record<string, { source: string; target: string }> = {
+    'parallel_analysis': { source: 'requirements', target: 'spec' },
+    'test_impl': { source: 'spec', target: 'test-design' },
+  };
+
+  const traceConfig = keywordTraceMapping[currentPhase];
+  if (traceConfig) {
+    try {
+      const traceResult = validateKeywordTraceability(docsDir, traceConfig.source, traceConfig.target);
+      if (!traceResult.passed) {
+        return {
+          success: false,
+          message: `キーワードトレーサビリティ検証に失敗しました:\n${traceResult.errors.join('\n')}\n未参照キーワード: ${traceResult.missingKeywords.join(', ')}`,
+        };
+      }
+      if (traceResult.warnings && traceResult.warnings.length > 0) {
+        // Add warnings to the response but don't block
+        console.warn(`[workflow_next] Keyword trace warnings: ${traceResult.warnings.join(', ')}`);
+      }
+    } catch (e) {
+      console.warn('[workflow_next] Keyword traceability check error (non-blocking):', e);
     }
   }
 

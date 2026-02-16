@@ -45,6 +45,14 @@ import {
   recordTestResultToolDefinition,
   workflowBack,
   backToolDefinition,
+  workflowPreValidate,
+  preValidateToolDefinition,
+  workflowRecordFeedback,
+  recordFeedbackToolDefinition,
+  workflowCreateSubtask,
+  createSubtaskToolDefinition,
+  workflowLinkTasks,
+  linkTasksToolDefinition,
 } from './tools/index.js';
 
 import type { ToolResult } from './state/types.js';
@@ -74,6 +82,10 @@ const TOOL_DEFINITIONS = [
   setScopeToolDefinition,
   recordTestResultToolDefinition,
   backToolDefinition,
+  preValidateToolDefinition,
+  recordFeedbackToolDefinition,
+  createSubtaskToolDefinition,
+  linkTasksToolDefinition,
 ] as const;
 
 // ============================================================================
@@ -102,6 +114,10 @@ function validateToolArgs(toolName: string, args: Record<string, unknown>): { va
     workflow_record_known_bug: ['taskId', 'testName', 'description', 'severity'],
     workflow_get_known_bugs: ['taskId'],
     workflow_back: ['targetPhase'],
+    workflow_pre_validate: ['targetPhase', 'filePath'],
+    workflow_record_feedback: ['feedback'],
+    workflow_create_subtask: ['parentTaskId', 'subtaskName'],
+    workflow_link_tasks: ['parentTaskId', 'childTaskId'],
   };
 
   const required = requiredParams[toolName];
@@ -180,6 +196,14 @@ interface ToolArguments {
   workflow_record_test_result: { taskId?: string; exitCode?: number; summary?: string; output?: string; sessionToken?: string };
   /** 差し戻し */
   workflow_back: { taskId?: string; targetPhase?: string; reason?: string; sessionToken?: string };
+  /** 事前検証 */
+  workflow_pre_validate: { taskId?: string; targetPhase?: string; filePath?: string; sessionToken?: string };
+  /** フィードバック記録 */
+  workflow_record_feedback: { taskId?: string; feedback?: string; appendMode?: boolean; sessionToken?: string };
+  /** サブタスク作成 */
+  workflow_create_subtask: { parentTaskId?: string; subtaskName?: string; taskSize?: string; sessionToken?: string };
+  /** タスクリンク */
+  workflow_link_tasks: { parentTaskId?: string; childTaskId?: string; sessionToken?: string };
 }
 
 /** ツール名の型 */
@@ -337,6 +361,26 @@ const TOOL_HANDLERS: Record<ToolName, ToolHandler> = {
   workflow_back: (args) => {
     const { taskId, targetPhase, reason, sessionToken } = args as ToolArguments['workflow_back'];
     return workflowBack(taskId, targetPhase, reason, sessionToken);
+  },
+
+  workflow_pre_validate: (args) => {
+    const { taskId, targetPhase, filePath, sessionToken } = args as ToolArguments['workflow_pre_validate'];
+    return workflowPreValidate(taskId, targetPhase, filePath, sessionToken);
+  },
+
+  workflow_record_feedback: (args) => {
+    const { taskId, feedback, appendMode, sessionToken } = args as ToolArguments['workflow_record_feedback'];
+    return workflowRecordFeedback(taskId, feedback, appendMode, sessionToken);
+  },
+
+  workflow_create_subtask: (args) => {
+    const { parentTaskId, subtaskName, taskSize, sessionToken } = args as ToolArguments['workflow_create_subtask'];
+    return workflowCreateSubtask(parentTaskId, subtaskName, taskSize, sessionToken);
+  },
+
+  workflow_link_tasks: (args) => {
+    const { parentTaskId, childTaskId, sessionToken } = args as ToolArguments['workflow_link_tasks'];
+    return workflowLinkTasks(parentTaskId, childTaskId, sessionToken);
   },
 };
 
