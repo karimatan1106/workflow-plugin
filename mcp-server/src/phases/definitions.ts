@@ -544,6 +544,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
     minLines: 50,
     subagentType: 'general-purpose',
     model: 'haiku',
+    subagentTemplate: '# researchフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\n既存コードベースの調査と問題分析を行ってください。\n\n## 出力\n${docsDir}/research.md',
   },
   requirements: {
     phaseName: 'requirements',
@@ -559,6 +560,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
     minLines: 50,
     subagentType: 'general-purpose',
     model: 'sonnet',
+    subagentTemplate: '# requirementsフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 入力\n${docsDir}/research.md を読み込んでください。\n\n## 作業内容\n要件定義書を作成してください。\n\n## 出力\n${docsDir}/requirements.md',
   },
   parallel_analysis: {
     phaseName: 'parallel_analysis',
@@ -578,6 +580,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
         minLines: 50,
         subagentType: 'general-purpose',
         model: 'sonnet',
+        subagentTemplate: '# threat_modelingフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 入力\n${docsDir}/requirements.md を読み込んでください。\n\n## 作業内容\n脅威モデルを作成してください。\n\n## 出力\n${docsDir}/threat-model.md',
       },
       planning: {
         phaseName: 'planning',
@@ -593,6 +596,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
         minLines: 50,
         subagentType: 'general-purpose',
         model: 'sonnet',
+        subagentTemplate: '# planningフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 入力\n${docsDir}/requirements.md を読み込んでください。\n\n## 作業内容\n仕様書を作成してください。\n\n## 出力\n${docsDir}/spec.md',
       },
     },
   },
@@ -613,6 +617,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
         minLines: 15,
         subagentType: 'general-purpose',
         model: 'haiku',
+        subagentTemplate: '# state_machineフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 入力\n${docsDir}/spec.md を読み込んでください。\n\n## 作業内容\nステートマシン図を作成してください。\n\n## 出力\n${docsDir}/state-machine.mmd',
       },
       flowchart: {
         phaseName: 'flowchart',
@@ -627,6 +632,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
         minLines: 15,
         subagentType: 'general-purpose',
         model: 'haiku',
+        subagentTemplate: '# flowchartフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 入力\n${docsDir}/spec.md を読み込んでください。\n\n## 作業内容\nフローチャートを作成してください。\n\n## 出力\n${docsDir}/flowchart.mmd',
       },
       ui_design: {
         phaseName: 'ui_design',
@@ -642,6 +648,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
         minLines: 50,
         subagentType: 'general-purpose',
         model: 'sonnet',
+        subagentTemplate: '# ui_designフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 入力\n${docsDir}/spec.md を読み込んでください。\n\n## 作業内容\nUI設計を作成してください。\n\n## 出力\n${docsDir}/ui-design.md',
       },
     },
   },
@@ -652,6 +659,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
     editableFileTypes: ['.md'],
     subagentType: 'general-purpose',
     model: 'sonnet',
+    subagentTemplate: '# design_reviewフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\n設計レビューを実施し、承認を得てください。',
   },
   test_design: {
     phaseName: 'test_design',
@@ -669,6 +677,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
     minLines: 50,
     subagentType: 'general-purpose',
     model: 'sonnet',
+    subagentTemplate: '# test_designフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 入力\n${docsDir}/spec.md、state-machine.mmd、flowchart.mmd を読み込んでください。\n\n## 作業内容\nテスト設計書を作成してください。\n\n## 出力\n${docsDir}/test-design.md',
   },
   test_impl: {
     phaseName: 'test_impl',
@@ -681,6 +690,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
     editableFileTypes: ['.test.ts', '.test.tsx', '.spec.ts', '.spec.tsx', '.md'],
     subagentType: 'general-purpose',
     model: 'sonnet',
+    subagentTemplate: '# test_implフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 入力\n${docsDir}/test-design.md を読み込んでください。\n\n## 作業内容\nテストコードを実装してください（TDD Red）。',
   },
   implementation: {
     phaseName: 'implementation',
@@ -695,6 +705,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
     editableFileTypes: ['*'],
     subagentType: 'general-purpose',
     model: 'sonnet',
+    subagentTemplate: '# implementationフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 入力\n${docsDir}/test-design.md、spec.md を読み込んでください。\n\n## 作業内容\nテストを通す実装を行ってください（TDD Green）。',
   },
   refactoring: {
     phaseName: 'refactoring',
@@ -707,6 +718,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
     editableFileTypes: ['*'],
     subagentType: 'general-purpose',
     model: 'haiku',
+    subagentTemplate: '# refactoringフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\nコード品質改善を行ってください（TDD Refactor）。',
   },
   parallel_quality: {
     phaseName: 'parallel_quality',
@@ -719,6 +731,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
         editableFileTypes: ['*'],
         subagentType: 'general-purpose',
         model: 'haiku',
+        subagentTemplate: '# build_checkフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\nビルド確認を行ってください。',
       },
       code_review: {
         phaseName: 'code_review',
@@ -736,6 +749,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
         minLines: 30,
         subagentType: 'general-purpose',
         model: 'sonnet',
+        subagentTemplate: '# code_reviewフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 入力\n${docsDir}/spec.md を読み込んでください。\n\n## 作業内容\nコードレビューを実施してください。\n\n## 出力\n${docsDir}/code-review.md',
       },
     },
   },
@@ -751,6 +765,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
     editableFileTypes: ['.md', '.test.ts', '.test.tsx'],
     subagentType: 'general-purpose',
     model: 'haiku',
+    subagentTemplate: '# testingフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\nテストを実行してください。',
   },
   regression_test: {
     phaseName: 'regression_test',
@@ -759,6 +774,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
     editableFileTypes: ['.md', '.test.ts', '.test.tsx'],
     subagentType: 'general-purpose',
     model: 'haiku',
+    subagentTemplate: '# regression_testフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\nリグレッションテストを実行してください。',
   },
   parallel_verification: {
     phaseName: 'parallel_verification',
@@ -774,6 +790,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
         minLines: 20,
         subagentType: 'general-purpose',
         model: 'haiku',
+        subagentTemplate: '# manual_testフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\n手動テストを実施してください。\n\n## 出力\n${docsDir}/manual-test.md',
       },
       security_scan: {
         phaseName: 'security_scan',
@@ -785,6 +802,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
         minLines: 20,
         subagentType: 'general-purpose',
         model: 'haiku',
+        subagentTemplate: '# security_scanフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\nセキュリティスキャンを実施してください。\n\n## 出力\n${docsDir}/security-scan.md',
       },
       performance_test: {
         phaseName: 'performance_test',
@@ -796,6 +814,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
         minLines: 20,
         subagentType: 'general-purpose',
         model: 'haiku',
+        subagentTemplate: '# performance_testフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\nパフォーマンステストを実施してください。\n\n## 出力\n${docsDir}/performance-test.md',
       },
       e2e_test: {
         phaseName: 'e2e_test',
@@ -807,6 +826,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
         minLines: 20,
         subagentType: 'general-purpose',
         model: 'haiku',
+        subagentTemplate: '# e2e_testフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\nE2Eテストを実施してください。\n\n## 出力\n${docsDir}/e2e-test.md',
       },
     },
   },
@@ -817,6 +837,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
     editableFileTypes: ['.md', '.mdx'],
     subagentType: 'general-purpose',
     model: 'haiku',
+    subagentTemplate: '# docs_updateフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\nドキュメントを更新してください。',
   },
   commit: {
     phaseName: 'commit',
@@ -824,6 +845,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
     allowedBashCategories: ['readonly', 'implementation'],
     subagentType: 'general-purpose',
     model: 'haiku',
+    subagentTemplate: '# commitフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\n変更をコミットしてください。',
   },
   push: {
     phaseName: 'push',
@@ -831,6 +853,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
     allowedBashCategories: ['readonly', 'implementation'],
     subagentType: 'general-purpose',
     model: 'haiku',
+    subagentTemplate: '# pushフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\nリモートリポジトリにプッシュしてください。',
   },
   ci_verification: {
     phaseName: 'ci_verification',
@@ -839,6 +862,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
     editableFileTypes: ['.md'],
     subagentType: 'general-purpose',
     model: 'haiku',
+    subagentTemplate: '# ci_verificationフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\nCI/CDパイプラインの結果を確認してください。',
   },
   deploy: {
     phaseName: 'deploy',
@@ -847,8 +871,24 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
     editableFileTypes: ['.md'],
     subagentType: 'general-purpose',
     model: 'haiku',
+    subagentTemplate: '# deployフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\nデプロイを実行してください。',
   },
 };
+
+/**
+ * テンプレート内のプレースホルダーを置換
+ *
+ * @param template テンプレート文字列
+ * @param variables 置換する変数マップ
+ * @returns 置換後の文字列
+ */
+function resolvePlaceholders(template: string, variables: Record<string, string>): string {
+  let result = template;
+  for (const [key, value] of Object.entries(variables)) {
+    result = result.replace(new RegExp(`\\$\\{${key}\\}`, 'g'), value);
+  }
+  return result;
+}
 
 /**
  * フェーズガイドを取得（docsDirプレースホルダー解決付き）
@@ -940,6 +980,25 @@ export function resolvePhaseGuide(phase: string, docsDir?: string, userIntent?: 
   } catch (e) {
     // CLAUDE.mdパースエラーは既存動作に影響させない
     console.warn(`[resolvePhaseGuide] CLAUDE.md parse error: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
+  // C-1: subagentTemplateのプレースホルダーを置換
+  if (resolved.subagentTemplate) {
+    resolved.subagentTemplate = resolvePlaceholders(resolved.subagentTemplate, {
+      docsDir: docsDir || '',
+      userIntent: userIntent || '',
+    });
+  }
+  // サブフェーズのsubagentTemplateも置換
+  if (resolved.subPhases) {
+    for (const subPhase of Object.values(resolved.subPhases)) {
+      if (subPhase.subagentTemplate) {
+        subPhase.subagentTemplate = resolvePlaceholders(subPhase.subagentTemplate, {
+          docsDir: docsDir || '',
+          userIntent: userIntent || '',
+        });
+      }
+    }
   }
 
   return resolved;

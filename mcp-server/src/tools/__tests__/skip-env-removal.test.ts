@@ -14,6 +14,7 @@ import * as path from 'path';
 import { workflowNext } from '../next.js';
 import { workflowCompleteSub } from '../complete-sub.js';
 import { stateManager } from '../../state/manager.js';
+import { performDesignValidation } from '../../validation/design-validator.js';
 import type { TaskState, PhaseName, SubPhaseName } from '../../state/types.js';
 
 // fs モジュールをモック化（ESM互換）
@@ -65,6 +66,7 @@ vi.mock('../../validation/design-validator.js', () => ({
     }),
   })),
   formatValidationError: vi.fn(() => '設計-実装整合性の検証に失敗しました'),
+  performDesignValidation: vi.fn(() => null),
 }));
 
 // モック用のヘルパー
@@ -218,22 +220,28 @@ describe('REQ-1: SKIP_*環境変数の完全除去', () => {
       // 実装によってはvalidation errorやspec.md関連のメッセージ
     });
 
-    it('refactoringフェーズでもSKIP_DESIGN_VALIDATIONが無視されること', () => {
+    it('test_implフェーズでもSKIP_DESIGN_VALIDATIONが無視され設計検証が実行されること', () => {
       // Arrange
       process.env.SKIP_DESIGN_VALIDATION = 'true';
 
-      const taskState = mockTaskState('refactoring', {
-        docsDir: '/tmp/test-docs-refactor',
+      const taskState = mockTaskState('test_impl', {
+        docsDir: '/tmp/test-docs-design-check',
       });
 
       vi.spyOn(stateManager, 'getTaskById').mockReturnValue(taskState);
-      vi.mocked(fs.existsSync).mockReturnValue(false); // 設計書なし
+
+      // performDesignValidationがエラーを返すようにモック
+      vi.mocked(performDesignValidation).mockReturnValueOnce({
+        success: false,
+        message: '設計-実装整合性の検証に失敗しました',
+      });
 
       // Act
       const result = workflowNext('test-task-001');
 
-      // Assert: 設計検証が実行される
+      // Assert: SKIP_DESIGN_VALIDATION=trueでも設計検証が実行されブロックされること
       expect(result.success).toBe(false);
+      expect(result.message).toContain('設計-実装整合性');
     });
   });
 

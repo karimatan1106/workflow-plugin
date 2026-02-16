@@ -15,6 +15,7 @@ import { isParallelPhase, PARALLEL_GROUPS, getSubPhaseDependencies, SUB_PHASE_DE
 import { getTaskByIdOrError, validateRequiredString, safeExecute, verifySessionToken } from './helpers.js';
 import { MISSING_PARAM_ERRORS, invalidValueError } from '../utils/errors.js';
 import { validateArtifactQuality, PHASE_ARTIFACT_REQUIREMENTS } from '../validation/artifact-validator.js';
+import { performDesignValidation } from '../validation/design-validator.js';
 
 /**
  * REQ-B3: サブフェーズ依存関係の警告チェック
@@ -190,6 +191,14 @@ export function workflowCompleteSub(taskId?: string, subPhase?: string, sessionT
       success: false,
       message: `${subPhaseName}の成果物に問題があります:\n${artifactErrors.map(e => `  - ${e}`).join('\n')}\n\n出力先: ${docsDir}/`,
     };
+  }
+
+  // C-2: code_review完了時の設計-実装整合性チェック
+  if (subPhaseName === 'code_review') {
+    const designError = performDesignValidation(docsDir);
+    if (designError) {
+      return designError as CompleteSubResult;
+    }
   }
 
   // ★★★ REQ-B3: 依存関係の警告チェック ★★★

@@ -72,6 +72,7 @@ vi.mock('../../validation/design-validator.js', () => ({
     }),
   })),
   formatValidationError: vi.fn(),
+  performDesignValidation: vi.fn(() => null),
 }));
 
 // artifact-validatorをモック（P0-2: キーワードトレーサビリティ対応）

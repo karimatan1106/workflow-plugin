@@ -54,6 +54,7 @@ vi.mock('../../validation/design-validator.js', () => ({
     validateAll: vi.fn(() => ({ passed: true, errors: [] })),
   })),
   formatValidationError: vi.fn(() => 'validation error'),
+  performDesignValidation: vi.fn(() => null),
 }));
 
 /**

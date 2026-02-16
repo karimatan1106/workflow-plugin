@@ -136,3 +136,31 @@ export function verifySessionToken(
   return null; // success
 }
 
+/**
+ * C-3: フェーズ開始時刻をタスク履歴から取得
+ *
+ * taskState.historyから指定フェーズの最新開始時刻を逆順検索で取得する。
+ *
+ * @param history タスクの履歴エントリ配列
+ * @param phaseName 検索するフェーズ名
+ * @returns ISO 8601形式のタイムスタンプ、または見つからない場合はnull
+ */
+export function getPhaseStartedAt(
+  history: Array<{ phase: string; action: string; timestamp: string }> | undefined,
+  phaseName: string
+): string | null {
+  if (!history || history.length === 0) {
+    return null;
+  }
+
+  // 逆順で検索（最新のエントリを優先）
+  for (let i = history.length - 1; i >= 0; i--) {
+    const entry = history[i];
+    if (entry.phase === phaseName && entry.action === 'phase_start') {
+      return entry.timestamp;
+    }
+  }
+
+  return null;
+}
+

@@ -31,6 +31,7 @@ vi.mock('../../validation/design-validator.js', () => ({
     }),
   })),
   formatValidationError: vi.fn(),
+  performDesignValidation: vi.fn(() => null),
 }));
 
 // fsモジュールをモック

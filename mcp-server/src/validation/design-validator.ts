@@ -921,3 +921,35 @@ export function formatValidationError(result: ValidationResult): string {
 
   return lines.join('\n');
 }
+
+/**
+ * C-2: 設計-実装整合性チェックを実行（共有関数）
+ *
+ * design_reviewフェーズ完了時およびparallel_quality→testing遷移時に呼ばれる。
+ * DESIGN_VALIDATION_STRICT環境変数で動作を制御:
+ * - true（デフォルト）: 検証失敗時にエラーを返して遷移をブロック
+ * - false: 警告を出力するが遷移は許可
+ *
+ * @param docsDir ドキュメントディレクトリ
+ * @returns エラーがある場合はエラーオブジェクト、ない場合は null
+ */
+export function performDesignValidation(docsDir: string): { success: false; message: string } | null {
+  const strictMode = process.env.DESIGN_VALIDATION_STRICT !== 'false';
+  const validator = new DesignValidator(docsDir);
+  const validationResult = validator.validateAll();
+
+  if (!validationResult.passed) {
+    if (strictMode) {
+      return {
+        success: false,
+        message: formatValidationError(validationResult),
+      };
+    } else {
+      // 警告モード: ログ出力のみ
+      console.warn(`[design-validator] 設計-実装不整合を検出しましたが、DESIGN_VALIDATION_STRICT=falseのため続行します:\n${formatValidationError(validationResult)}`);
+      return null;
+    }
+  }
+
+  return null;
+}

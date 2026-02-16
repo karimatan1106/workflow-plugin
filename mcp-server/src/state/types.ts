@@ -399,6 +399,8 @@ export interface PhaseGuide {
   claudeMdSections?: string[];
   /** ユーザーの意図（タスク開始時に指定） */
   userIntent?: string;
+  /** subagent起動時のプロンプトテンプレート（C-1: userIntent伝播強化） */
+  subagentTemplate?: string;
 }
 
 /**

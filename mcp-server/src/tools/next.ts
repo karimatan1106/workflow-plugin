@@ -20,11 +20,12 @@ import {
   calculatePhaseSkips,
   resolvePhaseGuide,
 } from '../phases/definitions.js';
-import { getTaskByIdOrError, safeExecute, verifySessionToken } from './helpers.js';
+import { getTaskByIdOrError, safeExecute, verifySessionToken, getPhaseStartedAt } from './helpers.js';
 import { STATE_ERRORS } from '../utils/errors.js';
-import { DesignValidator, formatValidationError } from '../validation/design-validator.js';
+import { DesignValidator, formatValidationError, performDesignValidation } from '../validation/design-validator.js';
 import { validateArtifactQuality, PHASE_ARTIFACT_REQUIREMENTS, validateSemanticConsistency, validateKeywordTraceability } from '../validation/artifact-validator.js';
 import { validateScopePostExecution } from '../validation/scope-validator.js';
+import { validateTestAuthenticity, recordTestOutputHash } from '../validation/test-authenticity.js';
 import { auditLogger } from '../audit/logger.js';
 
 /** スコープサイズ制限（REQ-3, REQ-R4: 環境変数対応） */
@@ -98,25 +99,6 @@ function checkPhaseArtifacts(phase: PhaseName, docsDir: string): string[] {
   return allErrors;
 }
 
-/**
- * 設計-実装整合性チェックを実行（REQ-6: 必須化）
- *
- * @param docsDir ドキュメントディレクトリ
- * @returns エラーがある場合はエラー結果、ない場合は null
- */
-function performDesignValidation(docsDir: string): NextResult | null {
-  const validator = new DesignValidator(docsDir);
-  const validationResult = validator.validateAll();
-
-  if (!validationResult.passed) {
-    return {
-      success: false,
-      message: formatValidationError(validationResult),
-    };
-  }
-
-  return null;
-}
 
 /**
  * 次のフェーズへ遷移
@@ -225,6 +207,34 @@ export function workflowNext(taskId?: string, sessionToken?: string): NextResult
       };
     }
 
+    // C-3: test-authenticity統合
+    if (testResult.output) {
+      const phaseStartedAt = getPhaseStartedAt(taskState.history, 'testing') || taskState.startedAt;
+      const authenticityResult = validateTestAuthenticity(testResult.output, testResult.exitCode, phaseStartedAt);
+      const testStrict = process.env.TEST_AUTHENTICITY_STRICT !== 'false';
+
+      if (!authenticityResult.valid) {
+        if (testStrict) {
+          return {
+            success: false,
+            message: `テスト真正性検証に失敗しました: ${authenticityResult.reason}`,
+          };
+        } else {
+          console.warn(`[test-authenticity] テスト真正性検証に失敗しましたが、TEST_AUTHENTICITY_STRICT=falseのため続行します: ${authenticityResult.reason}`);
+        }
+      }
+
+      // ハッシュ重複チェック
+      const existingHashes = taskState.testOutputHashes || [];
+      const hashResult = recordTestOutputHash(testResult.output, existingHashes);
+      if (!hashResult.valid && testStrict) {
+        return {
+          success: false,
+          message: `テスト出力が以前と同一です（コピペの可能性）。実際にテストを実行してください。`,
+        };
+      }
+    }
+
     // REQ-4: testing通過時にtestBaselineを自動設定
     if (testResult.passedCount !== undefined || testResult.failedCount !== undefined) {
       const totalCount = (testResult.passedCount || 0) + (testResult.failedCount || 0);
@@ -257,6 +267,34 @@ export function workflowNext(taskId?: string, sessionToken?: string): NextResult
         success: false,
         message: `リグレッションテストが失敗しています（exitCode: ${testResult.exitCode}）。テストを修正してから次フェーズに進んでください`,
       };
+    }
+
+    // C-3: test-authenticity統合（regression_test）
+    if (testResult.output) {
+      const phaseStartedAt = getPhaseStartedAt(taskState.history, 'regression_test') || taskState.startedAt;
+      const authenticityResult = validateTestAuthenticity(testResult.output, testResult.exitCode, phaseStartedAt);
+      const testStrict = process.env.TEST_AUTHENTICITY_STRICT !== 'false';
+
+      if (!authenticityResult.valid) {
+        if (testStrict) {
+          return {
+            success: false,
+            message: `リグレッションテスト真正性検証に失敗しました: ${authenticityResult.reason}`,
+          };
+        } else {
+          console.warn(`[test-authenticity] リグレッションテスト真正性検証に失敗しましたが、TEST_AUTHENTICITY_STRICT=falseのため続行します: ${authenticityResult.reason}`);
+        }
+      }
+
+      // ハッシュ重複チェック
+      const existingHashes = taskState.testOutputHashes || [];
+      const hashResult = recordTestOutputHash(testResult.output, existingHashes);
+      if (!hashResult.valid && testStrict) {
+        return {
+          success: false,
+          message: `リグレッションテスト出力が以前と同一です（コピペの可能性）。実際にテストを実行してください。`,
+        };
+      }
     }
 
     // REQ-4: testBaseline必須チェック
@@ -473,6 +511,15 @@ export function workflowNext(taskId?: string, sessionToken?: string): NextResult
     };
   }
 
+  // C-2: parallel_quality → testing 遷移時の設計-実装整合性チェック
+  if (currentPhase === 'parallel_quality') {
+    const docsDir = taskState.docsDir || taskState.workflowDir;
+    const designError = performDesignValidation(docsDir);
+    if (designError) {
+      return designError as NextResult;
+    }
+  }
+
   // parallel_quality → testing 遷移時のcode_review承認チェック
   if (currentPhase === 'parallel_quality' && nextPhase === 'testing') {
     const codeReviewAutoApprove = process.env.CODE_REVIEW_APPROVAL === 'false';
@@ -521,13 +568,35 @@ export function workflowNext(taskId?: string, sessionToken?: string): NextResult
     // フェーズガイドを取得
     const phaseGuide = resolvePhaseGuide(nextPhase, taskState.docsDir, taskState.userIntent);
 
+    // C-1: subagentTemplateのtaskName/taskIdプレースホルダー解決
+    if (phaseGuide?.subagentTemplate) {
+      phaseGuide.subagentTemplate = phaseGuide.subagentTemplate
+        .replace(/\$\{taskName\}/g, taskState.taskName || '')
+        .replace(/\$\{taskId\}/g, taskState.taskId || '');
+    }
+    if (phaseGuide?.subPhases) {
+      for (const sp of Object.values(phaseGuide.subPhases)) {
+        if (sp.subagentTemplate) {
+          sp.subagentTemplate = sp.subagentTemplate
+            .replace(/\$\{taskName\}/g, taskState.taskName || '')
+            .replace(/\$\{taskId\}/g, taskState.taskId || '');
+        }
+      }
+    }
+
+    // C-1: userIntentガイダンスを追加
+    let userIntentMessage = '';
+    if (taskState.userIntent) {
+      userIntentMessage = `\n\n★ ユーザーの意図: ${taskState.userIntent}\nsubagent起動時は必ずこの意図をプロンプトに含めてください。`;
+    }
+
     return {
       success: true,
       taskId: taskState.taskId,
       from: currentPhase,
       to: nextPhase,
       description: PHASE_DESCRIPTIONS[nextPhase],
-      message: `${currentPhase} → ${nextPhase} に遷移しました${skipMessage}`,
+      message: `${currentPhase} → ${nextPhase} に遷移しました${skipMessage}${userIntentMessage}`,
       phaseGuide,
       workflow_context: {
         workflowDir: taskState.workflowDir,
