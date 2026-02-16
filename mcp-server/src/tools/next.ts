@@ -519,7 +519,7 @@ export function workflowNext(taskId?: string, sessionToken?: string): NextResult
     }
 
     // フェーズガイドを取得
-    const phaseGuide = resolvePhaseGuide(nextPhase, taskState.docsDir);
+    const phaseGuide = resolvePhaseGuide(nextPhase, taskState.docsDir, taskState.userIntent);
 
     return {
       success: true,

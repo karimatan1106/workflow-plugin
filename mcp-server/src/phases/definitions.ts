@@ -551,6 +551,9 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
     requiredSections: ['## サマリー', '## 機能要件', '## 非機能要件'],
     outputFile: '{docsDir}/requirements.md',
     inputFiles: ['{docsDir}/research.md'],
+    inputFileMetadata: [
+      { path: '{docsDir}/research.md', importance: 'high', readMode: 'full' },
+    ],
     allowedBashCategories: ['readonly'],
     editableFileTypes: ['.md'],
     minLines: 50,
@@ -567,6 +570,9 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
         requiredSections: ['## サマリー', '## 脅威シナリオ', '## リスク評価', '## セキュリティ要件'],
         outputFile: '{docsDir}/threat-model.md',
         inputFiles: ['{docsDir}/requirements.md'],
+        inputFileMetadata: [
+          { path: '{docsDir}/requirements.md', importance: 'high', readMode: 'full' },
+        ],
         allowedBashCategories: ['readonly'],
         editableFileTypes: ['.md'],
         minLines: 50,
@@ -579,6 +585,9 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
         requiredSections: ['## サマリー', '## 概要', '## 実装計画', '## 変更対象ファイル'],
         outputFile: '{docsDir}/spec.md',
         inputFiles: ['{docsDir}/requirements.md'],
+        inputFileMetadata: [
+          { path: '{docsDir}/requirements.md', importance: 'high', readMode: 'full' },
+        ],
         allowedBashCategories: ['readonly'],
         editableFileTypes: ['.md'],
         minLines: 50,
@@ -596,6 +605,9 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
         description: 'ステートマシン図作成 - UI・状態遷移の設計',
         outputFile: '{docsDir}/state-machine.mmd',
         inputFiles: ['{docsDir}/spec.md'],
+        inputFileMetadata: [
+          { path: '{docsDir}/spec.md', importance: 'high', readMode: 'full' },
+        ],
         allowedBashCategories: ['readonly'],
         editableFileTypes: ['.md', '.mmd'],
         minLines: 15,
@@ -607,6 +619,9 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
         description: 'フローチャート作成 - 処理フロー・ロジックの設計',
         outputFile: '{docsDir}/flowchart.mmd',
         inputFiles: ['{docsDir}/spec.md'],
+        inputFileMetadata: [
+          { path: '{docsDir}/spec.md', importance: 'high', readMode: 'full' },
+        ],
         allowedBashCategories: ['readonly'],
         editableFileTypes: ['.md', '.mmd'],
         minLines: 15,
@@ -619,6 +634,9 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
         requiredSections: ['## サマリー', '## CLIインターフェース設計', '## エラーメッセージ設計', '## APIレスポンス設計', '## 設定ファイル設計'],
         outputFile: '{docsDir}/ui-design.md',
         inputFiles: ['{docsDir}/spec.md'],
+        inputFileMetadata: [
+          { path: '{docsDir}/spec.md', importance: 'high', readMode: 'full' },
+        ],
         allowedBashCategories: ['readonly'],
         editableFileTypes: ['.md', '.mmd'],
         minLines: 50,
@@ -641,6 +659,11 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
     requiredSections: ['## サマリー', '## テスト方針', '## テストケース'],
     outputFile: '{docsDir}/test-design.md',
     inputFiles: ['{docsDir}/spec.md', '{docsDir}/state-machine.mmd', '{docsDir}/flowchart.mmd'],
+    inputFileMetadata: [
+      { path: '{docsDir}/spec.md', importance: 'high', readMode: 'full' },
+      { path: '{docsDir}/state-machine.mmd', importance: 'high', readMode: 'full' },
+      { path: '{docsDir}/flowchart.mmd', importance: 'high', readMode: 'full' },
+    ],
     allowedBashCategories: ['readonly'],
     editableFileTypes: ['.md'],
     minLines: 50,
@@ -651,6 +674,9 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
     phaseName: 'test_impl',
     description: 'テスト実装フェーズ（TDD Red） - テストコード先行作成',
     inputFiles: ['{docsDir}/test-design.md'],
+    inputFileMetadata: [
+      { path: '{docsDir}/test-design.md', importance: 'high', readMode: 'full' },
+    ],
     allowedBashCategories: ['readonly', 'testing'],
     editableFileTypes: ['.test.ts', '.test.tsx', '.spec.ts', '.spec.tsx', '.md'],
     subagentType: 'general-purpose',
@@ -660,6 +686,11 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
     phaseName: 'implementation',
     description: '実装フェーズ（TDD Green） - テストを通す実装',
     inputFiles: ['{docsDir}/test-design.md', '{docsDir}/spec.md', '{docsDir}/requirements.md'],
+    inputFileMetadata: [
+      { path: '{docsDir}/test-design.md', importance: 'high', readMode: 'full' },
+      { path: '{docsDir}/spec.md', importance: 'high', readMode: 'full' },
+      { path: '{docsDir}/requirements.md', importance: 'medium', readMode: 'summary' },
+    ],
     allowedBashCategories: ['readonly', 'testing', 'implementation'],
     editableFileTypes: ['*'],
     subagentType: 'general-purpose',
@@ -668,6 +699,10 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
   refactoring: {
     phaseName: 'refactoring',
     description: 'リファクタリングフェーズ - コード品質改善',
+    inputFileMetadata: [
+      { path: '{docsDir}/spec.md', importance: 'medium', readMode: 'summary' },
+      { path: '{docsDir}/test-design.md', importance: 'low', readMode: 'reference' },
+    ],
     allowedBashCategories: ['readonly', 'testing', 'implementation'],
     editableFileTypes: ['*'],
     subagentType: 'general-purpose',
@@ -691,6 +726,11 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
         requiredSections: ['## サマリー', '## 設計-実装整合性', '## コード品質', '## セキュリティ'],
         outputFile: '{docsDir}/code-review.md',
         inputFiles: ['{docsDir}/spec.md'],
+        inputFileMetadata: [
+          { path: '{docsDir}/spec.md', importance: 'high', readMode: 'full' },
+          { path: '{docsDir}/test-design.md', importance: 'medium', readMode: 'summary' },
+          { path: '{docsDir}/requirements.md', importance: 'low', readMode: 'reference' },
+        ],
         allowedBashCategories: ['readonly'],
         editableFileTypes: ['.md'],
         minLines: 30,
@@ -702,6 +742,11 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
   testing: {
     phaseName: 'testing',
     description: 'テスト実行フェーズ',
+    inputFileMetadata: [
+      { path: '{docsDir}/test-design.md', importance: 'high', readMode: 'full' },
+      { path: '{docsDir}/spec.md', importance: 'medium', readMode: 'summary' },
+      { path: '{docsDir}/requirements.md', importance: 'low', readMode: 'reference' },
+    ],
     allowedBashCategories: ['readonly', 'testing'],
     editableFileTypes: ['.md', '.test.ts', '.test.tsx'],
     subagentType: 'general-purpose',
@@ -812,12 +857,17 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
  * @param docsDir ドキュメントディレクトリパス（オプション）
  * @returns フェーズガイド（見つからない場合はundefined）
  */
-export function resolvePhaseGuide(phase: string, docsDir?: string): PhaseGuide | undefined {
+export function resolvePhaseGuide(phase: string, docsDir?: string, userIntent?: string): PhaseGuide | undefined {
   const guide = PHASE_GUIDES[phase];
   if (!guide) return undefined;
 
   // シャローコピーを作成（PhaseGuide型として明示的に型付け）
   const resolved: PhaseGuide = { ...guide };
+
+  // P1: userIntentの伝播
+  if (userIntent) {
+    resolved.userIntent = userIntent;
+  }
 
   if (docsDir) {
     // outputFileのプレースホルダーを置換
@@ -828,17 +878,35 @@ export function resolvePhaseGuide(phase: string, docsDir?: string): PhaseGuide |
     if (resolved.inputFiles) {
       resolved.inputFiles = resolved.inputFiles.map(f => f.replace('{docsDir}', docsDir));
     }
+    // P2: inputFileMetadataのプレースホルダーを置換
+    if (resolved.inputFileMetadata) {
+      resolved.inputFileMetadata = resolved.inputFileMetadata.map(meta => ({
+        ...meta,
+        path: meta.path.replace('{docsDir}', docsDir),
+      }));
+    }
     // subPhasesも再帰的に解決
     if (resolved.subPhases) {
       const resolvedSubPhases: Record<string, PhaseGuide> = {};
       for (const [key, subGuide] of Object.entries(resolved.subPhases)) {
         // サブフェーズのguideもPHASE_GUIDESから取得を試みる
         const subResolved = { ...subGuide };
+        // P1: サブフェーズにもuserIntentを伝播
+        if (userIntent) {
+          subResolved.userIntent = userIntent;
+        }
         if (subResolved.outputFile) {
           subResolved.outputFile = subResolved.outputFile.replace('{docsDir}', docsDir);
         }
         if (subResolved.inputFiles) {
           subResolved.inputFiles = subResolved.inputFiles.map(f => f.replace('{docsDir}', docsDir));
+        }
+        // P2: サブフェーズのinputFileMetadataも置換
+        if (subResolved.inputFileMetadata) {
+          subResolved.inputFileMetadata = subResolved.inputFileMetadata.map(meta => ({
+            ...meta,
+            path: meta.path.replace('{docsDir}', docsDir),
+          }));
         }
         resolvedSubPhases[key] = subResolved;
       }

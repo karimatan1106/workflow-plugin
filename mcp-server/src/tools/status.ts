@@ -120,7 +120,7 @@ export function workflowStatus(taskId?: string): StatusResult {
 
   // phaseGuideを追加（idle/completed以外）
   if (phase !== 'idle' && phase !== 'completed') {
-    const phaseGuide = resolvePhaseGuide(phase, taskState.docsDir);
+    const phaseGuide = resolvePhaseGuide(phase, taskState.docsDir, taskState.userIntent);
     if (phaseGuide) {
       result.phaseGuide = phaseGuide;
     }

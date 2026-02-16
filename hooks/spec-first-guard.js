@@ -177,11 +177,11 @@ const DOCS_DIR = process.env.DOCS_DIR || 'docs/workflows/';
 // FIX-4: task-index.jsonから現在フェーズを取得
 function getCurrentPhase() {
   try {
-    const taskIndexPath = path.join(STATE_DIR, '..', 'task-index.json');
+    const taskIndexPath = path.join(STATE_DIR, 'task-index.json');
     if (!fs.existsSync(taskIndexPath)) return null;
     const data = JSON.parse(fs.readFileSync(taskIndexPath, 'utf-8'));
-    if (data.activeTasks && data.activeTasks.length > 0) {
-      return data.activeTasks.at(0).currentPhase || null;
+    if (data.tasks && data.tasks.length > 0) {
+      return data.tasks.at(0).phase || null;
     }
     return null;
   } catch {

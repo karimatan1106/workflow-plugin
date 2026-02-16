@@ -337,6 +337,32 @@ export interface ToolResult {
 // ============================================================================
 
 /**
+ * 入力ファイルのメタデータ
+ *
+ * 各フェーズで参照する入力ファイルの重要度と推奨読み込みモードを定義する。
+ * 大規模プロジェクトでのコンテキスト枯渇を防ぐため、重要度に基づいた
+ * ファイル読み込み戦略をOrchestratorが実装できるようにする。
+ */
+export interface InputFileMetadata {
+  /** ファイルパス（{docsDir}プレースホルダー含む） */
+  path: string;
+  /**
+   * 重要度
+   * - high: 全文読み込み必須（このファイルなしではフェーズ実行不可）
+   * - medium: サマリーセクションのみ推奨（詳細は必要時のみ）
+   * - low: 参照程度（見出しのみでも可）
+   */
+  importance: 'high' | 'medium' | 'low';
+  /**
+   * 推奨読み込みモード
+   * - full: ファイル全文を読み込む
+   * - summary: サマリーセクション（## サマリー）のみを読み込む
+   * - reference: 見出し構造のみを読み込む（セクション一覧）
+   */
+  readMode: 'full' | 'summary' | 'reference';
+}
+
+/**
  * フェーズガイド情報
  *
  * 各フェーズの実行ガイド情報を提供する。
@@ -353,8 +379,10 @@ export interface PhaseGuide {
   outputFile?: string;
   /** 許可されるBashコマンドカテゴリ */
   allowedBashCategories?: string[];
-  /** 入力ファイルパス（{docsDir}プレースホルダー含む） */
+  /** 入力ファイルパス（{docsDir}プレースホルダー含む）【レガシー互換性のため維持】 */
   inputFiles?: string[];
+  /** 入力ファイルメタデータ（重要度・読み込みモード含む） */
+  inputFileMetadata?: InputFileMetadata[];
   /** 編集可能なファイルタイプ（拡張子） */
   editableFileTypes?: string[];
   /** 最小行数要件 */
@@ -369,6 +397,8 @@ export interface PhaseGuide {
   content?: string;
   /** P1-1: CLAUDE.mdから抽出したセクション名リスト */
   claudeMdSections?: string[];
+  /** ユーザーの意図（タスク開始時に指定） */
+  userIntent?: string;
 }
 
 /**

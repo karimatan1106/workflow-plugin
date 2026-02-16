@@ -99,7 +99,7 @@ function getCurrentPhase() {
       return null;
     }
 
-    const entries = fs.readdirSync(workflowDir);
+    const entries = fs.readdirSync(workflowDir).sort().reverse();
     for (const entry of entries) {
       const entryPath = path.join(workflowDir, entry);
       const stat = fs.statSync(entryPath);
