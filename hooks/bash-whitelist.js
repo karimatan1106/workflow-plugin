@@ -620,12 +620,23 @@ function validateMkdirTarget(command) {
   const targetPath = match[1].trim().replace(/^['"]|['"]$/g, '');
   const normalized = targetPath.replace(/\\/g, '/');
 
-  if (normalized.includes('..')) {
+  // 絶対パスをプロジェクトルート相対パスに正規化
+  const cwd = process.cwd().replace(/\\/g, '/');
+  const cwdPrefix = cwd.endsWith('/') ? cwd : cwd + '/';
+  let checkPath = normalized;
+  if (normalized.toLowerCase().startsWith(cwdPrefix.toLowerCase())) {
+    checkPath = normalized.substring(cwdPrefix.length);
+  }
+  if (checkPath.startsWith('/')) {
+    checkPath = checkPath.substring(1);
+  }
+
+  if (checkPath.includes('..')) {
     return { allowed: false, reason: 'mkdir のパスに .. は使用できません' };
   }
 
   const allowedPrefixes = ['docs/workflows/', 'docs/security/', '.claude/state/'];
-  const isAllowed = allowedPrefixes.some(prefix => normalized.startsWith(prefix));
+  const isAllowed = allowedPrefixes.some(prefix => checkPath.startsWith(prefix));
 
   if (!isAllowed) {
     return {
