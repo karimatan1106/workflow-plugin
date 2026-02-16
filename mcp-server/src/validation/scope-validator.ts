@@ -653,6 +653,12 @@ const EXCLUDE_PATTERNS = [
   /\.claude-phase-guard-log\.json$/, // フェーズガード ログ
   /\.claude-loop-detector-state\.json$/, // ループ検出 状態
   /\.claude-hook-errors\.log$/,      // フック エラーログ
+  /\.mcp\.json$/,                    // FIX-3: MCPサーバー設定
+  /\.gitignore$/,                    // FIX-3: Git除外設定
+  /\.env\.example$/,                 // FIX-3: 環境変数テンプレート
+  /tsconfig\.json$/,                 // FIX-3: TypeScript設定
+  /vitest\.config\.ts$/,             // FIX-3: Vitest設定
+  /vite\.config\.ts$/,               // FIX-3: Vite設定
 ];
 
 /**

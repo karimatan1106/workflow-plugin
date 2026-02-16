@@ -97,7 +97,7 @@ export function workflowStart(taskName: string, skipPhases?: string, userIntent?
       taskState.skipReason = 'user-specified';
     }
 
-    // FIX-2: ワークフロー開始時の既存変更ファイルを記録
+    // FIX-2 + FIX-3: ワークフロー開始時の既存変更ファイルを記録（ログ出力強化）
     let preExistingChanges: string[] = [];
     try {
       const diffOutput = execSync('git -c core.quotePath=false diff --name-only --ignore-submodules HEAD', {
@@ -107,8 +107,19 @@ export function workflowStart(taskName: string, skipPhases?: string, userIntent?
       if (diffOutput) {
         preExistingChanges = diffOutput.split('\n').map(f => f.trim()).filter(Boolean);
       }
-    } catch (e) {
-      console.warn('[workflow_start] git diff failed, preExistingChanges will be empty:', e);
+      console.log(`[workflow_start] preExistingChanges: ${preExistingChanges.length} files`);
+      if (preExistingChanges.length > 0) {
+        const preview = preExistingChanges.slice(0, 5).join(', ');
+        console.log(`[workflow_start] first 5: ${preview}`);
+      }
+    } catch (e: unknown) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      if (errMsg.includes('HEAD')) {
+        console.log('[workflow_start] Initial commit detected, no HEAD available. preExistingChanges will be empty.');
+      } else {
+        console.warn(`[workflow_start] git diff failed: ${errMsg}. preExistingChanges will be empty.`);
+      }
+      preExistingChanges = [];
     }
 
     // scopeオブジェクトにpreExistingChangesを保存

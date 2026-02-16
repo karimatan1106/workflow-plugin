@@ -183,6 +183,15 @@ function loadState() {
 function saveState(state) {
   try {
     ensureStateDir();
+    // FIX-1: 保存前にtimestamps空かつlastWarning未設定のエントリを一括削除（セーフティネット）
+    if (state && state.files) {
+      const filtered = Object.fromEntries(
+        Object.entries(state.files).filter(([, entry]) =>
+          (entry.timestamps && entry.timestamps.length > 0) || entry.lastWarning
+        )
+      );
+      state.files = filtered;
+    }
     fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), 'utf8');
   } catch (e) {
     // ファイル保存エラーは無視（DoS防止）
@@ -340,6 +349,13 @@ function checkLoop(filePath) {
 
   // 古いタイムスタンプを削除
   fileEntry.timestamps = filterOldTimestamps(fileEntry.timestamps, now);
+
+  // FIX-1: タイムスタンプが空でlastWarningも未設定のエントリを削除（pruning）
+  if (fileEntry.timestamps.length === 0 && !fileEntry.lastWarning) {
+    delete state.files[normalizedPath];
+    saveState(state);
+    return;
+  }
 
   // 新しいタイムスタンプを追加
   fileEntry.timestamps.push(new Date(now).toISOString());
