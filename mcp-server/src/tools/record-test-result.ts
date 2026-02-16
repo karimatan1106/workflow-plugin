@@ -71,9 +71,14 @@ const ERROR_PATTERNS = [
 ] as const;
 
 function isKeywordNegated(output: string, keyword: string): boolean {
-  const negationPattern = `\\b(${NEGATION_WORDS.join('|')})\\s+${keyword}\\b`;
-  const regex = new RegExp(negationPattern, 'i');
-  return regex.test(output);
+  // 単方向パターン: "0 failures", "no errors" 等
+  const forwardPattern = `\\b(${NEGATION_WORDS.join('|')})\\s+${keyword}\\b`;
+  const forwardRegex = new RegExp(forwardPattern, 'i');
+  if (forwardRegex.test(output)) return true;
+  // FIX-3: 双方向パターン: "Failures: 0", "Errors: 0" 等
+  const reversePattern = `\\b${keyword}[:\\s]+(${NEGATION_WORDS.join('|')})\\b`;
+  const reverseRegex = new RegExp(reversePattern, 'i');
+  return reverseRegex.test(output);
 }
 
 /**

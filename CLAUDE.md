@@ -164,6 +164,16 @@ research → requirements → parallel_analysis（threat_modeling + planning）
 └─────────────────────────────────────────────────────────────┘
 ```
 
+### Orchestratorの制約事項
+
+**重要**: Orchestratorは以下のルールを厳守すること：
+
+1. **成果物ファイルの直接編集禁止**: `docs/workflows/` 配下の成果物ファイル（research.md, requirements.md, spec.md等）をOrchestratorが直接Edit/Writeで編集してはならない。必ずTask toolでsubagentを起動し、subagentに成果物を作成・修正させること。
+2. **フェーズ作業のsubagent委譲**: 各フェーズの実質的な作業（調査、文書作成、コード実装等）は全てsubagentに委譲する。Orchestratorの役割はタスク状態管理とフェーズ遷移の制御のみ。
+3. **バリデーションエラー修正もsubagentで**: workflow_nextで成果物バリデーションが失敗した場合、修正もsubagentに委譲すること。エラーメッセージと修正対象ファイルパスをsubagentのプロンプトに含める。
+
+違反した場合、phase-edit-guardフックが警告メッセージを出力します。
+
 ### フェーズ別subagent設定
 
 | フェーズ | subagent_type | model | 入力ファイル | 入力ファイル重要度 | 出力ファイル |
@@ -175,7 +185,7 @@ research → requirements → parallel_analysis（threat_modeling + planning）
 | state_machine | general-purpose | haiku | spec.md | 全文 | state-machine.mmd |
 | flowchart | general-purpose | haiku | spec.md | 全文 | flowchart.mmd |
 | ui_design | general-purpose | sonnet | spec.md | 全文 | ui-design.md |
-| test_design | Plan | sonnet | spec.md (全文), *.mmd (全文) | 全文 | test-design.md |
+| test_design | general-purpose | sonnet | spec.md (全文), *.mmd (全文) | 全文 | test-design.md |
 | test_impl | general-purpose | sonnet | test-design.md | 全文 | *.test.ts |
 | implementation | general-purpose | sonnet | test-design.md (全文), spec.md (全文), requirements.md (サマリー) | 全文/サマリー | *.ts |
 | refactoring | general-purpose | haiku | implementation成果物 (全文), spec.md (サマリー), test-design.md (参照) | 全文/サマリー/参照 | *.ts |
@@ -235,30 +245,51 @@ Task({
     これにより、次フェーズのsubagentがサマリーのみを読み込むことで
     効率的にコンテキストを引き継ぐことができます。
 
+    ## ★重要★ Bashコマンド制限（phase-edit-guard準拠）
+    このフェーズで使用可能なBashコマンドカテゴリ: {allowedBashCategories}
+
+    各カテゴリに含まれるコマンド:
+    - readonly: ls, pwd, cat, head, tail, grep, find, wc, git status, git log, git diff, git show, npm list, node --version
+    - testing: npm test, npm run test, npx vitest, npx jest, npx playwright test, pytest
+    - implementation: npm install, pnpm add, npm run build, mkdir, rm, git add, git commit
+
+    上記カテゴリ外のBashコマンドはフックによりブロックされます。
+    ブロックされた場合は代替手段（Read/Write/Glob/Grep等の専用ツール）を使用してください。
+
     ## ★重要★ 成果物品質要件（artifact-validator準拠）
     成果物は以下の品質要件を満たしてください:
     ### 行数・密度要件
     - 各セクション（## 見出し）内に最低5行の実質行（空行・水平線・コードフェンスを除く）を含めること
     - 長い段落は複数行に分割すること（1段落=1行にならないように）
     - セクション密度（実質行/総行）は30%以上を維持すること
-    ### 重複行禁止
-    - 同じ行が3回以上出現しないこと（ダミーテキストと判定される）
-    - 各行の内容をコンテキストに応じて差別化し、一意にすること
-    - テンプレート的な表現（「問題点と改善提案」等）の繰り返しを避けること
-    - 悪い例: 「テスト結果: OK」が3行連続 → 各行を「認証APIテスト: 200 OK (12ms)」「ユーザー一覧テスト: 200 OK (8ms)」のように差別化する
-    - コードフェンス内の行も検査対象（空行・見出し・テーブル区切りのみ除外）
+    ### 重複行禁止（3回以上の同一行でエラー）
+    トリム後に完全一致する行が3回以上出現するとダミーテキストと判定される。
+    **重複検出から除外される行（構造要素）:**
+    - ヘッダー（`#`で始まる行）
+    - 水平線（`---`, `***`, `___`）
+    - コードフェンス開始/終了行、及びコードフェンス内の全行
+    - テーブルセパレータ行とテーブルデータ行（パイプ区切り2カラム以上）
+    - 太字のみで終わる行: `**ラベル**:` ← 除外される（行末がコロンと空白のみ）
+    - リスト先頭の太字のみで終わる行: `- **ラベル**:` ← 除外される
+    **重複検出の対象になる行（要注意）:**
+    - 太字の後に文章が続く行: `**深刻度**: Medium` ← 対象
+    - 太字なしのラベル行: `- レベル: Low` ← 対象（太字がないため除外されない）
+    - 通常のリスト項目・テキスト行すべて
+    **回避策:** 同じラベル構造を3回以上使う場合、各行に固有の情報を含める
+    - NG: `- レベル: Low` × 3回
+    - OK: `- リスクレベル: Low（レビューで検出可能）`, `- リスクレベル: Low（HMAC保護あり）`, `- リスクレベル: Low（削除検出可能）`
     ### 必須セクション
     - 「## サマリー」は全フェーズ必須
     - manual_test: 「## テストシナリオ」「## テスト結果」が必須
     - security_scan: 「## 脆弱性スキャン結果」「## 検出された問題」が必須
     - performance_test: 「## パフォーマンス計測結果」「## ボトルネック分析」が必須
     - e2e_test: 「## E2Eテストシナリオ」「## テスト実行結果」が必須
-    - セクション内容は具体的な情報を含み、形式的な記述を避けること
-    ### 禁止パターン（検出時にバリデーションエラー）
-    - 角括弧プレースホルダー記法は全面禁止（例: 変数名、パス名、値 等）
+    ### 禁止パターン（完全リスト。成果物内に1つでも含まれるとエラー）
+    - 英語: TODO, TBD, WIP, FIXME
+    - 日本語: 未定, 未確定, 要検討, 検討中, 対応予定, サンプル, ダミー, 仮置き
+    - 角括弧プレースホルダー: [変数名], [パス] 等（[関連], [参考], [注], [例], [出典] は許可）
+    - 禁止語を含む複合語も検出される。「未定義」→「指定されていない」、「要検討事項」→「追加調査が必要な事項」に言い換えること
     - Mermaid図のstateDiagram-v2では開始・終了に名前付き状態（Start, End）を使うこと
-    - 以下の略語・保留表現は禁止: 該当なし、対象外、なし、特になし
-    - ダミー文言も禁止: ダミー、サンプル、テスト用
     ⚠️ これらの要件を満たさない成果物はバリデーションで拒否されます。
   `,
   subagent_type: '{subagent_type}',

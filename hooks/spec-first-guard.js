@@ -168,6 +168,33 @@ function isCodePath(filePath) {
   return isInCodeDir && hasCodeExtension;
 }
 
+// FIX-4: コード編集許可フェーズ
+const CODE_EDIT_ALLOWED_PHASES = ['implementation', 'refactoring', 'build_check', 'testing', 'regression_test'];
+
+// FIX-6: ワークフロー成果物ディレクトリ
+const DOCS_DIR = process.env.DOCS_DIR || 'docs/workflows/';
+
+// FIX-4: task-index.jsonから現在フェーズを取得
+function getCurrentPhase() {
+  try {
+    const taskIndexPath = path.join(STATE_DIR, '..', 'task-index.json');
+    if (!fs.existsSync(taskIndexPath)) return null;
+    const data = JSON.parse(fs.readFileSync(taskIndexPath, 'utf-8'));
+    if (data.activeTasks && data.activeTasks.length > 0) {
+      return data.activeTasks.at(0).currentPhase || null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// FIX-6: ワークフロー成果物パス判定
+function isWorkflowArtifactPath(filePath) {
+  const normalized = filePath.replace(/\\/g, '/');
+  return normalized.includes(DOCS_DIR.replace(/\\/g, '/'));
+}
+
 /**
  * メイン処理
  */
@@ -200,8 +227,34 @@ function main(input) {
       process.exit(0);
     }
 
+    // FIX-6: ワークフロー成果物の直接編集に警告
+    if (isWorkflowArtifactPath(filePath)) {
+      console.log('');
+      console.log('\u26A0'.repeat(60));
+      console.log(' 警告: Orchestratorによる成果物直接編集');
+      console.log('\u26A0'.repeat(60));
+      console.log('');
+      console.log(` ファイル: ${filePath}`);
+      console.log('');
+      console.log(' ワークフロー成果物は Task tool でsubagentに委譲すべきです。');
+      console.log('');
+      console.log(' 軽微な修正（バリデーションエラー修正等）であれば継続可能です。');
+      console.log('');
+      console.log('\u26A0'.repeat(60));
+      process.exit(0); // 警告のみ、ブロックしない
+    }
+
     // コードファイルの編集 → 仕様書更新済みかチェック
     if (isCodePath(filePath)) {
+      // FIX-4: フェーズ認識によるチェックスキップ
+      const currentPhase = getCurrentPhase();
+      if (currentPhase && CODE_EDIT_ALLOWED_PHASES.includes(currentPhase)) {
+        if (process.env.DEBUG) {
+          console.log(`spec-first-guard: 現在フェーズ: ${currentPhase} のためspecUpdatedチェックをスキップ`);
+        }
+        process.exit(0);
+      }
+
       const state = loadState();
 
       // REQ-R1: TTL判定
@@ -226,6 +279,12 @@ function main(input) {
         console.log('   2. 仕様書に変更内容を記載');
         console.log('   3. その後コードを編集');
         console.log('');
+        const phase = getCurrentPhase();
+        if (phase) {
+          console.log(` 現在のフェーズ: ${phase}`);
+          console.log(' このフェーズではコード編集が制限されています。');
+          console.log('');
+        }
         console.log('='.repeat(60));
         process.exit(2); // ブロック
       }

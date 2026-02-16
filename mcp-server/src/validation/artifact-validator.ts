@@ -103,6 +103,8 @@ export function isStructuralLine(line: string): boolean {
   if (/^\*\*[^*]+\*\*[:：]?\s*$/.test(trimmed)) return true;
   // リスト先頭のMarkdownラベル: - **太字**: のような構造ラベル
   if (/^[-*]\s+\*\*[^*]+\*\*[:：]?\s*$/.test(trimmed)) return true;
+  // FIX-1: プレーンラベルパターン: リスト記号 + 50文字以内のラベル + コロン終端
+  if (/^[-*]\s+.{1,50}[:：]\s*$/.test(trimmed)) return true;
   return false;
 }
 
@@ -686,6 +688,12 @@ export function checkSectionDensity(
       // ヘッダーは構造要素
       if (trimmed.startsWith('#')) {
         structuralCount++;
+        continue;
+      }
+
+      // FIX-2: テーブルデータ行は実質行数にカウント（セパレータ行を除く）
+      if (/^\s*\|.+\|.+\|\s*$/.test(trimmed) && !/^\s*\|[\s:-]+(\|[\s:-]+)*\|\s*$/.test(trimmed)) {
+        substantiveCount++;
         continue;
       }
 
