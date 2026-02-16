@@ -520,3 +520,329 @@ export function calculatePhaseSkips(
 
   return phaseSkipReasons;
 }
+
+// ============================================================================
+// フェーズガイド定義
+// ============================================================================
+
+import type { PhaseGuide } from '../state/types.js';
+
+/**
+ * 全フェーズのガイド情報マスター定義
+ * Orchestratorへの構造化情報提供用
+ */
+export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
+  research: {
+    phaseName: 'research',
+    description: '調査フェーズ - 要件分析・既存コード調査',
+    requiredSections: ['## サマリー', '## 調査結果', '## 既存実装の分析'],
+    outputFile: '{docsDir}/research.md',
+    allowedBashCategories: ['readonly'],
+    editableFileTypes: ['.md'],
+    minLines: 50,
+    subagentType: 'general-purpose',
+    model: 'haiku',
+  },
+  requirements: {
+    phaseName: 'requirements',
+    description: '要件定義フェーズ - 機能要件・非機能要件・受け入れ基準の定義',
+    requiredSections: ['## サマリー', '## 機能要件', '## 非機能要件'],
+    outputFile: '{docsDir}/requirements.md',
+    inputFiles: ['{docsDir}/research.md'],
+    allowedBashCategories: ['readonly'],
+    editableFileTypes: ['.md'],
+    minLines: 50,
+    subagentType: 'general-purpose',
+    model: 'sonnet',
+  },
+  parallel_analysis: {
+    phaseName: 'parallel_analysis',
+    description: '並列分析フェーズ - 脅威モデリング + 設計を並列実行',
+    subPhases: {
+      threat_modeling: {
+        phaseName: 'threat_modeling',
+        description: '脅威モデリング - セキュリティ脅威の特定・対策検討',
+        requiredSections: ['## サマリー', '## 脅威シナリオ', '## リスク評価', '## セキュリティ要件'],
+        outputFile: '{docsDir}/threat-model.md',
+        inputFiles: ['{docsDir}/requirements.md'],
+        allowedBashCategories: ['readonly'],
+        editableFileTypes: ['.md'],
+        minLines: 50,
+        subagentType: 'general-purpose',
+        model: 'sonnet',
+      },
+      planning: {
+        phaseName: 'planning',
+        description: '設計フェーズ - 仕様書作成',
+        requiredSections: ['## サマリー', '## 概要', '## 実装計画', '## 変更対象ファイル'],
+        outputFile: '{docsDir}/spec.md',
+        inputFiles: ['{docsDir}/requirements.md'],
+        allowedBashCategories: ['readonly'],
+        editableFileTypes: ['.md'],
+        minLines: 50,
+        subagentType: 'general-purpose',
+        model: 'sonnet',
+      },
+    },
+  },
+  parallel_design: {
+    phaseName: 'parallel_design',
+    description: '並列設計フェーズ - ステートマシン + フローチャート + UI設計を並列実行',
+    subPhases: {
+      state_machine: {
+        phaseName: 'state_machine',
+        description: 'ステートマシン図作成 - UI・状態遷移の設計',
+        outputFile: '{docsDir}/state-machine.mmd',
+        inputFiles: ['{docsDir}/spec.md'],
+        allowedBashCategories: ['readonly'],
+        editableFileTypes: ['.md', '.mmd'],
+        minLines: 15,
+        subagentType: 'general-purpose',
+        model: 'haiku',
+      },
+      flowchart: {
+        phaseName: 'flowchart',
+        description: 'フローチャート作成 - 処理フロー・ロジックの設計',
+        outputFile: '{docsDir}/flowchart.mmd',
+        inputFiles: ['{docsDir}/spec.md'],
+        allowedBashCategories: ['readonly'],
+        editableFileTypes: ['.md', '.mmd'],
+        minLines: 15,
+        subagentType: 'general-purpose',
+        model: 'haiku',
+      },
+      ui_design: {
+        phaseName: 'ui_design',
+        description: 'UI設計 - レイアウト・状態遷移・操作フロー設計',
+        requiredSections: ['## サマリー', '## CLIインターフェース設計', '## エラーメッセージ設計', '## APIレスポンス設計', '## 設定ファイル設計'],
+        outputFile: '{docsDir}/ui-design.md',
+        inputFiles: ['{docsDir}/spec.md'],
+        allowedBashCategories: ['readonly'],
+        editableFileTypes: ['.md', '.mmd'],
+        minLines: 50,
+        subagentType: 'general-purpose',
+        model: 'sonnet',
+      },
+    },
+  },
+  design_review: {
+    phaseName: 'design_review',
+    description: '設計レビュー - AIによる技術レビュー + ユーザー承認',
+    allowedBashCategories: ['readonly'],
+    editableFileTypes: ['.md'],
+    subagentType: 'general-purpose',
+    model: 'sonnet',
+  },
+  test_design: {
+    phaseName: 'test_design',
+    description: 'テスト設計フェーズ',
+    requiredSections: ['## サマリー', '## テスト方針', '## テストケース'],
+    outputFile: '{docsDir}/test-design.md',
+    inputFiles: ['{docsDir}/spec.md', '{docsDir}/state-machine.mmd', '{docsDir}/flowchart.mmd'],
+    allowedBashCategories: ['readonly'],
+    editableFileTypes: ['.md'],
+    minLines: 50,
+    subagentType: 'general-purpose',
+    model: 'sonnet',
+  },
+  test_impl: {
+    phaseName: 'test_impl',
+    description: 'テスト実装フェーズ（TDD Red） - テストコード先行作成',
+    inputFiles: ['{docsDir}/test-design.md'],
+    allowedBashCategories: ['readonly', 'testing'],
+    editableFileTypes: ['.test.ts', '.test.tsx', '.spec.ts', '.spec.tsx', '.md'],
+    subagentType: 'general-purpose',
+    model: 'sonnet',
+  },
+  implementation: {
+    phaseName: 'implementation',
+    description: '実装フェーズ（TDD Green） - テストを通す実装',
+    inputFiles: ['{docsDir}/test-design.md', '{docsDir}/spec.md', '{docsDir}/requirements.md'],
+    allowedBashCategories: ['readonly', 'testing', 'implementation'],
+    editableFileTypes: ['*'],
+    subagentType: 'general-purpose',
+    model: 'sonnet',
+  },
+  refactoring: {
+    phaseName: 'refactoring',
+    description: 'リファクタリングフェーズ - コード品質改善',
+    allowedBashCategories: ['readonly', 'testing', 'implementation'],
+    editableFileTypes: ['*'],
+    subagentType: 'general-purpose',
+    model: 'haiku',
+  },
+  parallel_quality: {
+    phaseName: 'parallel_quality',
+    description: '並列品質チェック - ビルド確認 + コードレビュー',
+    subPhases: {
+      build_check: {
+        phaseName: 'build_check',
+        description: 'ビルド確認フェーズ',
+        allowedBashCategories: ['readonly', 'testing', 'implementation'],
+        editableFileTypes: ['*'],
+        subagentType: 'general-purpose',
+        model: 'haiku',
+      },
+      code_review: {
+        phaseName: 'code_review',
+        description: 'コードレビュー - AIによる実装・テストレビュー',
+        requiredSections: ['## サマリー', '## 設計-実装整合性', '## コード品質', '## セキュリティ'],
+        outputFile: '{docsDir}/code-review.md',
+        inputFiles: ['{docsDir}/spec.md'],
+        allowedBashCategories: ['readonly'],
+        editableFileTypes: ['.md'],
+        minLines: 30,
+        subagentType: 'general-purpose',
+        model: 'sonnet',
+      },
+    },
+  },
+  testing: {
+    phaseName: 'testing',
+    description: 'テスト実行フェーズ',
+    allowedBashCategories: ['readonly', 'testing'],
+    editableFileTypes: ['.md', '.test.ts', '.test.tsx'],
+    subagentType: 'general-purpose',
+    model: 'haiku',
+  },
+  regression_test: {
+    phaseName: 'regression_test',
+    description: 'リグレッションテストフェーズ - 既存機能の回帰テストを実行',
+    allowedBashCategories: ['readonly', 'testing'],
+    editableFileTypes: ['.md', '.test.ts', '.test.tsx'],
+    subagentType: 'general-purpose',
+    model: 'haiku',
+  },
+  parallel_verification: {
+    phaseName: 'parallel_verification',
+    description: '並列検証フェーズ',
+    subPhases: {
+      manual_test: {
+        phaseName: 'manual_test',
+        description: '手動確認フェーズ',
+        requiredSections: ['## テストシナリオ', '## テスト結果'],
+        outputFile: '{docsDir}/manual-test.md',
+        allowedBashCategories: ['readonly'],
+        editableFileTypes: ['.md'],
+        minLines: 20,
+        subagentType: 'general-purpose',
+        model: 'haiku',
+      },
+      security_scan: {
+        phaseName: 'security_scan',
+        description: 'セキュリティスキャンフェーズ',
+        requiredSections: ['## 脆弱性スキャン結果', '## 検出された問題'],
+        outputFile: '{docsDir}/security-scan.md',
+        allowedBashCategories: ['readonly', 'testing'],
+        editableFileTypes: ['.md'],
+        minLines: 20,
+        subagentType: 'general-purpose',
+        model: 'haiku',
+      },
+      performance_test: {
+        phaseName: 'performance_test',
+        description: 'パフォーマンステストフェーズ',
+        requiredSections: ['## パフォーマンス計測結果', '## ボトルネック分析'],
+        outputFile: '{docsDir}/performance-test.md',
+        allowedBashCategories: ['readonly', 'testing'],
+        editableFileTypes: ['.md'],
+        minLines: 20,
+        subagentType: 'general-purpose',
+        model: 'haiku',
+      },
+      e2e_test: {
+        phaseName: 'e2e_test',
+        description: 'E2Eテストフェーズ',
+        requiredSections: ['## E2Eテストシナリオ', '## テスト実行結果'],
+        outputFile: '{docsDir}/e2e-test.md',
+        allowedBashCategories: ['readonly', 'testing'],
+        editableFileTypes: ['.md', '.test.ts', '.spec.ts'],
+        minLines: 20,
+        subagentType: 'general-purpose',
+        model: 'haiku',
+      },
+    },
+  },
+  docs_update: {
+    phaseName: 'docs_update',
+    description: 'ドキュメント更新フェーズ',
+    allowedBashCategories: ['readonly'],
+    editableFileTypes: ['.md', '.mdx'],
+    subagentType: 'general-purpose',
+    model: 'haiku',
+  },
+  commit: {
+    phaseName: 'commit',
+    description: 'コミットフェーズ',
+    allowedBashCategories: ['readonly', 'implementation'],
+    subagentType: 'general-purpose',
+    model: 'haiku',
+  },
+  push: {
+    phaseName: 'push',
+    description: 'プッシュフェーズ',
+    allowedBashCategories: ['readonly', 'implementation'],
+    subagentType: 'general-purpose',
+    model: 'haiku',
+  },
+  ci_verification: {
+    phaseName: 'ci_verification',
+    description: 'CI検証フェーズ',
+    allowedBashCategories: ['readonly'],
+    editableFileTypes: ['.md'],
+    subagentType: 'general-purpose',
+    model: 'haiku',
+  },
+  deploy: {
+    phaseName: 'deploy',
+    description: 'デプロイフェーズ',
+    allowedBashCategories: ['readonly'],
+    editableFileTypes: ['.md'],
+    subagentType: 'general-purpose',
+    model: 'haiku',
+  },
+};
+
+/**
+ * フェーズガイドを取得（docsDirプレースホルダー解決付き）
+ *
+ * @param phase フェーズ名
+ * @param docsDir ドキュメントディレクトリパス（オプション）
+ * @returns フェーズガイド（見つからない場合はundefined）
+ */
+export function resolvePhaseGuide(phase: string, docsDir?: string): PhaseGuide | undefined {
+  const guide = PHASE_GUIDES[phase];
+  if (!guide) return undefined;
+
+  // シャローコピーを作成
+  const resolved = { ...guide };
+
+  if (docsDir) {
+    // outputFileのプレースホルダーを置換
+    if (resolved.outputFile) {
+      resolved.outputFile = resolved.outputFile.replace('{docsDir}', docsDir);
+    }
+    // inputFilesのプレースホルダーを置換
+    if (resolved.inputFiles) {
+      resolved.inputFiles = resolved.inputFiles.map(f => f.replace('{docsDir}', docsDir));
+    }
+    // subPhasesも再帰的に解決
+    if (resolved.subPhases) {
+      const resolvedSubPhases: Record<string, PhaseGuide> = {};
+      for (const [key, subGuide] of Object.entries(resolved.subPhases)) {
+        // サブフェーズのguideもPHASE_GUIDESから取得を試みる
+        const subResolved = { ...subGuide };
+        if (subResolved.outputFile) {
+          subResolved.outputFile = subResolved.outputFile.replace('{docsDir}', docsDir);
+        }
+        if (subResolved.inputFiles) {
+          subResolved.inputFiles = subResolved.inputFiles.map(f => f.replace('{docsDir}', docsDir));
+        }
+        resolvedSubPhases[key] = subResolved;
+      }
+      resolved.subPhases = resolvedSubPhases;
+    }
+  }
+
+  return resolved;
+}

@@ -326,6 +326,41 @@ export interface ToolResult {
   [key: string]: unknown;
 }
 
+// ============================================================================
+// フェーズガイド
+// ============================================================================
+
+/**
+ * フェーズガイド情報
+ *
+ * 各フェーズの実行ガイド情報を提供する。
+ * workflow_next/workflow_statusレスポンスに含まれる。
+ */
+export interface PhaseGuide {
+  /** フェーズ名 */
+  phaseName: string;
+  /** フェーズの説明 */
+  description: string;
+  /** 必須セクション（Markdown見出し） */
+  requiredSections?: string[];
+  /** 出力ファイルパス（{docsDir}プレースホルダー含む） */
+  outputFile?: string;
+  /** 許可されるBashコマンドカテゴリ */
+  allowedBashCategories?: string[];
+  /** 入力ファイルパス（{docsDir}プレースホルダー含む） */
+  inputFiles?: string[];
+  /** 編集可能なファイルタイプ（拡張子） */
+  editableFileTypes?: string[];
+  /** 最小行数要件 */
+  minLines?: number;
+  /** subagentタイプ（Task tool用） */
+  subagentType?: string;
+  /** モデル（Task tool用） */
+  model?: string;
+  /** サブフェーズガイド（並列フェーズの場合） */
+  subPhases?: Record<string, PhaseGuide>;
+}
+
 /**
  * ステータスコマンドの結果
  *
@@ -358,6 +393,8 @@ export interface StatusResult extends ToolResult {
   userIntent?: string;
   /** アクティブなフェーズリスト */
   activePhases?: string[];
+  /** フェーズガイド情報 */
+  phaseGuide?: PhaseGuide;
 }
 
 /**
@@ -406,6 +443,8 @@ export interface NextResult extends ToolResult {
   description?: string;
   /** フック用コンテキスト */
   workflow_context?: WorkflowContext;
+  /** フェーズガイド情報 */
+  phaseGuide?: PhaseGuide;
 }
 
 /**

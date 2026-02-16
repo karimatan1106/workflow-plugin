@@ -18,6 +18,7 @@ import {
   getNextPhase,
   PHASE_DESCRIPTIONS,
   calculatePhaseSkips,
+  resolvePhaseGuide,
 } from '../phases/definitions.js';
 import { getTaskByIdOrError, safeExecute, verifySessionToken } from './helpers.js';
 import { STATE_ERRORS } from '../utils/errors.js';
@@ -491,6 +492,9 @@ export function workflowNext(taskId?: string, sessionToken?: string): NextResult
       skipMessage = `\n\n以下のフェーズをスキップしました:\n${skipDetails}`;
     }
 
+    // フェーズガイドを取得
+    const phaseGuide = resolvePhaseGuide(nextPhase, taskState.docsDir);
+
     return {
       success: true,
       taskId: taskState.taskId,
@@ -498,6 +502,7 @@ export function workflowNext(taskId?: string, sessionToken?: string): NextResult
       to: nextPhase,
       description: PHASE_DESCRIPTIONS[nextPhase],
       message: `${currentPhase} → ${nextPhase} に遷移しました${skipMessage}`,
+      phaseGuide,
       workflow_context: {
         workflowDir: taskState.workflowDir,
         phase: nextPhase,

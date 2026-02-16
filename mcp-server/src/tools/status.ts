@@ -9,7 +9,7 @@
 
 import { stateManager } from '../state/manager.js';
 import type { StatusResult, PhaseName } from '../state/types.js';
-import { PHASE_DESCRIPTIONS, isParallelPhase, PHASES_BY_SIZE } from '../phases/definitions.js';
+import { PHASE_DESCRIPTIONS, isParallelPhase, PHASES_BY_SIZE, resolvePhaseGuide } from '../phases/definitions.js';
 
 /**
  * 現在のワークフロー状態を取得
@@ -116,6 +116,14 @@ export function workflowStatus(taskId?: string): StatusResult {
 
     const skipInfo = `\n\n## スキップされたフェーズ\n\n${skippedPhases}`;
     result.message = (result.message || '') + skipInfo;
+  }
+
+  // phaseGuideを追加（idle/completed以外）
+  if (phase !== 'idle' && phase !== 'completed') {
+    const phaseGuide = resolvePhaseGuide(phase, taskState.docsDir);
+    if (phaseGuide) {
+      result.phaseGuide = phaseGuide;
+    }
   }
 
   return result;
