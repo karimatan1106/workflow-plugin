@@ -178,7 +178,7 @@ research → requirements → parallel_analysis（threat_modeling + planning）
 
 | フェーズ | subagent_type | model | 入力ファイル | 入力ファイル重要度 | 出力ファイル |
 |---------|---------------|-------|-------------|-------------------|-------------|
-| research | Explore | haiku | - | - | research.md |
+| research | general-purpose | sonnet | - | - | research.md |
 | requirements | general-purpose | sonnet | research.md | 全文 | requirements.md |
 | threat_modeling | general-purpose | sonnet | requirements.md | 全文 | threat-model.md |
 | planning | general-purpose | sonnet | requirements.md | 全文 | spec.md |
@@ -189,16 +189,16 @@ research → requirements → parallel_analysis（threat_modeling + planning）
 | test_impl | general-purpose | sonnet | test-design.md | 全文 | *.test.ts |
 | implementation | general-purpose | sonnet | test-design.md (全文), spec.md (全文), requirements.md (サマリー) | 全文/サマリー | *.ts |
 | refactoring | general-purpose | haiku | implementation成果物 (全文), spec.md (サマリー), test-design.md (参照) | 全文/サマリー/参照 | *.ts |
-| build_check | Bash | haiku | - | - | - |
+| build_check | general-purpose | haiku | - | - | - |
 | code_review | general-purpose | sonnet | implementation成果物 (全文), spec.md (全文), test-design.md (サマリー), requirements.md (参照) | 全文/サマリー/参照 | code-review.md |
-| testing | Bash | haiku | test-design.md (全文), implementation成果物 (全文), spec.md (サマリー), requirements.md (参照) | 全文/サマリー/参照 | - |
+| testing | general-purpose | haiku | test-design.md (全文), implementation成果物 (全文), spec.md (サマリー), requirements.md (参照) | 全文/サマリー/参照 | - |
 | manual_test | general-purpose | sonnet | - | - | manual-test.md |
 | security_scan | general-purpose | sonnet | - | - | security-scan.md |
 | performance_test | general-purpose | sonnet | - | - | performance-test.md |
 | e2e_test | general-purpose | sonnet | - | - | e2e-test.md |
 | docs_update | general-purpose | haiku | 全成果物 | サマリー | ドキュメント |
-| commit | Bash | haiku | - | - | - |
-| push | Bash | haiku | - | - | - |
+| commit | general-purpose | haiku | - | - | - |
+| push | general-purpose | haiku | - | - | - |
 
 ### subagent起動テンプレート
 
