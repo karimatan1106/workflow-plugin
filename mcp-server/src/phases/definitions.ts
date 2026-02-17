@@ -10,12 +10,13 @@
 import type { PhaseName, SubPhaseName, TaskSize, GlobalRules, BashWhitelist } from '../state/types.js';
 import { DEFAULT_TASK_SIZE } from '../state/types.js';
 import * as path from 'path';
+import { createRequire } from 'module';
 import { parseCLAUDEMdByPhase } from './claude-md-parser.js';
 import { exportGlobalRules } from '../validation/artifact-validator.js';
 
-// CommonJS bash-whitelist.jsのロード（テスト環境と本番コンパイル環境の両方で対応）
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const bashWhitelistModule = require('../../../hooks/bash-whitelist.js') as { getBashWhitelist: () => BashWhitelist };
+// CommonJS bash-whitelist.jsのロード（ESM環境ではcreateRequireを使用）
+const esmRequire = createRequire(import.meta.url);
+const bashWhitelistModule = esmRequire('../../../hooks/bash-whitelist.js') as { getBashWhitelist: () => BashWhitelist };
 
 // ============================================================================
 // モジュールロード時のグローバルキャッシュ初期化（パフォーマンス最適化）
