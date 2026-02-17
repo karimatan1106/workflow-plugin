@@ -1066,18 +1066,22 @@ export function buildPrompt(
   let qualitySection = '\n## 成果物品質要件（artifact-validator準拠）\n';
   qualitySection += `### 行数・密度要件\n`;
   qualitySection += `- 各セクション内に最低${rules.minSectionLines}行の実質行を含めること\n`;
+  qualitySection += `- 長い説明は句点（。）ごとに改行して複数行に分割すること（1文=1行のままでは実質行数が増えない）\n`;
   qualitySection += `- セクション密度（実質行/総行）は${rules.minSectionDensity * 100}%以上を維持すること\n`;
   qualitySection += `- サマリーセクションは${rules.maxSummaryLines}行以内に収めること\n`;
   qualitySection += `- 10文字未満の短い行の比率を${rules.shortLineMaxRatio * 100}%未満に保つこと\n`;
   qualitySection += `- 最小文字長閾値: ${rules.shortLineMinLength}文字\n`;
   qualitySection += `\n### 禁止パターン（完全リスト）\n`;
-  qualitySection += `成果物内に以下のパターンが1つでも含まれるとエラーになります:\n`;
+  qualitySection += `成果物内に以下のパターンが1つでも含まれるとエラーになります（includes()による部分一致検索のため、禁止語を含む複合語も検出対象）:\n`;
+  qualitySection += `言い換え例: 「定義されていない」「型が確定していない」「追加調査が必要な事項」のように具体的表現を使用すること\n`;
   for (const pattern of rules.forbiddenPatterns) {
     qualitySection += `- ${pattern}\n`;
   }
   qualitySection += `\n### 角括弧プレースホルダー禁止\n`;
   qualitySection += `[変数名]、[パス]等の角括弧プレースホルダーは使用禁止です。\n`;
   qualitySection += `許可される角括弧: ${rules.bracketPlaceholderInfo.allowedKeywords.join('、')}\n`;
+  qualitySection += `コードブロック（\`\`\`区切り）内も検出対象のため、配列アクセス記法（先頭要素取得、インデックスアクセス等）は使用禁止\n`;
+  qualitySection += `コード例では配列アクセスを「最初の要素」「N番目の要素」等の散文形式で説明するか、波かっこ記法を使用すること\n`;
   qualitySection += `\n### 重複行禁止（structuralLine除外後に${rules.duplicateLineThreshold}回以上でエラー）\n`;
   qualitySection += `重複検出から除外される構造的行（structuralLine）:\n`;
   qualitySection += `- ヘッダー行（#で始まる行）\n`;
@@ -1191,6 +1195,10 @@ export function buildRetryPrompt(
   // エラー種別の認識と修正指示の生成
   const improvements: string[] = [];
 
+  if (errorMessage.includes('プレースホルダー括弧') || errorMessage.includes('角かっこ') || errorMessage.includes('bracket')) {
+    improvements.push('コードブロック内の角かっこ記法（配列アクセス等）を散文形式の説明または波かっこ記法に変更してください');
+    improvements.push('コードフェンス内も角かっこプレースホルダー検出の対象であるため、配列先頭要素を取得する場合は .at(0) 等の代替表現を使用してください');
+  }
   if (errorMessage.includes('禁止パターン') || errorMessage.includes('Forbidden pattern')) {
     improvements.push('指摘された禁止語（TODO/TBD/WIP/FIXME/未定/ダミー等）を削除し、具体的な実例に置き換えてください');
   }
