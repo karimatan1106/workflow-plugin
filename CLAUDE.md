@@ -327,7 +327,7 @@ parallel_*フェーズでは複数のTask toolを**同時に起動**する：
 // parallel_analysisの例
 // 1つのメッセージで複数のTask呼び出しを行う
 Task({ prompt: '...threat_modeling...', subagent_type: 'general-purpose', model: 'sonnet', description: 'threat modeling' })
-Task({ prompt: '...planning...', subagent_type: 'Plan', model: 'sonnet', description: 'planning' })
+Task({ prompt: '...planning...', subagent_type: 'general-purpose', model: 'sonnet', description: 'planning' })
 
 // 両方完了後
 workflow_complete_sub('threat_modeling')
