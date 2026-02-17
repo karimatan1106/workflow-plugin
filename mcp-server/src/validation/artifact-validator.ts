@@ -124,32 +124,61 @@ function isCodeFenceBoundary(trimmedLine: string): boolean {
 }
 
 /**
+ * FR-B1: インラインコード（シングルバックティックペア）を除去するヘルパー関数
+ *
+ * 行内のシングルバックティックペアで囲まれた部分を空文字列に置換する。
+ * 奇数個のバックティックを含む行は安全のため元の行をそのまま返す（フォールバック）。
+ * この関数はコードフェンス外の行にのみ適用すること（extractNonCodeLinesが保証）。
+ *
+ * @param line 処理対象の行
+ * @returns インラインコード除去後の行。奇数バックティックの場合は元の行をそのまま返す。
+ */
+export function removeInlineCode(line: string): string {
+  const backtickCount = line.match(/`/g)?.length ?? 0;
+  if (backtickCount === 0) return line;
+  if (backtickCount % 2 !== 0) return line;
+  return line.replace(/`[^`]*`/g, '');
+}
+
+/**
  * FR-1: コードフェンス外の行のみを返す純粋関数
  *
  * Markdownコンテンツを行単位で走査し、コードフェンス（バックティック3個以上
  * またはチルダ3個以上）で囲まれた範囲の行を除外した行配列を返す。
  * コードフェンス開始行・終了行自体も返却配列から除外する。
- * O(n)の1パス処理、isInsideCodeFenceブールフラグで状態管理。
+ * O(n)の1パス処理、openFenceDelimiterデリミタ記録方式で状態管理（FR-B2）。
+ * コードフェンス外の行はインラインコード除去を適用してから返す（FR-B1）。
  *
  * @param content Markdownコンテンツ文字列
- * @returns コードフェンス外の行の配列
+ * @returns コードフェンス外の行の配列（インラインコード除去済み）
  */
 export function extractNonCodeLines(content: string): string[] {
   const lines = content.split('\n');
   const result: string[] = [];
-  let isInsideCodeFence = false;
+  let openFenceDelimiter: string | null = null;
 
   for (const line of lines) {
     const trimmed = line.trim();
-    // コードフェンス開始/終了の判定
-    if (isCodeFenceBoundary(trimmed)) {
-      isInsideCodeFence = !isInsideCodeFence;
-      continue;
+
+    if (openFenceDelimiter === null) {
+      // フェンス外: 開始行チェック（バックティック3個以上またはチルダ3個以上）
+      const fenceMatch = trimmed.match(/^(`{3,}|~{3,})/);
+      if (fenceMatch) {
+        openFenceDelimiter = fenceMatch[1];
+        continue;
+      }
+      // フェンス外の行: インラインコード除去を適用してからresultに追加
+      result.push(removeInlineCode(line));
+    } else {
+      // フェンス内: 同じデリミタの閉じ行チェック
+      // 閉じ行の条件: 同じデリミタで始まり、デリミタ文字以外が存在しない行
+      const isClosingFence = trimmed.startsWith(openFenceDelimiter) &&
+        /^[`~]+\s*$/.test(trimmed);
+      if (isClosingFence) {
+        openFenceDelimiter = null;
+      }
+      // フェンス内の行はスキップ（閉じ行も含む）
     }
-    // コードフェンス内の行はスキップ
-    if (isInsideCodeFence) continue;
-    // コードフェンス外の行はそのまま追加
-    result.push(line);
   }
 
   return result;
