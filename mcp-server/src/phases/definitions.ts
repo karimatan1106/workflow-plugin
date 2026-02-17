@@ -871,6 +871,9 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
     phaseName: 'parallel_verification',
     description: '並列検証フェーズ',
     subPhases: {
+      // parallel_verificationはバリデーション要件が厳格（必須セクション・密度要件・重複行禁止が複合する）。
+      // haiku使用時に平均3回以上のリトライが発生した実績から、初回通過率向上のためsonnetを採用する。
+      // コスト増加（haikuの約15倍）よりもリトライ削減によるトータルコスト低減を優先する判断。
       manual_test: {
         phaseName: 'manual_test',
         description: '手動確認フェーズ',
@@ -880,7 +883,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
         editableFileTypes: ['.md'],
         minLines: 20,
         subagentType: 'general-purpose',
-        model: 'haiku',
+        model: 'sonnet',
         subagentTemplate: '# manual_testフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\n手動テストを実施してください。\n\n## 出力\n${docsDir}/manual-test.md',
       },
       security_scan: {
@@ -892,7 +895,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
         editableFileTypes: ['.md'],
         minLines: 20,
         subagentType: 'general-purpose',
-        model: 'haiku',
+        model: 'sonnet',
         subagentTemplate: '# security_scanフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\nセキュリティスキャンを実施してください。\n\n## 出力\n${docsDir}/security-scan.md',
       },
       performance_test: {
@@ -904,7 +907,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
         editableFileTypes: ['.md'],
         minLines: 20,
         subagentType: 'general-purpose',
-        model: 'haiku',
+        model: 'sonnet',
         subagentTemplate: '# performance_testフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\nパフォーマンステストを実施してください。\n\n## 出力\n${docsDir}/performance-test.md',
       },
       e2e_test: {
@@ -916,7 +919,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
         editableFileTypes: ['.md', '.test.ts', '.spec.ts'],
         minLines: 20,
         subagentType: 'general-purpose',
-        model: 'haiku',
+        model: 'sonnet',
         subagentTemplate: '# e2e_testフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\nE2Eテストを実施してください。\n\n## 出力\n${docsDir}/e2e-test.md',
       },
     },
@@ -1087,11 +1090,30 @@ export function buildPrompt(
   for (const pattern of rules.forbiddenPatterns) {
     qualitySection += `- ${pattern}\n`;
   }
+  qualitySection += `\n**複合語の言い換えルール（部分一致で検出される複合語への対処）**\n`;
+  qualitySection += `\n英語系禁止語グループ（英語略語を含む複合語）の言い換え:\n`;
+  qualitySection += `- 「確定されていない状態」「設定されていない値」「処理が実行されていない段階」のように日本語で状態を説明すること\n`;
+  qualitySection += `- 上記グループの禁止語を含む複合語は部分一致で検出されるため、略語や短縮語を日本語に置き換えること\n`;
+  qualitySection += `\n検討系禁止語グループ（「要検討」「検討中」等を含む複合語）の言い換え:\n`;
+  qualitySection += `- 「追加調査が必要な事項」「今後分析が必要な項目」のように具体的な作業内容を記述すること\n`;
+  qualitySection += `- 「詳細な分析が求められる箇所」「根拠の確認が必要な点」のような言い回しも有効である\n`;
+  qualitySection += `\n予定系禁止語グループ（「対応予定」等を含む複合語）の言い換え:\n`;
+  qualitySection += `- 「次スプリントで実施する変更」「今後の改修で対応する項目」のようにスケジュール感を具体的に記述すること\n`;
+  qualitySection += `- 「将来のバージョンで修正が計画されている動作」「継続的改善の対象として記録された項目」も有効な表現である\n`;
   qualitySection += `\n### 角括弧プレースホルダー禁止\n`;
   qualitySection += `[変数名]、[パス]等の角括弧プレースホルダーは使用禁止です。\n`;
   qualitySection += `許可される角括弧: ${rules.bracketPlaceholderInfo.allowedKeywords.join('、')}\n`;
   qualitySection += `コードブロック（\`\`\`区切り）内も検出対象のため、配列アクセス記法（先頭要素取得、インデックスアクセス等）は使用禁止\n`;
   qualitySection += `コード例では配列アクセスを「最初の要素」「N番目の要素」等の散文形式で説明するか、波かっこ記法を使用すること\n`;
+  qualitySection += `\n**重要: コードフェンス内の行もバリデーターの検出対象になります**\n`;
+  qualitySection += `コードブロック内に角括弧を含む行を記述した場合でも、プレースホルダー検出ルールが適用されます。\n`;
+  qualitySection += `コード例を記述する際は、角括弧を使わない表現を採用してください。\n`;
+  qualitySection += `\n正規表現パターンの記述:\n`;
+  qualitySection += `- NG: 正規表現で「英小文字1文字以上」を表すパターンをそのままコードブロックに書く\n`;
+  qualitySection += `- OK: 「英小文字の1文字以上の繰り返しを表す正規表現」のように散文で説明する\n`;
+  qualitySection += `\n配列アクセスの記述:\n`;
+  qualitySection += `- NG: 配列のインデックスアクセス記法をコードブロック内に直接記述する\n`;
+  qualitySection += `- OK: 「配列の先頭要素を取得する」「インデックス番号によるアクセス」のように散文形式で説明する\n`;
   qualitySection += `\n### 重複行禁止（structuralLine除外後に${rules.duplicateLineThreshold}回以上でエラー）\n`;
   qualitySection += `重複検出から除外される構造的行（structuralLine）:\n`;
   qualitySection += `- ヘッダー行（#で始まる行）\n`;

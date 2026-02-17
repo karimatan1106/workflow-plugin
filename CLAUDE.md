@@ -192,10 +192,10 @@ research → requirements → parallel_analysis（threat_modeling + planning）
 | build_check | Bash | haiku | - | - | - |
 | code_review | general-purpose | sonnet | implementation成果物 (全文), spec.md (全文), test-design.md (サマリー), requirements.md (参照) | 全文/サマリー/参照 | code-review.md |
 | testing | Bash | haiku | test-design.md (全文), implementation成果物 (全文), spec.md (サマリー), requirements.md (参照) | 全文/サマリー/参照 | - |
-| manual_test | general-purpose | haiku | - | - | manual-test.md |
-| security_scan | Bash | haiku | - | - | security-scan.md |
-| performance_test | Bash | haiku | - | - | performance-test.md |
-| e2e_test | Bash | haiku | - | - | e2e-test.md |
+| manual_test | general-purpose | sonnet | - | - | manual-test.md |
+| security_scan | Bash | sonnet | - | - | security-scan.md |
+| performance_test | Bash | sonnet | - | - | performance-test.md |
+| e2e_test | Bash | sonnet | - | - | e2e-test.md |
 | docs_update | general-purpose | haiku | 全成果物 | サマリー | ドキュメント |
 | commit | Bash | haiku | - | - | - |
 | push | Bash | haiku | - | - | - |
