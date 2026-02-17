@@ -1100,6 +1100,12 @@ export function buildPrompt(
   qualitySection += `\n予定系禁止語グループ（「対応予定」等を含む複合語）の言い換え:\n`;
   qualitySection += `- 「次スプリントで実施する変更」「今後の改修で対応する項目」のようにスケジュール感を具体的に記述すること\n`;
   qualitySection += `- 「将来のバージョンで修正が計画されている動作」「継続的改善の対象として記録された項目」も有効な表現である\n`;
+  qualitySection += `\n### 入力ファイルからの語句転記禁止\n`;
+  qualitySection += `入力ファイル（research.md・spec.md・requirements.md等）に上記の語句が含まれていた場合でも、`;
+  qualitySection += `成果物にそのまま転記してはならない。入力ファイルを参照する際は内容を解釈し、言い換えた表現で記述すること。\n`;
+  qualitySection += `- 言い換え例1: 「追加調査が必要な事項」「今後確認が必要な項目」\n`;
+  qualitySection += `- 言い換え例2: 「検討を要する要素」「分析が求められる箇所」\n`;
+  qualitySection += `- 言い換え例3: 「現時点では確定されていない設定値」「将来の改修で対応する項目」\n`;
   qualitySection += `\n### 角括弧プレースホルダー禁止\n`;
   qualitySection += `[変数名]、[パス]等の角括弧プレースホルダーは使用禁止です。\n`;
   qualitySection += `許可される角括弧: ${rules.bracketPlaceholderInfo.allowedKeywords.join('、')}\n`;
