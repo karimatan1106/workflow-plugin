@@ -171,7 +171,7 @@ interface ToolArguments {
   /** タスク開始 */
   workflow_start: { taskName: string; size?: string; skipPhases?: string };
   /** 次フェーズ遷移（taskId必須） */
-  workflow_next: { taskId?: string; sessionToken?: string };
+  workflow_next: { taskId?: string; sessionToken?: string; forceTransition?: boolean };
   /** 承認（taskId必須） */
   workflow_approve: { taskId?: string; type: string; sessionToken?: string };
   /** リセット（taskId必須） */
@@ -302,8 +302,8 @@ const TOOL_HANDLERS: Record<ToolName, ToolHandler> = {
   },
 
   workflow_next: (args) => {
-    const { taskId, sessionToken } = args as ToolArguments['workflow_next'];
-    return workflowNext(taskId, sessionToken);
+    const { taskId, sessionToken, forceTransition } = args as ToolArguments['workflow_next'];
+    return workflowNext(taskId, sessionToken, forceTransition);
   },
 
   workflow_approve: (args) => {

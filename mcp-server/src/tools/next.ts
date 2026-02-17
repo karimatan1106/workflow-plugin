@@ -135,7 +135,7 @@ function checkPhaseArtifacts(phase: PhaseName, docsDir: string): string[] {
  * @param sessionToken セッショントークン（オプション、REQ-6）
  * @returns 遷移結果
  */
-export function workflowNext(taskId?: string, sessionToken?: string): NextResult {
+export function workflowNext(taskId?: string, sessionToken?: string, forceTransition?: boolean): NextResult {
   // タスク状態を取得
   const result = getTaskByIdOrError(taskId);
   if ('error' in result) {
@@ -276,6 +276,7 @@ export function workflowNext(taskId?: string, sessionToken?: string): NextResult
     }
 
     // REQ-4: testing通過時にtestBaselineを自動設定
+    let baselineSetByReq4 = false;
     if (testResult.passedCount !== undefined || testResult.failedCount !== undefined) {
       const totalCount = (testResult.passedCount || 0) + (testResult.failedCount || 0);
       if (totalCount > 0) {
@@ -289,6 +290,18 @@ export function workflowNext(taskId?: string, sessionToken?: string): NextResult
           },
         };
         stateManager.writeTaskState(taskState.workflowDir, updatedState);
+        baselineSetByReq4 = true;
+      }
+    }
+
+    // FR-4: testing → regression_test 遷移時のベースライン存在チェック
+    if (!forceTransition && !baselineSetByReq4) {
+      const baseline = taskState.testBaseline;
+      if (!baseline) {
+        return {
+          success: false,
+          message: 'ベースラインが記録されていません。workflow_capture_baselineを実行してからregression_testフェーズに進んでください。forceTransition: trueを指定するとスキップできます。',
+        };
       }
     }
   }
@@ -688,6 +701,10 @@ export const nextToolDefinition = {
       sessionToken: {
         type: 'string',
         description: 'セッショントークン（REQ-6: Orchestrator認証用）',
+      },
+      forceTransition: {
+        type: 'boolean',
+        description: 'ベースライン未設定時のregression_test遷移を強制する（新規プロジェクト用）',
       },
     },
     required: [],

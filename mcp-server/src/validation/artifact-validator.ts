@@ -110,6 +110,51 @@ export function isStructuralLine(line: string): boolean {
   return false;
 }
 
+/** コードフェンス開始パターン（バックティックまたはチルダ3個以上） */
+const CODE_FENCE_PATTERNS = ['```', '~~~'];
+
+/**
+ * コードフェンス開始/終了行を判定する
+ *
+ * @param trimmedLine トリム済みの行
+ * @returns コードフェンス開始/終了行の場合true
+ */
+function isCodeFenceBoundary(trimmedLine: string): boolean {
+  return CODE_FENCE_PATTERNS.some(pattern => trimmedLine.startsWith(pattern));
+}
+
+/**
+ * FR-1: コードフェンス外の行のみを返す純粋関数
+ *
+ * Markdownコンテンツを行単位で走査し、コードフェンス（バックティック3個以上
+ * またはチルダ3個以上）で囲まれた範囲の行を除外した行配列を返す。
+ * コードフェンス開始行・終了行自体も返却配列から除外する。
+ * O(n)の1パス処理、isInsideCodeFenceブールフラグで状態管理。
+ *
+ * @param content Markdownコンテンツ文字列
+ * @returns コードフェンス外の行の配列
+ */
+export function extractNonCodeLines(content: string): string[] {
+  const lines = content.split('\n');
+  const result: string[] = [];
+  let isInsideCodeFence = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    // コードフェンス開始/終了の判定
+    if (isCodeFenceBoundary(trimmed)) {
+      isInsideCodeFence = !isInsideCodeFence;
+      continue;
+    }
+    // コードフェンス内の行はスキップ
+    if (isInsideCodeFence) continue;
+    // コードフェンス外の行はそのまま追加
+    result.push(line);
+  }
+
+  return result;
+}
+
 /**
  * フェーズ別成果物要件定数
  *
@@ -280,13 +325,16 @@ function validateArtifactQualityCore(
     'ダミー',
     '仮置き',
   ];
+  // FR-1: コードフェンス外の行のみを対象に禁止パターンを検索
+  const nonCodeContent = extractNonCodeLines(content).join('\n');
   const foundForbidden = forbiddenPatterns.filter(pattern =>
-    content.includes(pattern)
+    nonCodeContent.includes(pattern)
   );
 
   // 角括弧プレースホルダーのチェック（Markdownリンク/参照パターンを除外）
+  // FR-1: コードフェンス外の行のみを対象に検索
   const bracketPlaceholderPattern = /\[(?!関連|参考|注|例|出典)[^\]]{1,50}\]/g;
-  const bracketMatches = content.match(bracketPlaceholderPattern);
+  const bracketMatches = nonCodeContent.match(bracketPlaceholderPattern);
   const foundBracketPlaceholders: string[] = [];
   if (bracketMatches) {
     // 重複排除

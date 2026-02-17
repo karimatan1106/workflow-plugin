@@ -314,6 +314,10 @@ Task({
 })
 ```
 
+### モデルエスカレーション手順
+
+buildRetryPromptの返り値に `suggestModelEscalation: true` が含まれる場合、次のリトライではモデルをsonnetに変更してsubagentを再起動すること。haikuで2回以上リトライが失敗した場合は自動的にsonnetへエスカレーションする。
+
 ### 並列フェーズの実行
 
 parallel_*フェーズでは複数のTask toolを**同時に起動**する：

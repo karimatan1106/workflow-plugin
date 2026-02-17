@@ -92,6 +92,42 @@ function isHyphenatedWord(output: string, keyword: string, matchIndex: number): 
   return output[matchIndex + keyword.length] === '-';
 }
 
+/** 複合語コンテキスト判定の検索ウィンドウサイズ */
+const COMPOUND_WORD_CONTEXT_WINDOW = 30;
+
+/** 複合語の単語パターン（大文字で始まる英単語） */
+const COMPOUND_WORD_PATTERN = /([A-Z][a-z]+)/;
+
+/**
+ * FR-3: スペース区切り複合語コンテキストを検出（"Fail Closed", "Fail Safe"等）
+ *
+ * キーワードの前後にスペース区切りの大文字始まり語がある場合（"Fail Closed"等）を
+ * 検出して、固有名詞・専門用語の一部である可能性を追跡する。
+ * isHyphenatedWordはハイフン結合語（"Fail-Closed"）を除外するのに対し、
+ * この関数はスペース区切り複合語（"Fail Closed"）を除外する。
+ *
+ * @param output テキスト
+ * @param keyword キーワード
+ * @param matchIndex マッチ位置
+ * @returns 複合語コンテキストの場合true
+ */
+function isCompoundWordContext(output: string, keyword: string, matchIndex: number): boolean {
+  // キーワードの直後にスペース+大文字始まりの語があるか確認
+  const afterKeyword = output.substring(matchIndex + keyword.length);
+  const afterMatch = afterKeyword.match(/^\s+[A-Z][a-z]+/);
+  if (afterMatch) return true;
+
+  // キーワードの直前に大文字始まりの語+スペースがあるか確認
+  const beforeKeyword = output.substring(
+    Math.max(0, matchIndex - COMPOUND_WORD_CONTEXT_WINDOW),
+    matchIndex
+  );
+  const beforeMatch = beforeKeyword.match(new RegExp(`${COMPOUND_WORD_PATTERN.source}\\s+$`));
+  if (beforeMatch) return true;
+
+  return false;
+}
+
 /**
  * テスト出力とexitCodeの整合性を検証（Fail Closed）
  *
@@ -129,6 +165,8 @@ function validateTestOutputConsistency(
           // ハイフン結合語を除外（"Fail-Closed" ✗）
           const idx = output.indexOf(match);
           if (isHyphenatedWord(output, match, idx)) return false;
+          // FR-3: スペース区切り複合語を除外（"Fail Closed" ✗）
+          if (isCompoundWordContext(output, match, idx)) return false;
           return true;
         });
       } else {
@@ -352,7 +390,8 @@ export function workflowRecordTestResult(
   }
 
   // REQ-C2: テスト出力ハッシュの記録と重複チェック
-  const existingHashes = taskState.testOutputHashes || [];
+  // FR-3: regression_testフェーズでは同一ハッシュの再記録を許可（修正前後の比較用）
+  const existingHashes = currentPhase === 'regression_test' ? [] : (taskState.testOutputHashes || []);
   const hashValidation = recordTestOutputHash(output, existingHashes);
   if (!hashValidation.valid) {
     return {
