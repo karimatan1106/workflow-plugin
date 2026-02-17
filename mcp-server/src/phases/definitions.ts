@@ -1073,6 +1073,14 @@ export function buildPrompt(
   qualitySection += `- サマリーセクションは${rules.maxSummaryLines}行以内に収めること\n`;
   qualitySection += `- 10文字未満の短い行の比率を${rules.shortLineMaxRatio * 100}%未満に保つこと\n`;
   qualitySection += `- 最小文字長閾値: ${rules.shortLineMinLength}文字\n`;
+  qualitySection += `\n実質行にカウントされない行の例（これらは${rules.minSectionLines}行のカウントに入らない）:\n`;
+  qualitySection += `- リスト先頭の太字ラベルのみの行 — 例: 「- **前提条件**:」（コロン後にコンテンツがない）\n`;
+  qualitySection += `- 水平線のみの行 — 例: 「---」（3つ以上のハイフンのみ）\n`;
+  qualitySection += `- 空白行（何も書かれていない行または空白のみの行）\n`;
+  qualitySection += `実質行にカウントされる行の例（これらはカウントに入る）:\n`;
+  qualitySection += `- 太字ラベルの後に実際のコンテンツが続く行 — 例: 「- **前提条件**: ユーザーがログイン済みであること」\n`;
+  qualitySection += `- 通常のテキスト行や箇条書き — 例: 「システムが正常に起動していること」\n`;
+  qualitySection += `判断基準: コロンの後にコンテンツ（文字列）が存在する行は実質行としてカウントされる。\n`;
   qualitySection += `\n### 禁止パターン（完全リスト）\n`;
   qualitySection += `成果物内に以下のパターンが1つでも含まれるとエラーになります（includes()による部分一致検索のため、禁止語を含む複合語も検出対象）:\n`;
   qualitySection += `言い換え例: 「定義されていない」「型が確定していない」「追加調査が必要な事項」のように具体的表現を使用すること\n`;
@@ -1092,6 +1100,14 @@ export function buildPrompt(
   qualitySection += `- テーブル区切り行とテーブルデータ行（パイプ区切り2カラム以上）\n`;
   qualitySection += `- 太字ラベルのみで終わる行（**ラベル**:）\n`;
   qualitySection += `- リスト先頭の太字ラベルのみの行（- **ラベル**:）\n`;
+  qualitySection += `\n重複検出の対象になる行（除外されない、要注意）:\n`;
+  qualitySection += `- 太字ラベルの後にコンテンツが続く行 — 例: 「**検証結果**: ✅ 合格」← この形式は対象\n`;
+  qualitySection += `- 太字ラベル+実行状態の行 — 例: 「**実行状態**: ✅ 成功」← ${rules.duplicateLineThreshold}回出現するとエラー\n`;
+  qualitySection += `- 太字なしのプレーンラベル+値の行 — 例: 「- 結果: 合格」← 太字がないため除外されない\n`;
+  qualitySection += `複数シナリオで同じフォーマットの検証結果行を記述する場合の正しいアプローチ:\n`;
+  qualitySection += `- 各行にシナリオ番号や具体的な操作名を含めて一意性を確保すること\n`;
+  qualitySection += `- 具体例（NG）: 「**検証結果**: ✅ 合格」を${rules.duplicateLineThreshold}行以上書く\n`;
+  qualitySection += `- 具体例（OK）: 「**検証結果（シナリオ1: ファイル読み込み）**: ✅ 合格し、期待通りの出力が得られた」\n`;
   qualitySection += `\n### Mermaid図の構造検証\n`;
   qualitySection += `- stateDiagram-v2では最低${rules.mermaidMinStates}つの状態と${rules.mermaidMinTransitions}つの遷移が必要\n`;
   qualitySection += `- flowchartでも最低${rules.mermaidMinStates}ノードと${rules.mermaidMinTransitions}エッジが必要\n`;
@@ -1208,7 +1224,10 @@ export function buildRetryPrompt(
     improvements.push(`該当セクションに実質的な内容を追加してください（最低${GLOBAL_RULES_CACHE.minSectionLines}行の実質行が必要です）`);
   }
   if (errorMessage.includes('同一行') || errorMessage.includes('Duplicate line')) {
-    improvements.push('繰り返されている行をそれぞれ異なる内容に書き換え、各行に文脈固有の情報を含めてください（structuralLine以外の重複が対象）');
+    improvements.push('繰り返されている行の構造自体を変えてください。値のみを変えるだけでは不十分です');
+    improvements.push('対処法A（ラベルにシナリオ識別子を付加）: 「**検証結果（シナリオ1: 正常系）**: ✅ ファイル変換が期待通り完了した」のように、ラベル名にシナリオ番号と操作名を含めること');
+    improvements.push('対処法B（文章形式への変換）: 「**検証結果**: ✅ 合格」のような平文のラベル:値形式をやめ、「シナリオ1のファイル変換処理では、期待通りの変換結果が得られ、エラーは発生しなかった」のような1文の散文で記述すること');
+    improvements.push('各シナリオ行は固有の操作名・画面名・入力値・出力値のうち少なくとも1つの詳細情報を含めること');
   }
   if (errorMessage.includes('必須セクション') || errorMessage.includes('Required section')) {
     improvements.push('欠落しているセクションヘッダーを追加してください（例: ## サマリー、## テストケース等）');
