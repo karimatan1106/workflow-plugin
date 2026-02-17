@@ -489,6 +489,8 @@ export interface NextResult extends ToolResult {
   workflow_context?: WorkflowContext;
   /** フェーズガイド情報 */
   phaseGuide?: PhaseGuide;
+  /** 警告メッセージ一覧（フェーズ遷移は成功するが注意が必要な場合） */
+  warnings?: string[];
 }
 
 /**

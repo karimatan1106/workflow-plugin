@@ -126,7 +126,20 @@ function writeTaskIndexCache(tasks) {
       tasks: tasks,
       updatedAt: now
     };
-    fs.writeFileSync(TASK_INDEX_FILE, JSON.stringify(cache, null, 2), 'utf8');
+
+    // P0-3: write-then-renameパターンによるアトミック書き込み
+    const tmpFile = TASK_INDEX_FILE + '.' + process.pid + '.tmp';
+    try {
+      fs.writeFileSync(tmpFile, JSON.stringify(cache, null, 2), 'utf8');
+      fs.renameSync(tmpFile, TASK_INDEX_FILE);
+    } catch {
+      // rename失敗時に一時ファイルを削除する（ベストエフォート）
+      try {
+        fs.unlinkSync(tmpFile);
+      } catch {
+        // 一時ファイル削除失敗は無視する
+      }
+    }
   } catch {
     // キャッシュ書き込みエラーは無視（パフォーマンス最適化であり必須ではない）
   }

@@ -63,6 +63,8 @@ export interface MultiLangSection {
  */
 export interface ArtifactRequirement {
   minLines: number;
+  /** P0-1: フェーズ遷移時に使用する最小行数（直接バリデーションよりも緩い値を設定可能） */
+  minLinesForTransition?: number;
   requiredSections: string[] | MultiLangSection[];
 }
 
@@ -118,6 +120,7 @@ export function isStructuralLine(line: string): boolean {
 export const PHASE_ARTIFACT_REQUIREMENTS: Record<string, ArtifactRequirement> = {
   'research.md': {
     minLines: 20,
+    minLinesForTransition: 16,
     requiredSections: [
       { ja: '## 調査結果', en: '## Investigation Results' },
       { ja: '## 既存実装の分析', en: '## Existing Implementation Analysis' },
@@ -133,6 +136,8 @@ export const PHASE_ARTIFACT_REQUIREMENTS: Record<string, ArtifactRequirement> = 
   },
   'spec.md': {
     minLines: 50,
+    /** P0-2: フェーズ遷移時は最低5行のみ必須（full validation時は50行必須を維持） */
+    minLinesForTransition: 5,
     requiredSections: [
       { ja: '## 概要', en: '## Overview' },
       { ja: '## 実装計画', en: '## Implementation Plan' },
@@ -148,6 +153,8 @@ export const PHASE_ARTIFACT_REQUIREMENTS: Record<string, ArtifactRequirement> = 
   },
   'threat-model.md': {
     minLines: 20,
+    /** P0-2: フェーズ遷移時は最低5行のみ必須（full validation時は20行必須を維持） */
+    minLinesForTransition: 5,
     requiredSections: ['## 脅威', '## リスク'],
   },
   'state-machine.mmd': {

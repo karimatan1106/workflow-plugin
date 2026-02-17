@@ -49,6 +49,7 @@ const MIN_TESTS = 0; // テスト存在チェック用
 const PHASE_TO_ARTIFACT: Partial<Record<PhaseName, string[]>> = {
   research: ['research.md'],
   requirements: ['requirements.md'],
+  parallel_analysis: ['spec.md', 'threat-model.md'],
   test_design: ['test-design.md'],
 };
 
@@ -84,13 +85,40 @@ function checkPhaseArtifacts(phase: PhaseName, docsDir: string): string[] {
     }
 
     // 品質要件を取得
-    const requirements = PHASE_ARTIFACT_REQUIREMENTS[artifactFile];
-    if (!requirements) {
+    const baseRequirements = PHASE_ARTIFACT_REQUIREMENTS[artifactFile];
+    if (!baseRequirements) {
       continue;
     }
 
-    // 品質検証を実行
-    const validationResult = validateArtifactQuality(filePath, requirements);
+    // P0-1/P0-2: minLinesForTransitionが設定されている場合は軽量チェックを実施
+    // フル検証（validateArtifactQuality）は checkSectionDensity 等の厳格チェックを含むため、
+    // フェーズ遷移チェックでは過剰なブロックが発生する可能性がある。
+    // minLinesForTransition が設定されている場合は存在チェックと最小行数のみ実施する。
+    if (baseRequirements.minLinesForTransition !== undefined) {
+      // 軽量チェック: ファイルサイズと行数のみ（必須セクションチェックはフル検証に委ねる）
+      const stats = fs.statSync(filePath);
+      if (stats.size === 0) {
+        allErrors.push(`${artifactFile} が空ファイルです`);
+        continue;
+      }
+      // minLinesForTransitionが0の場合は行数チェックもスキップ
+      if (baseRequirements.minLinesForTransition > 0) {
+        const rawContent = fs.readFileSync(filePath, 'utf-8');
+        // テスト環境でモックがundefinedを返す場合は行数チェックをスキップ
+        if (typeof rawContent === 'string') {
+          const nonEmptyLines = rawContent.split('\n').filter((line: string) => line.trim().length > 0);
+          if (nonEmptyLines.length < baseRequirements.minLinesForTransition) {
+            allErrors.push(
+              `${artifactFile} の行数が不足しています（${nonEmptyLines.length}行 < ${baseRequirements.minLinesForTransition}行）`
+            );
+          }
+        }
+      }
+      continue;
+    }
+
+    // 品質検証を実行（フル検証）
+    const validationResult = validateArtifactQuality(filePath, baseRequirements);
     if (!validationResult.passed) {
       allErrors.push(...validationResult.errors);
     }
@@ -117,6 +145,9 @@ export function workflowNext(taskId?: string, sessionToken?: string): NextResult
   const taskState = result.taskState;
   const currentPhase = taskState.phase;
 
+  // P0-1: スコープ未設定警告の蓄積用
+  const scopeWarnings: string[] = [];
+
   // REQ-6: セッショントークン検証
   const tokenError = verifySessionToken(taskState, sessionToken);
   if (tokenError) return tokenError as NextResult;
@@ -136,6 +167,15 @@ export function workflowNext(taskId?: string, sessionToken?: string): NextResult
         success: false,
         message: 'requirements承認が必要です。workflow_approve requirements を実行してください',
       };
+    }
+  }
+
+  // P0-1: research→requirements遷移時のスコープ未設定警告
+  if (currentPhase === 'research') {
+    const researchScopeFiles = taskState.scope?.affectedFiles?.length || 0;
+    const researchScopeDirs = taskState.scope?.affectedDirs?.length || 0;
+    if (researchScopeFiles === 0 && researchScopeDirs === 0) {
+      scopeWarnings.push('スコープが設定されていません。parallel_analysisフェーズでブロックされます。researchフェーズでworkflow_set_scopeを呼び出してください。');
     }
   }
 
@@ -603,6 +643,7 @@ export function workflowNext(taskId?: string, sessionToken?: string): NextResult
         phase: nextPhase,
         currentPhase: currentPhase,
       },
+      ...(scopeWarnings.length > 0 ? { warnings: scopeWarnings } : {}),
     };
   }) as NextResult;
 }

@@ -588,14 +588,15 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
     editableFileTypes: ['.md'],
     minLines: 50,
     subagentType: 'general-purpose',
-    model: 'haiku',
+    model: 'sonnet',
     checklist: [
       '既存コードベースの構造を把握する（ディレクトリ構成・主要ファイル）',
       '関連する既存実装を特定し、変更影響範囲を見積もる',
       '技術的制約・依存関係を洗い出す',
       '既存テストスイートを実行してベースラインを記録する（workflow_capture_baseline）',
+      'userIntentのキーワードからGlob/Grepで関連ファイルを特定し、workflow_set_scopeを呼び出してaffectedFiles/affectedDirsを設定する（調査フェーズの最終必須ステップ）',
     ],
-    subagentTemplate: '# researchフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\n既存コードベースの調査と問題分析を行ってください。\n\n## 出力\n${docsDir}/research.md',
+    subagentTemplate: '# researchフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\n既存コードベースの調査と問題分析を行ってください。\n\n## 出力\n${docsDir}/research.md\n\n## スコープ設定（必須）\n調査完了後に以下の手順でスコープを設定してください:\n1. userIntentからキーワードを抽出する\n2. Glob/Grepで関連ファイルを特定する\n3. 影響ディレクトリを集約する\n4. workflow_set_scopeでaffectedFiles/affectedDirsを設定する',
   },
   requirements: {
     phaseName: 'requirements',

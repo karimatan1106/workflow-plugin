@@ -5,6 +5,8 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['src/**/__tests__/**/*.test.ts', 'tests/**/*.test.ts'],
+    // Global setup creates stub files at URL-encoded paths for P0-2 tests
+    globalSetup: ['./vitest-global-setup.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
