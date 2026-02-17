@@ -339,9 +339,9 @@ export interface ToolResult {
 /**
  * 入力ファイルのメタデータ
  *
- * 各フェーズで参照する入力ファイルの重要度と推奨読み込みモードを定義する。
- * 大規模プロジェクトでのコンテキスト枯渇を防ぐため、重要度に基づいた
- * ファイル読み込み戦略をOrchestratorが実装できるようにする。
+ * 各フェーズで参照する入力ファイルの重要度と推奨読み込みモードを定義。
+ * 大規模プロジェクトでコンテキスト枯渇を防ぐため、重要度別読み込み戦略をサポート。
+ * Orchestratorが入力ファイル選択を効率化でき、subagentのコンテキスト使用量を最適化可能。
  */
 export interface InputFileMetadata {
   /** ファイルパス（{docsDir}プレースホルダー含む） */
@@ -401,6 +401,8 @@ export interface PhaseGuide {
   userIntent?: string;
   /** subagent起動時のプロンプトテンプレート（C-1: userIntent伝播強化） */
   subagentTemplate?: string;
+  /** フェーズ固有チェックリスト（オプショナル：後方互換性確保） */
+  checklist?: string[];
 }
 
 /**
@@ -596,4 +598,110 @@ export interface CreateSubtaskResult extends ToolResult {
 export interface LinkTasksResult extends ToolResult {
   parentTaskId?: string;
   childTaskId?: string;
+}
+
+// ============================================================================
+// subagentプロンプト自動生成用型定義
+// ============================================================================
+
+/**
+ * GlobalRules型
+ *
+ * artifact-validator.tsの全品質ルール定数を構造化して表現。
+ * exportGlobalRules()関数が返し、buildPrompt()でsubagentプロンプト自動生成に使用。
+ * 成果物バリデーション要件（禁止語・密度・行数・セクション等）をsubagentに提供。
+ */
+export interface GlobalRules {
+  /** FORBIDDEN_PATTERNS定数（12種類の禁止パターン）への参照 */
+  forbiddenPatterns: string[];
+  /** 角括弧プレースホルダー検出用の正規表現パターン */
+  bracketPlaceholderRegex: RegExp;
+  /** placeholderRegexの情報（パターン文字列・許可キーワード・最大長） */
+  bracketPlaceholderInfo: {
+    pattern: string;
+    allowedKeywords: string[];
+    maxLength: number;
+  };
+  /** 重複行検出の閾値（固定値3: 3回以上同一行でエラー） */
+  duplicateLineThreshold: number;
+  /** structuralLine（構造的な行）を重複検出から除外するパターン（8種類） */
+  duplicateExclusionPatterns: {
+    headers: string;
+    horizontalRules: string;
+    codeFences: string;
+    tableSeparators: string;
+    tableDataRows: string;
+    boldLabels: string;
+    listBoldLabels: string;
+    plainLabels: string;
+  };
+  /** セクション密度の最小閾値（0.3 = 30%、lineRatioに相当） */
+  minSectionDensity: number;
+  /** 各セクションの最小実質lineCount（5行） */
+  minSectionLines: number;
+  /** サマリーセクションの最大lineCount（200行） */
+  maxSummaryLines: number;
+  /** 短い行の最小長閾値（10文字、lineRatio計算の基準値） */
+  shortLineMinLength: number;
+  /** 短い行の最大lineRatio（0.5 = 50%） */
+  shortLineMaxRatio: number;
+  /** ヘッダーのみチェック用最小非ヘッダーlineCount（5行） */
+  minNonHeaderLines: number;
+  /** Mermaid図の最小状態数（3個、stateDiagram構造検証に使用） */
+  mermaidMinStates: number;
+  /** Mermaid図の最小遷移数（2個、flowchart構造検証に使用） */
+  mermaidMinTransitions: number;
+  /** テストfileQuality要件（アサーション・テストケース・最小件数） */
+  testFileRules: {
+    assertionPatterns: string[];
+    testCasePatterns: string[];
+    minCount: number;
+  };
+  /** キーワードトレーサビリティの最小カバレッジ閾値（0.8 = 80%） */
+  traceabilityThreshold: number;
+  /** pathReference必須条件（対象ファイル・必須パス） */
+  codePathRequired: {
+    targetFiles: string[];
+    requiredPaths: string[];
+  };
+  /** バリデーションタイムアウト（デフォルト10000ms = 10秒） */
+  validationTimeoutMs: number;
+}
+
+/**
+ * BashWhitelist型
+ *
+ * bash-whitelist.jsのコマンドホワイトリストをカテゴリ別に公開。
+ * getBashWhitelist()関数が返し、buildPrompt()でコマンド制限セクション自動生成に使用。
+ * 各フェーズで許可される readonly/testing/implementation カテゴリを展開機能付きで提供。
+ */
+export interface BashWhitelist {
+  /** コマンドホワイトリストのカテゴリ別一覧（Record型） */
+  categories: Record<string, string[]>;
+  /** ブラックリストの概要説明テキスト */
+  blacklistSummary: string;
+  /** node実行時の禁止パターン */
+  nodeEBlacklist: string[];
+  /** 環境変数保護の対象となる変数名 */
+  securityEnvVars: string[];
+  /** カテゴリ展開機能（カテゴリ名配列→コマンド配列の和集合） */
+  expandCategories: (categoryNames: string[]) => string[];
+}
+
+/**
+ * ValidationResult型
+ *
+ * validateArtifact関数がfileQuality検証の結果を構造化して返すための型。
+ */
+export interface ValidationResult {
+  /** 検証に合格したかどうか */
+  isValid: boolean;
+  /** エラーの配列 */
+  errors: Array<{
+    errorType: string;
+    message: string;
+    details?: string;
+  }>;
+  /** 警告の配列 */
+  warnings: string[];
 }

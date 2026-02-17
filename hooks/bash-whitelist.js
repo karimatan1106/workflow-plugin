@@ -737,24 +737,28 @@ function checkBashWhitelist(command, phase) {
   }
 
   // REQ-C1: エンコードされたコマンド検出（base64/printf/echo）
+  // バイパス対策: エンコード経由での危険なコマンド実行をブロック
   const encodedResult = detectEncodedCommand(commandToCheck, phase);
   if (!encodedResult.allowed) {
     return encodedResult;
   }
 
   // REQ-C1: 間接実行検出（eval/exec/sh -c）
+  // バイパス対策: 動的実行による危険なコマンド実行をブロック
   const indirectResult = detectIndirectExecution(commandToCheck, phase);
   if (!indirectResult.allowed) {
     return indirectResult;
   }
 
   // REQ-4: コマンド置換・プロセス置換・変数展開の検出
+  // バイパス対策: ネストしたコマンド置換やプロセス置換をブロック
   const substitutionResult = detectSubstitutionPatterns(commandToCheck);
   if (!substitutionResult.allowed) {
     return substitutionResult;
   }
 
   // SEC-4 + SEC-ENV-1: セキュリティ環境変数保護（統一チェック）
+  // HMAC_STRICT等の重要な環境変数の改竄を全フェーズで禁止
   const chainParts = splitCommandChain(commandToCheck);
   for (const part of chainParts) {
     const envResult = checkSecurityEnvVar(part.trim());
@@ -842,6 +846,57 @@ function checkBashWhitelist(command, phase) {
   return { allowed: true };
 }
 
+/**
+ * Bashコマンドホワイトリスト設定をエクスポート
+ *
+ * BashWhitelist型のインスタンスを返す関数。
+ * コマンドカテゴリ別ホワイトリストと展開機能をbuildPromptに提供。
+ * 既存のホワイトリストチェックロジックには変更を加えない（ラッパー関数）。
+ * definitions.tsでモジュールロード時に1回だけ呼び出しBASH_WHITELIST_CACHEにキャッシュ。
+ *
+ * @returns {Object} BashWhitelistインスタンス - カテゴリ別コマンド・ブラックリスト・展開機能を含む
+ */
+function getBashWhitelist() {
+  /**
+   * カテゴリ展開機能（expandCategories）
+   *
+   * カテゴリ名の配列を受け取り、各カテゴリのコマンド一覧を和集合として返す。
+   * 存在しないカテゴリ名が指定された場合はエラーにならず、0件となる。
+   * 重複するコマンドは1件にまとめてアルファベット順にソートして返す。
+   *
+   * @param {string[]} categoryNames - カテゴリ名の配列
+   * @returns {string[]} コマンドリスト（重複除去・ソート済み）
+   */
+  function expandCategories(categoryNames) {
+    const commandSet = new Set();
+    for (const categoryName of categoryNames) {
+      const commands = BASH_WHITELIST[categoryName];
+      if (Array.isArray(commands)) {
+        for (const cmd of commands) {
+          commandSet.add(cmd);
+        }
+      }
+      // 存在しないカテゴリ名はエラーにならず0件
+    }
+    return Array.from(commandSet).sort();
+  }
+
+  const categories = {
+    readonly: [...(BASH_WHITELIST.readonly || [])],
+    testing: [...(BASH_WHITELIST.testing || [])],
+    implementation: [...(BASH_WHITELIST.implementation || [])],
+    git: [...(BASH_WHITELIST.git || [])],
+  };
+
+  return {
+    categories,
+    blacklistSummary: 'インタプリタ実行、シェル実行、eval、リダイレクト操作、ネットワーク操作、再帰的強制削除は全フェーズで禁止',
+    nodeEBlacklist: [...NODE_E_BLACKLIST],
+    securityEnvVars: [...SECURITY_ENV_VARS],
+    expandCategories,
+  };
+}
+
 // エクスポート
 module.exports = {
   checkBashWhitelist,
@@ -854,6 +909,7 @@ module.exports = {
   detectSubstitutionPatterns,  // REQ-4: テスト用にエクスポート
   validateMkdirTarget,     // BUG-3: テスト用にエクスポート
   checkSecurityEnvVar,     // SEC-ENV-1: テスト用にエクスポート
+  getBashWhitelist,
   BASH_WHITELIST,
   BASH_BLACKLIST,
   NODE_E_BLACKLIST,

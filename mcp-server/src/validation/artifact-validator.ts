@@ -991,9 +991,10 @@ const JAPANESE_STOP_WORDS = new Set([
  *
  * Markdown装飾を除去し、技術用語・名詞句を抽出する。
  * 大文字で始まる単語、ハイフン結合語、カタカナ語、漢字2文字以上を対象とする。
+ * ストップワード（助詞・助動詞等）は除外して、有意義なキーワードのみを抽出。
  *
  * @param text ソーステキスト
- * @returns 正規化されたキーワード配列（重複排除済み）
+ * @returns 重複排除・正規化されたキーワード配列
  */
 function extractKeywords(text: string): string[] {
   // Remove markdown formatting
@@ -1152,4 +1153,95 @@ export function validateKeywordTraceability(
   }
 
   return { passed: true, coverage, missingKeywords, errors: [], warnings };
+}
+
+// ============================================================================
+// GlobalRulesエクスポート関数
+// ============================================================================
+
+/**
+ * GlobalRules型をエクスポートする
+ *
+ * artifact-validator.ts内の品質ルール定数をGlobalRules型に集約してエクスポート。
+ * subagentプロンプト自動生成（buildPrompt）で使用される。
+ * definitions.tsでモジュールロード時に1回だけ呼び出してGLOBAL_RULES_CACHEにキャッシュ。
+ * バリデーションロジックは変更しない（ラッパー関数）。
+ *
+ * @returns 品質ルール定数をまとめたGlobalRulesインスタンス
+ */
+export function exportGlobalRules(): import('../state/types.js').GlobalRules {
+  // 環境変数から値を安全に読み込む（パースエラー時はデフォルト値にフォールバック）
+  let minSectionDensity = 0.3;
+  try {
+    const rawDensity = parseFloat(process.env.MIN_SECTION_DENSITY || '0.3');
+    if (!isNaN(rawDensity) && rawDensity >= 0.1 && rawDensity <= 1.0) {
+      minSectionDensity = rawDensity;
+    }
+  } catch {
+    // フォールバック値を使用
+  }
+
+  let maxSummaryLines = 200;
+  try {
+    const rawMax = parseInt(process.env.MAX_SUMMARY_LINES || '200', 10);
+    if (!isNaN(rawMax) && rawMax > 0) {
+      maxSummaryLines = rawMax;
+    }
+  } catch {
+    // フォールバック値を使用
+  }
+
+  let validationTimeoutMs = 10000;
+  try {
+    const rawTimeout = parseInt(process.env.VALIDATION_TIMEOUT_MS || '10000', 10);
+    if (!isNaN(rawTimeout) && rawTimeout > 0) {
+      validationTimeoutMs = rawTimeout;
+    }
+  } catch {
+    // フォールバック値を使用
+  }
+
+  return {
+    forbiddenPatterns: [
+      'TODO', 'TBD', 'WIP', 'FIXME',
+      '未定', '未確定', '要検討', '検討中',
+      '対応予定', 'サンプル', 'ダミー', '仮置き',
+    ],
+    bracketPlaceholderRegex: /\[(?!関連|参考|注|例|出典)[^\]]{1,50}\]/g,
+    bracketPlaceholderInfo: {
+      pattern: '\\[(?!関連|参考|注|例|出典)[^\\]]{1,50}\\]',
+      allowedKeywords: ['関連', '参考', '注', '例', '出典'],
+      maxLength: 50,
+    },
+    duplicateLineThreshold: 3,
+    duplicateExclusionPatterns: {
+      headers: '^#+\\s',
+      horizontalRules: '^[-*_]{3,}$',
+      codeFences: '^```',
+      tableSeparators: '^\\s*\\|[\\s:-]+(\\|[\\s:-]+)*\\|\\s*$',
+      tableDataRows: '^\\s*\\|.+\\|.+\\|\\s*$',
+      boldLabels: '^\\*\\*[^*]+\\*\\*[:：]?\\s*$',
+      listBoldLabels: '^[-*]\\s+\\*\\*[^*]+\\*\\*[:：]?\\s*$',
+      plainLabels: '^[-*]\\s+.{1,50}[:：]\\s*$',
+    },
+    minSectionDensity,
+    minSectionLines: 5,
+    maxSummaryLines,
+    shortLineMinLength: 10,
+    shortLineMaxRatio: 0.5,
+    minNonHeaderLines: 5,
+    mermaidMinStates: 3,
+    mermaidMinTransitions: 2,
+    testFileRules: {
+      assertionPatterns: ['expect(', 'assert(', 'assert.'],
+      testCasePatterns: ['it(', 'test(', 'describe('],
+      minCount: 1,
+    },
+    traceabilityThreshold: 0.8,
+    codePathRequired: {
+      targetFiles: ['spec.md'],
+      requiredPaths: ['src/', 'tests/'],
+    },
+    validationTimeoutMs,
+  };
 }

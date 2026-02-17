@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-02-17
+
+### Added
+
+- **REQ-B1: subagentプロンプト自動生成**: PhaseGuideデータからワークフロープロンプトを動的生成
+  - `buildPrompt()` 関数: 9セクション構成のsubagentプロンプトを自動生成
+  - `buildRetryPrompt()` 関数: バリデーション失敗時に11種のエラーを認識してリトライプロンプトを生成
+  - `exportGlobalRules()` 関数: artifact-validator.tsの品質ルール定数を構造化して公開
+  - `getBashWhitelist()` 関数: bash-whitelist.jsの4カテゴリコマンドリストを展開
+
+- **REQ-B2: 型定義拡張**: ワークフロー状態管理の構造化
+  - `GlobalRules` 型: 成果物品質ルール（16フィールド）を構造化
+  - `BashWhitelist` 型: カテゴリ別コマンドリストと展開機能を提供
+  - `ValidationResult` 型: artifact-validatorのエラー情報を構造化
+  - `PhaseGuide.checklist` フィールド: フェーズ固有のチェックリスト（string array）
+
+- **REQ-B3: PhaseGuide統合**: 品質ルールとホワイトリストの一元管理
+  - PHASE_ARTIFACT_REQUIREMENTSの削除: requiredSectionsをPHASE_GUIDESに統合
+  - resolvePhaseGuide関数の更新: buildPrompt呼び出しでsubagentTemplateを自動設定
+  - 後方互換性の確保: 既存の呼び出し元への変更なし
+
+### Changed
+
+- **品質ルール伝達の強化**: artifact-validatorの全ルール（禁止パターン、重複検出、密度要件等）がsubagentプロンプトに自動反映
+- **コマンドホワイトリスト展開**: bash-whitelist.jsのカテゴリ別commandsがsubagentプロンプトに自動展開
+- **リトライ機構の標準化**: buildRetryPrompt()により、バリデーション失敗時の修正指示が自動生成される
+
+### Benefits
+
+- **保守負担削減**: 品質ルール変更時にartifact-validator.tsのみ更新すればsubagentプロンプトに自動反映
+- **テスタビリティ向上**: buildPrompt/buildRetryPromptがfunctionなため、ユニットテストで検証可能
+- **ルール不整合解決**: PhaseGuideとartifact-validatorの品質ルール同期が自動化される
+- **エラー対応の効率化**: buildRetryPromptがエラー種別を自動認識して具体的な修正指示を生成
+
+### Documentation
+
+- CLAUDE.md: subagent起動テンプレート更新（サマリーセクション、Bashコマンド制限、成果物品質要件を明記）
+- CLAUDE.md: Orchestratorの制約事項を追加（成果物ファイル直接編集禁止、バリデーション修正もsubagent委譲）
+
+---
+
 ## [1.5.0] - 2026-02-07
 
 ### Added
