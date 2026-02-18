@@ -142,15 +142,43 @@ function validateTestOutputConsistency(
 
   // AC-1.1: exitCode=0 + FAILキーワード → ブロック
   if (exitCode === 0) {
-    // Word boundary を使って単語単位でマッチ
+    // 行単位コンテキスト分類: カテゴリA（集計行）とD（その他）のみをキーワード検出対象とする
+    const outputLines = output.split('\n');
+    const SUMMARY_PREFIXES = ['Tests:', 'Test Files', 'Test Suites:', 'Summary'];
+    const CHECK_SYMBOLS = ['✓', '×', '○', '●', '✗', '>'];
+    const filteredOutput = outputLines.filter(line => {
+      const trimmed = line.trim();
+      // カテゴリA: 集計行はキーワード検出対象に含める
+      if (SUMMARY_PREFIXES.some(prefix => trimmed.startsWith(prefix))) {
+        return true;
+      }
+      // カテゴリB: テスト名行（チェック記号で始まるか2スペース以上のインデント） → 除外
+      if (CHECK_SYMBOLS.some(sym => trimmed.startsWith(sym + ' '))) {
+        return false;
+      }
+      if (/^[ \t]{2,}/.test(line)) {
+        return false;
+      }
+      // カテゴリC: スタックトレース行（"at "で始まるかファイルパスパターン） → 除外
+      if (trimmed.startsWith('at ')) {
+        return false;
+      }
+      if (/[/\\]/.test(trimmed) || /\.(ts|js|tsx|jsx):\d+/.test(trimmed)) {
+        return false;
+      }
+      // カテゴリD: その他 → キーワード検出対象に含める
+      return true;
+    }).join('\n');
+
+    // Word boundary を使って単語単位でマッチ（filteredOutputのみ対象）
     const hasFailure = BLOCKING_FAILURE_KEYWORDS.some(kw => {
-      // 記号（×、✗）はそのままマッチ
+      // 記号（×、✗）はそのままマッチ（フィルタ済み出力のみ）
       if (kw === '×' || kw === '✗') {
-        return output.includes(kw);
+        return filteredOutput.includes(kw);
       }
       const isUpperCase = kw === kw.toUpperCase();
       if (isUpperCase) {
-        // 大文字キーワード（FAIL, FAILED, ERROR等）: "0 Failed", "no Error" は除外
+        // 大文字キーワード（FAIL, FAILED, ERROR等）: "0 Failed", "no Error" は除外（全出力から判定）
         if (isKeywordNegated(output, kw.toLowerCase())) {
           return false;
         }
@@ -158,15 +186,15 @@ function validateTestOutputConsistency(
         const firstChar = kw.charAt(0);
         const rest = kw.slice(1).toLowerCase();
         const matchPattern = new RegExp(`\\b(${firstChar}${rest})\\b`, 'gi');
-        const matches = output.match(matchPattern) || [];
+        const matches = filteredOutput.match(matchPattern) || [];
         return matches.some(match => {
           // 実際のマッチテキストの最初の文字が大文字か確認
           if (match.charAt(0) !== match.charAt(0).toUpperCase()) return false;
           // ハイフン結合語を除外（"Fail-Closed" ✗）
-          const idx = output.indexOf(match);
-          if (isHyphenatedWord(output, match, idx)) return false;
+          const idx = filteredOutput.indexOf(match);
+          if (isHyphenatedWord(filteredOutput, match, idx)) return false;
           // FR-3: スペース区切り複合語を除外（"Fail Closed" ✗）
-          if (isCompoundWordContext(output, match, idx)) return false;
+          if (isCompoundWordContext(filteredOutput, match, idx)) return false;
           return true;
         });
       } else {
@@ -175,7 +203,7 @@ function validateTestOutputConsistency(
           return false;
         }
         const pattern = new RegExp(`\\b${kw}\\b`, 'i');
-        return pattern.test(output);
+        return pattern.test(filteredOutput);
       }
     });
     if (hasFailure) {

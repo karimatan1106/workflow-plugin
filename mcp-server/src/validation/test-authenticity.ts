@@ -59,6 +59,7 @@ export function validateTestAuthenticity(
   const TEST_FRAMEWORK_PATTERNS = [
     /Tests:\s*(\d+)\s+passed/i, // Jest: "Tests: 5 passed, 5 total"
     /Test Suites:\s*(\d+)\s+passed/i, // Jest: "Test Suites: 1 passed, 1 total"
+    /Test Files\s+(?:\d+\s+failed\s*\|\s*)?(\d+)\s+passed/i, // Vitest composite: "Test Files 39 failed | 113 passed (152)"
     /Test Files\s+(\d+)\s+passed/i, // Vitest: "Test Files 5 passed (5)"
     /(\d+)\s+passing/i, // Mocha: "5 passing"
     /✓\s+\d+\s+tests?\s+completed/i, // Vitest: "✓ 5 tests completed"
