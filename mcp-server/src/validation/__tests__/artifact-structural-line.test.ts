@@ -11,7 +11,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { validateArtifactQuality } from '../artifact-validator.js';
+import { validateArtifactQuality, isStructuralLine } from '../artifact-validator.js';
 
 describe('REQ-5: 構造要素の重複検出除外', () => {
   let tmpDir: string;
@@ -176,5 +176,53 @@ describe('REQ-5: 構造要素の重複検出除外', () => {
     // REQ-5実装後も、「通常のテキスト行」は構造要素でないので重複検出 → failed
     expect(result.passed).toBe(false);
     expect(result.errors.some(e => e.includes('重複') || e.includes('ダミー'))).toBe(true);
+  });
+});
+
+describe('isStructuralLine - プレーンラベル行の除外（FR-2拡張）', () => {
+  it('リスト記号なし・半角コロン終端のラベル行が構造的行として判定される', () => {
+    expect(isStructuralLine('実行結果:')).toBe(true);
+  });
+
+  it('リスト記号なし・半角コロン+空白終端のラベル行が構造的行として判定される', () => {
+    expect(isStructuralLine('実行結果: ')).toBe(true);
+  });
+
+  it('リスト記号なし・全角コロン終端のラベル行が構造的行として判定される', () => {
+    expect(isStructuralLine('ステータス：')).toBe(true);
+  });
+
+  it('リスト記号なし・短いラベル行が構造的行として判定される', () => {
+    expect(isStructuralLine('合否:')).toBe(true);
+  });
+
+  it('リスト記号ありの既存動作が継続して機能する（後方互換性）', () => {
+    expect(isStructuralLine('- 結果:')).toBe(true);
+    expect(isStructuralLine('* 状態:')).toBe(true);
+  });
+
+  it('コロン前50文字のラベル行が構造的行として判定される（境界値上限）', () => {
+    const label = 'あ'.repeat(50) + ':';
+    expect(label.length).toBe(51);
+    expect(isStructuralLine(label)).toBe(true);
+  });
+
+  it('コロン前51文字のラベル行が構造的行として判定されない（境界値超過）', () => {
+    const label = 'あ'.repeat(51) + ':';
+    expect(label.length).toBe(52);
+    expect(isStructuralLine(label)).toBe(false);
+  });
+
+  it('コロンで終わらない通常テキスト行が構造的行として判定されない', () => {
+    expect(isStructuralLine('実行結果は正常でした')).toBe(false);
+  });
+
+  it('コロンの後に非空白文字がある行が構造的行として判定されない', () => {
+    expect(isStructuralLine('実行結果: OK')).toBe(false);
+    expect(isStructuralLine('- レベル: Low')).toBe(false);
+  });
+
+  it('空行が構造的行として判定されない', () => {
+    expect(isStructuralLine('')).toBe(false);
   });
 });
