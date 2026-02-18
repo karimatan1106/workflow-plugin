@@ -619,7 +619,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
       '受け入れ基準（Acceptance Criteria）を明確にする',
       'workflow_set_scopeで影響範囲（ファイル・ディレクトリ）を設定する',
     ],
-    subagentTemplate: '# requirementsフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 入力\n${docsDir}/research.md を読み込んでください。\n\n## 作業内容\n要件定義書を作成してください。\n\n## 出力\n${docsDir}/requirements.md',
+    subagentTemplate: '# requirementsフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 入力\n${docsDir}/research.md を読み込んでください。\n\n## 作業内容\n要件定義書を作成してください。\n\n## 出力\n${docsDir}/requirements.md\n\n## 必須セクション（成果物に含めること）\n以下のセクションヘッダーを必ず成果物に含めてください:\n- ## サマリー\n- ## 背景\n- ## 機能要件\n- ## 受入条件\n- ## 非機能要件\n\n最低行数: 50行以上',
   },
   parallel_analysis: {
     phaseName: 'parallel_analysis',
@@ -655,7 +655,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
         minLines: 50,
         subagentType: 'general-purpose',
         model: 'sonnet',
-        subagentTemplate: '# planningフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 入力\n${docsDir}/requirements.md を読み込んでください。\n\n## 作業内容\n仕様書を作成してください。\n\n## 出力\n${docsDir}/spec.md',
+        subagentTemplate: '# planningフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 入力\n${docsDir}/requirements.md を読み込んでください。\n\n## 作業内容\n仕様書を作成してください。\n\n## 出力\n${docsDir}/spec.md\n\n## 必須セクション（成果物に含めること）\n以下のセクションヘッダーを必ず成果物に含めてください:\n- ## サマリー\n- ## 概要\n- ## 実装計画\n- ## 変更対象ファイル\n\n最低行数: 50行以上',
       },
     },
   },
@@ -825,6 +825,9 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
           { path: '{docsDir}/spec.md', importance: 'high', readMode: 'full' },
           { path: '{docsDir}/test-design.md', importance: 'medium', readMode: 'summary' },
           { path: '{docsDir}/requirements.md', importance: 'low', readMode: 'reference' },
+          { path: '{docsDir}/state-machine.mmd', importance: 'high', readMode: 'full' },
+          { path: '{docsDir}/flowchart.mmd', importance: 'high', readMode: 'full' },
+          { path: '{docsDir}/ui-design.md', importance: 'high', readMode: 'full' },
         ],
         allowedBashCategories: ['readonly'],
         editableFileTypes: ['.md'],
@@ -840,7 +843,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
           'セキュリティ脆弱性（入力検証・認証・認可・機密情報漏洩）を確認する',
           '未実装項目がある場合はimplementationフェーズへの差し戻しを推奨する',
         ],
-        subagentTemplate: '# code_reviewフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 入力\n${docsDir}/spec.md を読み込んでください。\n\n## 作業内容\nコードレビューを実施してください。\n\n## 出力\n${docsDir}/code-review.md',
+        subagentTemplate: '# code_reviewフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 入力（設計書4種を全文読み込みすること）\n以下の4ファイルを全文読み込んでください:\n- ${docsDir}/spec.md\n- ${docsDir}/state-machine.mmd\n- ${docsDir}/flowchart.mmd\n- ${docsDir}/ui-design.md\n\n## 作業内容（2段階手順）\n第1段階: 設計書4種を全文読み込み、「機能一覧」「状態遷移リスト」「処理フロー一覧」「UI要素一覧」を抽出してリストアップする。\n第2段階: 実装コードを走査し、上記リストの各項目が実装されているかを照合してcode-review.mdに記録する。未実装項目がある場合はimplementationフェーズへの差し戻しを推奨する。\n\n## 出力\n${docsDir}/code-review.md',
       },
     },
   },
@@ -1027,7 +1030,8 @@ export function buildPrompt(
 - フェーズ説明: ${guide.description}
 - タスク名: ${taskName}
 - ユーザーの意図: ${userIntent || '（指定なし）'}
-- 出力先: ${docsDir}/`);
+- 出力先: ${docsDir}/
+- ★★出力パス確認★★: 成果物は必ず ${docsDir}/ に保存すること。上記パス以外への保存は禁止。`);
 
   // セクション2: 入力ファイルセクション
   let inputSection = '\n## 入力ファイル\n';
@@ -1171,6 +1175,12 @@ export function buildPrompt(
   }
   bashSection += `\n上記カテゴリ外のBashコマンドはフックによりブロックされます。\n`;
   bashSection += `ブロックされた場合は代替手段（Read/Write/Edit/Glob/Grepツール）を使用してください。\n`;
+  bashSection += `\n### Bashコマンドがブロックされた場合の代替手段\n`;
+  bashSection += `- ファイル読み取り（cat/head/tailがブロック時）→ Readツールを使用\n`;
+  bashSection += `- ファイル書き込み（echo/teeがブロック時）→ Writeツール（新規作成）またはEditツール（部分修正）を使用\n`;
+  bashSection += `- ファイル検索（find/grepがブロック時）→ Globツール（パターン検索）またはGrepツール（内容検索）を使用\n`;
+  bashSection += `- ファイルコピー/移動（cp/mvがブロック時）→ Read+Write（コピー）またはRead+Write+rm（移動）のツール組み合わせを使用\n`;
+  bashSection += `- テスト実行（npm testがブロック時）→ このフェーズではtestingカテゴリが許可されていない可能性があります。testingまたはimplementationフェーズで実行してください。\n`;
   sections.push(bashSection);
 
   // セクション7: ファイル編集制限
@@ -1202,7 +1212,8 @@ export function buildPrompt(
   // セクション9: 重要事項
   let importantSection = '\n## ★重要★ サマリーセクション必須化\n';
   importantSection += `成果物の先頭には必ず以下のセクションを配置してください:\n\n## サマリー\n\n（${rules.maxSummaryLines}行以内で、このドキュメントの要点を記述）\n- 目的: このドキュメントの目的\n- 主要な決定事項: 重要な設計決定や技術選定\n- 次フェーズで必要な情報: 後続フェーズで必須となる情報\n\n`;
-  importantSection += `★重要: 出力先のパスは必ず ${docsDir}/ を正確に使用すること。タスク名から独自にパスを構築しないこと。\n\n`;
+  importantSection += `★重要: 出力先のパスは必ず ${docsDir}/ を正確に使用すること。タスク名から独自にパスを構築しないこと。\n`;
+  importantSection += `workflow_statusで確認したdocsDirの値: ${docsDir}/ — この値をそのまま出力ファイルパスのプレフィックスに使用すること。\n\n`;
   importantSection += `バリデーション失敗時: 成果物がvalidationエラーになった場合は、エラーメッセージに従って修正してください。\n`;
   sections.push(importantSection);
 
