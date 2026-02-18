@@ -185,6 +185,7 @@ research → requirements → parallel_analysis（threat_modeling + planning）
 | state_machine | general-purpose | haiku | spec.md | 全文 | state-machine.mmd |
 | flowchart | general-purpose | haiku | spec.md | 全文 | flowchart.mmd |
 | ui_design | general-purpose | sonnet | spec.md | 全文 | ui-design.md |
+| design_review | general-purpose | sonnet | state-machine.mmd, flowchart.mmd, ui-design.md | 高 | - |
 | test_design | general-purpose | sonnet | spec.md (全文), *.mmd (全文) | 全文 | test-design.md |
 | test_impl | general-purpose | sonnet | test-design.md | 全文 | *.test.ts |
 | implementation | general-purpose | sonnet | test-design.md (全文), spec.md (全文), requirements.md (サマリー) | 全文/サマリー | *.ts |
@@ -192,6 +193,7 @@ research → requirements → parallel_analysis（threat_modeling + planning）
 | build_check | general-purpose | haiku | - | - | - |
 | code_review | general-purpose | sonnet | implementation成果物 (全文), spec.md (全文), test-design.md (サマリー), requirements.md (参照) | 全文/サマリー/参照 | code-review.md |
 | testing | general-purpose | haiku | test-design.md (全文), implementation成果物 (全文), spec.md (サマリー), requirements.md (参照) | 全文/サマリー/参照 | - |
+| regression_test | general-purpose | haiku | テストスイート | 中 | - |
 | manual_test | general-purpose | sonnet | - | - | manual-test.md |
 | security_scan | general-purpose | sonnet | - | - | security-scan.md |
 | performance_test | general-purpose | sonnet | - | - | performance-test.md |
@@ -199,6 +201,8 @@ research → requirements → parallel_analysis（threat_modeling + planning）
 | docs_update | general-purpose | haiku | 全成果物 | サマリー | ドキュメント |
 | commit | general-purpose | haiku | - | - | - |
 | push | general-purpose | haiku | - | - | - |
+| ci_verification | general-purpose | haiku | CI/CD結果 | 低 | - |
+| deploy | general-purpose | haiku | デプロイ設定 | 低 | - |
 
 ### subagent起動テンプレート
 
