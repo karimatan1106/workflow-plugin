@@ -25,7 +25,7 @@ import { STATE_ERRORS } from '../utils/errors.js';
 import { DesignValidator, formatValidationError, performDesignValidation } from '../validation/design-validator.js';
 import { validateArtifactQuality, PHASE_ARTIFACT_REQUIREMENTS, validateSemanticConsistency, validateKeywordTraceability } from '../validation/artifact-validator.js';
 import { validateScopePostExecution } from '../validation/scope-validator.js';
-import { validateTestAuthenticity, recordTestOutputHash } from '../validation/test-authenticity.js';
+import { validateTestAuthenticity } from '../validation/test-authenticity.js';
 import { auditLogger } from '../audit/logger.js';
 
 /** スコープサイズ制限（REQ-3, REQ-R4: 環境変数対応） */
@@ -333,17 +333,7 @@ export function workflowNext(taskId?: string, sessionToken?: string, forceTransi
         }
       }
 
-      // ハッシュ重複チェック（regression_testフェーズでは自己参照が発生するためスキップ）
-      if (currentPhase !== 'regression_test') {
-        const existingHashes = taskState.testOutputHashes || [];
-        const hashResult = recordTestOutputHash(testResult.output, existingHashes);
-        if (!hashResult.valid && testStrict) {
-          return {
-            success: false,
-            message: `リグレッションテスト出力が以前と同一です（コピペの可能性）。実際にテストを実行してください。`,
-          };
-        }
-      }
+      // ハッシュ重複チェックは record-test-result.ts 側で対処済みのためスキップ
     }
 
     // REQ-4: testBaseline必須チェック
