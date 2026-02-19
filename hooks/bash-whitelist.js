@@ -266,7 +266,11 @@ function splitCommandParts(command) {
  * コマンド部がリダイレクトを含むかチェック
  */
 function hasRedirection(part) {
-  return part.includes('>') || part.includes('>>');
+  // '>>' はリダイレクト（追記）として常に検出
+  if (part.includes('>>')) return true;
+  // '>' の後ろが '=' の場合は比較演算子（>=）であるためリダイレクトではない
+  // 正規表現: '>' の後ろが '=' でなければリダイレクトと判定
+  return /(?<!=)>(?!=)/.test(part);
 }
 
 /**

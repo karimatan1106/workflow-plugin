@@ -264,15 +264,9 @@ export function workflowNext(taskId?: string, sessionToken?: string, forceTransi
         }
       }
 
-      // ハッシュ重複チェック
-      const existingHashes = taskState.testOutputHashes || [];
-      const hashResult = recordTestOutputHash(testResult.output, existingHashes);
-      if (!hashResult.valid && testStrict) {
-        return {
-          success: false,
-          message: `テスト出力が以前と同一です（コピペの可能性）。実際にテストを実行してください。`,
-        };
-      }
+      // ハッシュ重複チェックはtestingフェーズではスキップ
+      // 理由: record_test_result直後にnextを呼ぶと自己参照的な重複検出が発生するため
+      // regression_testフェーズの同様のスキップは下の regression_test ブロック（line 345-352）を参照
     }
 
     // REQ-4: testing通過時にtestBaselineを自動設定

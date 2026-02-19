@@ -939,7 +939,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
   commit: {
     phaseName: 'commit',
     description: 'コミットフェーズ',
-    allowedBashCategories: ['readonly', 'implementation'],
+    allowedBashCategories: ['readonly', 'git'],
     subagentType: 'general-purpose',
     model: 'haiku',
     subagentTemplate: '# commitフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\n変更をコミットしてください。\n\n## 変更ファイルの確認手順\n1. まず git status --short で全変更ファイルをリストアップすること\n2. 出力に「modified: workflow-plugin (modified content)」のような行があればサブモジュール内に変更ファイルが存在する。サブモジュールディレクトリに移動して変更ファイルを個別に git add してからサブモジュール内でコミットすること\n3. スコープ設定で指定されたディレクトリの変更をすべてステージングしたことを確認してからコミットを実行すること',
@@ -947,10 +947,10 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
   push: {
     phaseName: 'push',
     description: 'プッシュフェーズ',
-    allowedBashCategories: ['readonly', 'implementation'],
+    allowedBashCategories: ['readonly', 'git'],
     subagentType: 'general-purpose',
     model: 'haiku',
-    subagentTemplate: '# pushフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\nリモートリポジトリにプッシュしてください。',
+    subagentTemplate: '# pushフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\nリモートリポジトリにプッシュしてください。\n\n## ブランチ確認と実行手順\n1. カレントブランチ名を確認する\n   - 実行コマンド: git branch --show-current（または git rev-parse --abbrev-ref HEAD）\n   - 出力されたブランチ名（masterまたはmain等）を使用する\n   - detached HEAD状態（コマンド出力が空文字）の場合はpushを中止してエラーを報告すること\n2. 親リポジトリのプッシュを実行する\n   - 確認したブランチ名を使って git push origin {確認されたブランチ名} を実行すること\n3. サブモジュールが存在する場合はサブモジュールのブランチも確認する\n   - git submodule foreach git branch --show-current を実行してサブモジュールのブランチ名を確認すること\n   - 各サブモジュールについて個別に git push origin {確認されたブランチ名} を実行すること\n   - サブモジュールもdetached HEAD状態の場合はエラーを報告すること\n\n## 注意事項\n- git push origin main と git push origin master をハードコードしないこと\n- 必ず事前にブランチ名を確認してから実行すること',
   },
   ci_verification: {
     phaseName: 'ci_verification',
