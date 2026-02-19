@@ -41,3 +41,7 @@ Thumbs.db
 
 # Local Claude Code installation
 .claude/
+
+# Auto-generated runtime files
+mcp-server/hooks/lib/
+mcp-server/src/verify-sync.test.ts

@@ -218,7 +218,7 @@ function getWhitelistForPhase(phase) {
   ];
 
   const docsUpdatePhases = ['docs_update'];
-  const verificationPhases = ['security_scan', 'performance_test', 'e2e_test', 'ci_verification'];
+  const verificationPhases = ['security_scan', 'performance_test', 'e2e_test', 'ci_verification', 'parallel_verification'];
   const testingPhases = ['testing', 'regression_test'];
   const implementationPhases = ['test_impl', 'implementation', 'refactoring'];
   const deployPhases = ['deploy'];
