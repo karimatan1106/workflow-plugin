@@ -147,24 +147,25 @@ describe('REQ-2: テスト実行の証拠検証', () => {
     expect(result.result?.failedCount).toBe(2);
   });
 
-  // TC-RTO-1: outputが500文字以上→末尾500文字のみ保存
-  test('TC-RTO-1: outputが500文字以上→末尾500文字のみ保存', () => {
+  // TC-RTO-1: outputが5000文字以上→先頭5000文字のみ保存（バグ3修正後）
+  test('TC-RTO-1: outputが5000文字以上→先頭5000文字のみ保存', () => {
     vi.mocked(stateManager.getTaskById).mockReturnValue(createTaskState());
 
-    // REQ-4対応: フレームワークパターンを含む長い出力
+    // REQ-4対応: フレームワークパターンを含む長い出力（先頭に集計行を配置）
     const longOutput =
+      'Tests: 5 passed, 5 total\n' +
       'Test execution started\n' +
       'x'.repeat(300) +
-      '\nTests: 5 passed, 5 total\n' +
-      'y'.repeat(500);
+      '\n' +
+      'y'.repeat(5000);
     const result = workflowRecordTestResult(mockTaskId, 0, 'ok', longOutput) as RecordResult;
 
     expect(result.success).toBe(true);
-    // writeTaskStateに渡されるoutputが500文字以下であることを確認
+    // writeTaskStateに渡されるoutputが5000文字以下であることを確認（バグ3修正後の期待値）
     const savedState = vi.mocked(stateManager.writeTaskState).mock.calls[0]?.[1] as TaskState;
     const savedOutput = savedState?.testResults?.[0]?.output;
     expect(savedOutput).toBeDefined();
-    expect(savedOutput!.length).toBeLessThanOrEqual(500);
+    expect(savedOutput!.length).toBeLessThanOrEqual(5000);
   });
 
   // TC-RTO-2: regression_testフェーズでも動作

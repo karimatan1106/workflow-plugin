@@ -339,14 +339,16 @@ export function workflowNext(taskId?: string, sessionToken?: string, forceTransi
         }
       }
 
-      // ハッシュ重複チェック
-      const existingHashes = taskState.testOutputHashes || [];
-      const hashResult = recordTestOutputHash(testResult.output, existingHashes);
-      if (!hashResult.valid && testStrict) {
-        return {
-          success: false,
-          message: `リグレッションテスト出力が以前と同一です（コピペの可能性）。実際にテストを実行してください。`,
-        };
+      // ハッシュ重複チェック（regression_testフェーズでは自己参照が発生するためスキップ）
+      if (currentPhase !== 'regression_test') {
+        const existingHashes = taskState.testOutputHashes || [];
+        const hashResult = recordTestOutputHash(testResult.output, existingHashes);
+        if (!hashResult.valid && testStrict) {
+          return {
+            success: false,
+            message: `リグレッションテスト出力が以前と同一です（コピペの可能性）。実際にテストを実行してください。`,
+          };
+        }
       }
     }
 

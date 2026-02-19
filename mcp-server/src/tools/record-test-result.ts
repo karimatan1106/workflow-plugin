@@ -21,8 +21,8 @@ import {
 /** テスト出力の最小文字数 */
 const MIN_OUTPUT_LENGTH = 50;
 
-/** テスト出力の保存上限文字数（超過時は末尾のみ保存） */
-const MAX_OUTPUT_LENGTH = 500;
+/** テスト出力の保存上限文字数（超過時は先頭のみ保存） */
+const MAX_OUTPUT_LENGTH = 5000;
 
 /** テスト出力に含まれるべきキーワード */
 const TEST_KEYWORDS = [
@@ -144,7 +144,7 @@ function validateTestOutputConsistency(
   if (exitCode === 0) {
     // 行単位コンテキスト分類: カテゴリA（集計行）とD（その他）のみをキーワード検出対象とする
     const outputLines = output.split('\n');
-    const SUMMARY_PREFIXES = ['Tests:', 'Test Files', 'Test Suites:', 'Summary'];
+    const SUMMARY_PREFIXES = ['Tests:', 'Tests ', 'Test Files', 'Test Suites:', 'Summary'];
     const CHECK_SYMBOLS = ['✓', '×', '○', '●', '✗', '>'];
     const filteredOutput = outputLines.filter(line => {
       const trimmed = line.trim();
@@ -465,8 +465,8 @@ export function workflowRecordTestResult(
       }
     }
 
-    // REQ-2: outputが上限を超える場合は末尾のみ保存
-    const truncatedOutput = output.length > MAX_OUTPUT_LENGTH ? output.slice(-MAX_OUTPUT_LENGTH) : output;
+    // REQ-2: outputが上限を超える場合は先頭のみ保存
+    const truncatedOutput = output.length > MAX_OUTPUT_LENGTH ? output.slice(0, MAX_OUTPUT_LENGTH) : output;
 
     // 新しいテスト結果を追加
     const newResult = {
