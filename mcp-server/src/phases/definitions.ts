@@ -859,7 +859,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
     editableFileTypes: ['.md', '.test.ts', '.test.tsx'],
     subagentType: 'general-purpose',
     model: 'haiku',
-    subagentTemplate: '# testingフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\nテストを実行してください。\n\n## workflow_record_test_result 呼び出し時の注意\n- exitCode=0であっても、出力テキストの集計行に失敗を示す語句が含まれるとツールがブロックエラーを返す\n- この場合は出力テキストを「テスト完了。失敗件数0、成功件数N」のようなサマリー形式に整形してから渡すこと\n- 同一の出力テキストを重複して送信した場合もブロックエラーとなる',
+    subagentTemplate: '# testingフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\nテストを実行してください。\n\n## workflow_record_test_result 呼び出し時の注意\n- output引数にはテストコマンドの標準出力をそのまま貼り付けること。日本語に翻訳したり、人間向けに整形したりしてはいけない\n- vitest/jestが出力する集計行の形式例: 「Test Files 3 passed (3)」「Tests: 12 passed (12)」「Duration 1.23s」\n- カスタムランナーを使用する場合でも「passed: N」「failed: N」「total: N」のいずれかの形式を出力に含めること\n- 同一の出力テキストを重複して送信した場合もブロックエラーとなる',
   },
   regression_test: {
     phaseName: 'regression_test',
@@ -868,7 +868,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
     editableFileTypes: ['.md', '.test.ts', '.test.tsx'],
     subagentType: 'general-purpose',
     model: 'haiku',
-    subagentTemplate: '# regression_testフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\nリグレッションテストを実行してください。\n\n## workflow_record_test_result 呼び出し時の注意\n- exitCode=0であっても、出力テキストの集計行に失敗を示す語句が含まれるとツールがブロックエラーを返す\n- この場合は出力テキストを「テスト完了。失敗件数0、成功件数N」のようなサマリー形式に整形してから渡すこと\n- regression_testフェーズでは、同一の出力テキストを再送信した場合も記録が許可されている（他フェーズでは重複送信がブロックされるが、このフェーズは例外として扱われる）',
+    subagentTemplate: '# regression_testフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\nリグレッションテストを実行してください。\n\n## workflow_record_test_result 呼び出し時の注意\n- output引数にはテストコマンドの標準出力をそのまま貼り付けること。日本語に翻訳したり、人間向けに整形したりしてはいけない\n- vitest/jestが出力する集計行の形式例: 「Test Files 3 passed (3)」「Tests: 12 passed (12)」「Duration 1.23s」\n- カスタムランナーを使用する場合でも「passed: N」「failed: N」「total: N」のいずれかの形式を出力に含めること\n- regression_testフェーズでは、同一の出力テキストを再送信した場合も記録が許可されている（他フェーズでは重複送信がブロックされるが、このフェーズは例外として扱われる）',
   },
   parallel_verification: {
     phaseName: 'parallel_verification',
@@ -887,7 +887,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
         minLines: 20,
         subagentType: 'general-purpose',
         model: 'sonnet',
-        subagentTemplate: '# manual_testフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\n手動テストを実施してください。\n\n## 重複行回避の注意事項\n複数のテストシナリオで同一のファイルや操作内容を記述する場合、各行の先頭にシナリオ番号や具体的な操作内容を含めて行を一意にすること。50文字を超える行が3回以上同一内容で出現すると重複行エラーとなる。\n- NG: 同一の対象ファイルパス行を3シナリオで繰り返す\n- OK: 「シナリオ1の確認対象: definitions.tsのcode_review requiredSections定義」\n- OK: 「シナリオ2の確認対象: definitions.tsのbuildPrompt禁止語ループ部分」\n\n## 出力\n${docsDir}/manual-test.md',
+        subagentTemplate: '# manual_testフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\n手動テストを実施してください。\n\n## 重複行回避の注意事項\n複数のテストシナリオで同一のファイルや操作内容を記述する場合、各行の先頭にシナリオ番号や具体的な操作内容を含めて行を一意にすること。50文字を超える行が3回以上同一内容で出現すると重複行エラーとなる。\n- NG: 同一の対象ファイルパス行を3シナリオで繰り返す\n- OK: 「シナリオ1の確認対象: definitions.tsのcode_review requiredSections定義」\n- OK: 「シナリオ2の確認対象: definitions.tsのbuildPrompt禁止語ループ部分」\n\n## サマリーセクションの行数ガイダンス\n「## サマリー」セクションには必ず5行以上の実質行（コンテンツを含む行）を記述すること。ラベルのコロン直後に必ずコンテンツを続けること（コロン後にコンテンツがない行は実質行としてカウントされない）。\n- NG: 「- 目的:」（コロン後にコンテンツなし、実質行ゼロ）\n- OK: 「- 目的: 手動テストにより機能の動作を検証した」（実質行1行にカウントされる）\n\n## 出力\n${docsDir}/manual-test.md',
       },
       security_scan: {
         phaseName: 'security_scan',
@@ -899,7 +899,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
         minLines: 20,
         subagentType: 'general-purpose',
         model: 'sonnet',
-        subagentTemplate: '# security_scanフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\nセキュリティスキャンを実施してください。\n\n## 出力\n${docsDir}/security-scan.md',
+        subagentTemplate: '# security_scanフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\nセキュリティスキャンを実施してください。\n\n## 重複行回避の注意事項\n複数のFRや評価対象を同一フォーマットで評価する場合、各評価行に対象のFR番号・ファイル名・関数名などの固有識別子を含めて行を一意にすること。完全一致する行が3回以上出現するとartifact-validatorが重複行エラーを返す。「問題なし」「リスクなし」のような短い評価結論を単独で3件以上繰り返さず、各行に評価対象の具体名と判断根拠を付記すること。\n- NG: 「- セキュリティリスク: 問題なし」をFR-A・FR-B・FR-Cで繰り返す（3回以上の同一行でエラー）\n- OK: 「- FR-A（state_machine定義）のセキュリティリスク: 問題なし、入力値はMCPサーバー内部でのみ使用」\n- OK: 「- FR-B（flowchart定義）のセキュリティリスク: 問題なし、外部入力の関与なし」\n\n## 出力\n${docsDir}/security-scan.md',
       },
       performance_test: {
         phaseName: 'performance_test',
@@ -911,7 +911,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
         minLines: 20,
         subagentType: 'general-purpose',
         model: 'sonnet',
-        subagentTemplate: '# performance_testフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\nパフォーマンステストを実施してください。\n\n## 出力\n${docsDir}/performance-test.md',
+        subagentTemplate: '# performance_testフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\nパフォーマンステストを実施してください。\n\n## サマリーセクションの行数ガイダンス\n「## サマリー」セクションには必ず5行以上の実質行（コンテンツを含む行）を記述すること。ラベルのコロン直後に必ずコンテンツを続けること（コロン後にコンテンツがない行は実質行としてカウントされない）。計測対象処理・計測条件・計測結果の数値・評価（合否判定）の4項目をそれぞれ1行以上で記述し、数値を含む行を必ず含めること。\n- NG: 「- 計測対象:」（コロン後にコンテンツなし、実質行ゼロ）\n- OK: 「- 計測対象: workflow_nextの呼び出し応答時間を10回計測した」\n- OK: 「- 計測結果: 平均45ms、最大120ms、最小30msを記録した」\n\n## 出力\n${docsDir}/performance-test.md',
       },
       e2e_test: {
         phaseName: 'e2e_test',
