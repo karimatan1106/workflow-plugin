@@ -181,6 +181,12 @@ describe('REQ-1: SKIP_*環境変数の完全除去', () => {
   });
 
   describe('TC-1-2: SKIP_DESIGN_VALIDATIONが無効化されること（next.ts）', () => {
+    beforeEach(() => {
+      // BUG-4の早期returnパスで writeTaskState が呼ばれるため、このグループ固有でモックを設定する
+      // vi.clearAllMocks() が親の beforeEach で実行されるため、ここで再設定が必要
+      vi.spyOn(stateManager, 'writeTaskState').mockImplementation(() => {});
+    });
+
     it('SKIP_DESIGN_VALIDATION=trueを設定しても設計検証が実行されること', () => {
       // Arrange
       process.env.SKIP_DESIGN_VALIDATION = 'true';
@@ -455,6 +461,8 @@ describe('REQ-1: SKIP_*環境変数の完全除去', () => {
 
       const taskState = mockTaskState('test_impl');
       vi.spyOn(stateManager, 'getTaskById').mockReturnValue(taskState);
+      // BUG-4の早期returnパスで writeTaskState が呼ばれるためモックを追加
+      vi.spyOn(stateManager, 'writeTaskState').mockImplementation(() => {});
       vi.mocked(fs.existsSync).mockReturnValue(false);
 
       // performDesignValidationが設計検証を実行することを確認

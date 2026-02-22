@@ -81,18 +81,22 @@ export function parseSpec(markdown: string): SpecItems {
   }
 
   // メソッド抽出: methodName(): または methodName( または def methodName(
-  const methodMatches = cleanedMarkdown.matchAll(/(?:def\s+)?(\w+)\s*\([^)]*\)\s*(?::\s*\w+)?\s*[{=]/g);
+  // インラインコードスパン内のキーワードを誤抽出しないよう、メソッド抽出前にインラインコードを除去
+  const cleanedForMethods = cleanedMarkdown.replace(/`[^`]+`/g, '');
+  const methodMatches = cleanedForMethods.matchAll(/(?:def\s+)?(\w+)\s*\([^)]*\)\s*(?::\s*\w+)?\s*[{=]/g);
   for (const match of methodMatches) {
     const methodName = match[1];
-    // constructorや予約語を除外
-    if (
-      methodName !== 'constructor' &&
-      methodName !== 'if' &&
-      methodName !== 'for' &&
-      methodName !== 'while' &&
-      methodName !== 'switch' &&
-      !result.methods.includes(methodName)
-    ) {
+    // constructorや予約語、テストフレームワークキーワードを除外
+    const EXCLUDED_NAMES = new Set([
+      'constructor', 'if', 'for', 'while', 'switch',
+      // テストフレームワークキーワード
+      'describe', 'it', 'test', 'beforeEach', 'afterEach', 'beforeAll', 'afterAll',
+      'mockImplementation', 'mockReturnValue', 'mockResolvedValue', 'mockRejectedValue',
+      'mockReturnValueOnce', 'mockResolvedValueOnce',
+      'vi', 'expect', 'assert', 'spyOn',
+      'fn', 'mock', 'mocked',
+    ]);
+    if (!EXCLUDED_NAMES.has(methodName) && !result.methods.includes(methodName)) {
       result.methods.push(methodName);
     }
   }
@@ -100,7 +104,7 @@ export function parseSpec(markdown: string): SpecItems {
   // ★★★ REQ-7: React関数コンポーネント抽出 ★★★
   // export function ComponentName() または function ComponentName()
   // （先頭が大文字のものをReactコンポーネントとみなす）
-  const reactComponentMatches = cleanedMarkdown.matchAll(/(?:export\s+)?function\s+([A-Z]\w+)/g);
+  const reactComponentMatches = cleanedForMethods.matchAll(/(?:export\s+)?function\s+([A-Z]\w+)/g);
   for (const match of reactComponentMatches) {
     if (!result.methods.includes(match[1])) {
       result.methods.push(match[1]);

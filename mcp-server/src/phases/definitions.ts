@@ -1078,11 +1078,12 @@ export function buildPrompt(
 
   // セクション4: 必須セクションリスト（空の場合は省略）
   if (guide.requiredSections && guide.requiredSections.length > 0) {
-    let reqSection = '\n## 必須セクション\n';
-    reqSection += '成果物には以下のMarkdownセクションヘッダーを必ず含めてください:\n';
+    let reqSection = '\n## ★★★ 必須セクション（含まれていない場合はバリデーション失敗）★★★\n';
+    reqSection += '⚠️ 以下のMarkdownセクションヘッダーを成果物に**必ず**含めてください。1つでも欠けると `workflow_next` がエラーになります:\n';
     for (const sec of guide.requiredSections) {
-      reqSection += `- ${sec}\n`;
+      reqSection += `- \`${sec}\`\n`;
     }
+    reqSection += '\n上記セクションの欠落はバリデーションエラーの最も多い原因です。実装前に必ず確認してください。\n';
     sections.push(reqSection);
   }
 
