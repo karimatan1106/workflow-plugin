@@ -342,8 +342,9 @@ export function workflowSetScope(
       scope: {
         affectedFiles,
         affectedDirs,
+        ...(inferredModuleName !== undefined && { moduleName: inferredModuleName }),
       },
-      message: `影響範囲を設定しました（ファイル: ${affectedFiles.length}件, ディレクトリ: ${affectedDirs.length}件）`,
+      message: `影響範囲を設定しました（ファイル: ${affectedFiles.length}件, ディレクトリ: ${affectedDirs.length}件${inferredModuleName ? `, モジュール: ${inferredModuleName}` : ''}）`,
       ...(warnings.length > 0 && { warnings }),
     };
   }) as ToolResult;

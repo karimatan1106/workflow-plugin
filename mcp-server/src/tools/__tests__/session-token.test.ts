@@ -69,6 +69,10 @@ function createMockTaskState(phase: PhaseName, withSessionToken: boolean = false
     history: [],
     subPhases: {},
     taskSize: 'large',
+    scope: {
+      affectedFiles: ['workflow-plugin/mcp-server/src/placeholder.ts'],
+      affectedDirs: ['workflow-plugin/mcp-server/src/'],
+    },
   };
 
   if (withSessionToken) {

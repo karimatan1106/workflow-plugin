@@ -185,9 +185,9 @@ export function extractSummarySection(text: string): string {
 }
 
 /**
- * LLMセマンティックトレーサビリティ検証結果
+ * キーワードセマンティックトレーサビリティ検証結果
  */
-export interface LLMSemanticTraceabilityResult {
+export interface KeywordSemanticTraceabilityResult {
   /** 検証合否 */
   passed: boolean;
   /** セマンティックスコア（0.0〜1.0） */
@@ -197,22 +197,24 @@ export interface LLMSemanticTraceabilityResult {
 }
 
 /**
- * LLMを使ったセマンティックトレーサビリティ検証（FR-2）。
+ * キーワードマッチング方式によるセマンティックトレーサビリティ検証（FR-2）。
  *
- * sourceFilePathの成果物がtargetFilePathの成果物の要件を適切に
- * 引き継いでいるかをセマンティックに検証する。
+ * sourceFilePathの成果物からキーワードを抽出し、targetFilePathの成果物に
+ * それらのキーワードが引き継がれているかをキーワードマッチングで検証する。
+ * LLM APIの呼び出しは行わず、全てローカルのキーワード抽出処理で完結する。
  *
- * @anthropic-ai/sdk が利用可能な場合はAPIを呼び出し、
- * 利用不可能な場合はフォールバック実装（常に合格）を返す。
+ * なお、@anthropic-ai/sdk の可用性チェックは将来の LLM 統合への拡張ポイントとして
+ * 残されているが、現時点では SDK が利用可能と判定された場合も同じキーワードマッチング
+ * 処理が実行される。
  *
  * @param sourceFilePath - 参照元ファイルのパス（requirements.md等）
  * @param targetFilePath - 検証対象ファイルのパス（spec.md等）
  * @returns 検証結果
  */
-export async function validateLLMSemanticTraceability(
+export async function validateKeywordSemanticTraceability(
   sourceFilePath: string,
   targetFilePath: string,
-): Promise<LLMSemanticTraceabilityResult> {
+): Promise<KeywordSemanticTraceabilityResult> {
   // @anthropic-ai/sdk の可用性を実行時チェック
   // 注意: コンパイル時の型解決を回避するため Function コンストラクタ経由で動的インポートを実行する
   let sdkAvailable = false;

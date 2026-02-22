@@ -168,6 +168,7 @@ describe('REQ-1: SKIP_*環境変数の完全除去', () => {
 
       // stateManager.updateTaskPhase をモック
       vi.spyOn(stateManager, 'updateTaskPhase').mockImplementation(() => {});
+      vi.spyOn(stateManager, 'writeTaskState').mockImplementation(() => {});
 
       // Act
       const result = workflowNext('test-task-001');

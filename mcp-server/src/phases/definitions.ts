@@ -515,8 +515,24 @@ export function calculatePhaseSkips(
   const files = scope.affectedFiles || scope.files || [];
   const phaseSkipReasons: Record<string, string> = {};
 
-  // ファイルが空の場合はスキップ判定しない
+  // ファイルが空の場合はスコープ未設定としてスキップ理由を設定して返す
   if (files.length === 0) {
+    phaseSkipReasons['test_impl'] = 'スコープが未設定のためテスト実装フェーズをスキップ';
+    phaseSkipReasons['implementation'] = 'スコープが未設定のため実装フェーズをスキップ';
+    phaseSkipReasons['refactoring'] = 'スコープが未設定のためリファクタリングフェーズをスキップ';
+
+    // userIntentによるオーバーライドを早期リターン内でも適用
+    if (userIntent) {
+      const intentLower = userIntent.toLowerCase();
+      if (TEST_KEYWORDS.some(kw => intentLower.includes(kw.toLowerCase()))) {
+        delete phaseSkipReasons['test_impl'];
+      }
+      if (IMPL_KEYWORDS.some(kw => intentLower.includes(kw.toLowerCase()))) {
+        delete phaseSkipReasons['implementation'];
+        delete phaseSkipReasons['refactoring'];
+      }
+    }
+
     return phaseSkipReasons;
   }
 
@@ -1429,23 +1445,23 @@ export function resolvePhaseGuide(phase: string, docsDir?: string, userIntent?: 
     : (docsDir ?? '');
 
   if (docsDir) {
-    // outputFileのプレースホルダーを置換
+    // outputFileのプレースホルダーを置換（replaceAllで全出現箇所を対象にする）
     if (resolved.outputFile) {
       resolved.outputFile = resolved.outputFile
-        .replace('{docsDir}', docsDir)
-        .replace('{moduleDir}', moduleDir);
+        .replaceAll('{docsDir}', docsDir)
+        .replaceAll('{moduleDir}', moduleDir);
     }
     // inputFilesのプレースホルダーを置換
     if (resolved.inputFiles) {
       resolved.inputFiles = resolved.inputFiles.map(f =>
-        f.replace('{docsDir}', docsDir).replace('{moduleDir}', moduleDir)
+        f.replaceAll('{docsDir}', docsDir).replaceAll('{moduleDir}', moduleDir)
       );
     }
     // P2: inputFileMetadataのプレースホルダーを置換
     if (resolved.inputFileMetadata) {
       resolved.inputFileMetadata = resolved.inputFileMetadata.map(meta => ({
         ...meta,
-        path: meta.path.replace('{docsDir}', docsDir).replace('{moduleDir}', moduleDir),
+        path: meta.path.replaceAll('{docsDir}', docsDir).replaceAll('{moduleDir}', moduleDir),
       }));
     }
     // subPhasesも再帰的に解決
@@ -1460,19 +1476,19 @@ export function resolvePhaseGuide(phase: string, docsDir?: string, userIntent?: 
         }
         if (subResolved.outputFile) {
           subResolved.outputFile = subResolved.outputFile
-            .replace('{docsDir}', docsDir)
-            .replace('{moduleDir}', moduleDir);
+            .replaceAll('{docsDir}', docsDir)
+            .replaceAll('{moduleDir}', moduleDir);
         }
         if (subResolved.inputFiles) {
           subResolved.inputFiles = subResolved.inputFiles.map(f =>
-            f.replace('{docsDir}', docsDir).replace('{moduleDir}', moduleDir)
+            f.replaceAll('{docsDir}', docsDir).replaceAll('{moduleDir}', moduleDir)
           );
         }
         // P2: サブフェーズのinputFileMetadataも置換
         if (subResolved.inputFileMetadata) {
           subResolved.inputFileMetadata = subResolved.inputFileMetadata.map(meta => ({
             ...meta,
-            path: meta.path.replace('{docsDir}', docsDir).replace('{moduleDir}', moduleDir),
+            path: meta.path.replaceAll('{docsDir}', docsDir).replaceAll('{moduleDir}', moduleDir),
           }));
         }
         resolvedSubPhases[key] = subResolved;

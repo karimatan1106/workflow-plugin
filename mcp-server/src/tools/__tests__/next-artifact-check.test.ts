@@ -17,6 +17,7 @@ vi.mock('../../state/manager.js', () => ({
     getTaskById: vi.fn(),
     updateTaskPhase: vi.fn(),
     getIncompleteSubPhases: vi.fn().mockReturnValue([]),
+    writeTaskState: vi.fn(),
   },
 }));
 
@@ -126,6 +127,10 @@ function createMockTaskState(phase: PhaseName, overrides = {}) {
     history: [],
     subPhases: {},
     taskSize: 'large' as const,
+    scope: {
+      affectedFiles: ['workflow-plugin/mcp-server/src/placeholder.ts'],
+      affectedDirs: ['workflow-plugin/mcp-server/src/'],
+    },
     ...overrides,
   };
 }
