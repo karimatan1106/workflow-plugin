@@ -1410,7 +1410,7 @@ export function buildRetryPrompt(
  * @param docsDir ドキュメントディレクトリパス（オプション）
  * @returns フェーズガイド（見つからない場合はundefined）
  */
-export function resolvePhaseGuide(phase: string, docsDir?: string, userIntent?: string): PhaseGuide | undefined {
+export function resolvePhaseGuide(phase: string, docsDir?: string, userIntent?: string, moduleName?: string): PhaseGuide | undefined {
   const guide = PHASE_GUIDES[phase];
   if (!guide) return undefined;
 
@@ -1422,20 +1422,30 @@ export function resolvePhaseGuide(phase: string, docsDir?: string, userIntent?: 
     resolved.userIntent = userIntent;
   }
 
+  // FR-2-3: {moduleDir}プレースホルダー用のディレクトリ値を決定
+  // moduleName未設定の場合はdocsDirにフォールバック
+  const moduleDir = moduleName && docsDir
+    ? `${docsDir}/modules/${moduleName}`
+    : (docsDir ?? '');
+
   if (docsDir) {
     // outputFileのプレースホルダーを置換
     if (resolved.outputFile) {
-      resolved.outputFile = resolved.outputFile.replace('{docsDir}', docsDir);
+      resolved.outputFile = resolved.outputFile
+        .replace('{docsDir}', docsDir)
+        .replace('{moduleDir}', moduleDir);
     }
     // inputFilesのプレースホルダーを置換
     if (resolved.inputFiles) {
-      resolved.inputFiles = resolved.inputFiles.map(f => f.replace('{docsDir}', docsDir));
+      resolved.inputFiles = resolved.inputFiles.map(f =>
+        f.replace('{docsDir}', docsDir).replace('{moduleDir}', moduleDir)
+      );
     }
     // P2: inputFileMetadataのプレースホルダーを置換
     if (resolved.inputFileMetadata) {
       resolved.inputFileMetadata = resolved.inputFileMetadata.map(meta => ({
         ...meta,
-        path: meta.path.replace('{docsDir}', docsDir),
+        path: meta.path.replace('{docsDir}', docsDir).replace('{moduleDir}', moduleDir),
       }));
     }
     // subPhasesも再帰的に解決
@@ -1449,16 +1459,20 @@ export function resolvePhaseGuide(phase: string, docsDir?: string, userIntent?: 
           subResolved.userIntent = userIntent;
         }
         if (subResolved.outputFile) {
-          subResolved.outputFile = subResolved.outputFile.replace('{docsDir}', docsDir);
+          subResolved.outputFile = subResolved.outputFile
+            .replace('{docsDir}', docsDir)
+            .replace('{moduleDir}', moduleDir);
         }
         if (subResolved.inputFiles) {
-          subResolved.inputFiles = subResolved.inputFiles.map(f => f.replace('{docsDir}', docsDir));
+          subResolved.inputFiles = subResolved.inputFiles.map(f =>
+            f.replace('{docsDir}', docsDir).replace('{moduleDir}', moduleDir)
+          );
         }
         // P2: サブフェーズのinputFileMetadataも置換
         if (subResolved.inputFileMetadata) {
           subResolved.inputFileMetadata = subResolved.inputFileMetadata.map(meta => ({
             ...meta,
-            path: meta.path.replace('{docsDir}', docsDir),
+            path: meta.path.replace('{docsDir}', docsDir).replace('{moduleDir}', moduleDir),
           }));
         }
         resolvedSubPhases[key] = subResolved;

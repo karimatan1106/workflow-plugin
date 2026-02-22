@@ -23,7 +23,7 @@ import {
 import { getTaskByIdOrError, safeExecute, verifySessionToken, getPhaseStartedAt } from './helpers.js';
 import { STATE_ERRORS } from '../utils/errors.js';
 import { DesignValidator, formatValidationError, performDesignValidation } from '../validation/design-validator.js';
-import { validateArtifactQuality, PHASE_ARTIFACT_REQUIREMENTS, validateSemanticConsistency, validateKeywordTraceability } from '../validation/artifact-validator.js';
+import { validateArtifactQuality, PHASE_ARTIFACT_REQUIREMENTS, validateSemanticConsistency } from '../validation/artifact-validator.js';
 import { validateScopePostExecution } from '../validation/scope-validator.js';
 import { validateTestAuthenticity } from '../validation/test-authenticity.js';
 import { auditLogger } from '../audit/logger.js';
@@ -176,6 +176,17 @@ export function workflowNext(taskId?: string, sessionToken?: string, forceTransi
     const researchScopeDirs = taskState.scope?.affectedDirs?.length || 0;
     if (researchScopeFiles === 0 && researchScopeDirs === 0) {
       scopeWarnings.push('スコープが設定されていません。parallel_analysisフェーズでブロックされます。researchフェーズでworkflow_set_scopeを呼び出してください。');
+    }
+  }
+
+  // FR-1-2: requirements→parallel_analysis遷移時のスコープ未設定警告
+  if (currentPhase === 'requirements') {
+    const reqScopeFiles = taskState.scope?.affectedFiles?.length ?? 0;
+    const reqScopeDirs = taskState.scope?.affectedDirs?.length ?? 0;
+    if (reqScopeFiles === 0 && reqScopeDirs === 0) {
+      scopeWarnings.push(
+        'スコープが未設定です。parallel_analysisフェーズでブロックされます。workflow_set_scopeで影響範囲を設定してください。'
+      );
     }
   }
 
@@ -434,31 +445,10 @@ export function workflowNext(taskId?: string, sessionToken?: string, forceTransi
     }
   }
 
-  // P0-2: キーワードトレーサビリティ検証
+  // FR-2: LLMセマンティックチェック対象フェーズ（将来的なLLM検証用）
+  // keywordTraceMappingはFR-2移行により廃止（parallel_analysis, test_implエントリーを削除）
+  // 現在は対象フェーズなし（将来の拡張ポイント）
   const docsDir = taskState.docsDir || taskState.workflowDir;
-  const keywordTraceMapping: Record<string, { source: string; target: string }> = {
-    'parallel_analysis': { source: 'requirements', target: 'spec' },
-    'test_impl': { source: 'spec', target: 'test-design' },
-  };
-
-  const traceConfig = keywordTraceMapping[currentPhase];
-  if (traceConfig) {
-    try {
-      const traceResult = validateKeywordTraceability(docsDir, traceConfig.source, traceConfig.target);
-      if (!traceResult.passed) {
-        return {
-          success: false,
-          message: `キーワードトレーサビリティ検証に失敗しました:\n${traceResult.errors.join('\n')}\n未参照キーワード: ${traceResult.missingKeywords.join(', ')}`,
-        };
-      }
-      if (traceResult.warnings && traceResult.warnings.length > 0) {
-        // Add warnings to the response but don't block
-        console.warn(`[workflow_next] Keyword trace warnings: ${traceResult.warnings.join(', ')}`);
-      }
-    } catch (e) {
-      console.warn('[workflow_next] Keyword traceability check error (non-blocking):', e);
-    }
-  }
 
   // REQ-5: スコープ事後検証（docs_update→commit遷移時）
   if (currentPhase === 'docs_update') {
@@ -604,8 +594,8 @@ export function workflowNext(taskId?: string, sessionToken?: string, forceTransi
       skipMessage = `\n\n以下のフェーズをスキップしました:\n${skipDetails}`;
     }
 
-    // フェーズガイドを取得
-    const phaseGuide = resolvePhaseGuide(nextPhase, taskState.docsDir, taskState.userIntent);
+    // フェーズガイドを取得（FR-2-3: moduleName を第4引数として渡す）
+    const phaseGuide = resolvePhaseGuide(nextPhase, taskState.docsDir, taskState.userIntent, taskState.scope?.moduleName);
 
     // C-1: subagentTemplateのtaskName/taskIdプレースホルダー解決
     if (phaseGuide?.subagentTemplate) {

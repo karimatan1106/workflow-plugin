@@ -317,6 +317,12 @@ export function workflowSetScope(
     // 既存のpreExistingChangesを保持（FIX-1）
     const existingPreExistingChanges = taskState.scope?.preExistingChanges ?? [];
 
+    // FR-2-2: moduleName自動推定（affectedDirsの最初の要素のベース名から取得）
+    // addMode=trueかつaffectedDirsが空の場合、既存のmoduleNameを引き継ぐ
+    const inferredModuleName = affectedDirs.length > 0
+      ? path.basename(affectedDirs[0].replace(/[/\\]+$/, ''))
+      : (taskState.scope?.moduleName ?? undefined);
+
     // TaskStateにスコープを記録
     const updatedState = {
       ...taskState,
@@ -324,6 +330,7 @@ export function workflowSetScope(
         affectedFiles,
         affectedDirs,
         preExistingChanges: existingPreExistingChanges,
+        moduleName: inferredModuleName,
       },
     };
 

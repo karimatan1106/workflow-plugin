@@ -1435,6 +1435,29 @@ researchまたはrequirementsフェーズで `workflow_set_scope` を使用し�
 - スコープ未設定の場合、test_implフェーズがスキップされる可能性がある
 - テストファイルを影響範囲に含めることで、TDDサイクルが正しく機能する
 - 実装対象のソースコードディレクトリも含めること
+- スコープ設定により、モジュール固有のドキュメント階層化が自動実現される
+
+### moduleName自動推定
+
+`dirs` パラメータを設定すると、先頭ディレクトリのbasename（末尾スラッシュを除いた最後のパス要素）が自動的に `moduleName` として推定されます。
+この `moduleName` はドキュメントの階層化に使用され、フェーズ定義内の `{moduleDir}` プレースホルダーを展開します。
+
+**例:**
+- `dirs: ["workflow-plugin/mcp-server/src/"]` → `moduleName: "src"`
+- `dirs: ["src/backend/application/use-cases/auth/"]` → `moduleName: "auth"`
+- `dirs: []`（dirs未設定）→ `moduleName` は推定されない
+
+### {moduleDir}プレースホルダーの使用
+
+`moduleName` が設定されている場合、フェーズ定義は `{moduleDir}` プレースホルダーを使用してモジュール固有のドキュメント配置が可能になります。
+
+**プレースホルダー展開:**
+- `{moduleDir}` が設定されている場合：`{docsDir}/modules/{moduleName}` に展開
+- `{moduleDir}` が未設定の場合：`{docsDir}` にフォールバック（後方互換性確保）
+
+**使用例:**
+- `inputFiles: ["{moduleDir}/spec.md"]` → `docs/workflows/{taskName}/modules/auth/spec.md` に展開
+- `outputFile: "{moduleDir}/state-machine.mmd"` → ステートマシン図がモジュール固有ディレクトリに配置
 
 ### 設定例
 
@@ -1445,6 +1468,10 @@ workflow_set_scope({
   glob: "workflow-plugin/mcp-server/src/**/*.ts"
 })
 ```
+
+**上記の例の場合:**
+- `moduleName` が自動推定される：`"src"`
+- フェーズの出力先が `{moduleDir}` を使用していると、自動的に `docs/workflows/{taskName}/modules/src/` ディレクトリに配置される
 
 ---
 

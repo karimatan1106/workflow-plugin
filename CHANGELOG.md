@@ -5,6 +5,71 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-02-23
+
+### Added
+
+- **FR-1: スコープ段階的必須化**: ワークフロータスク開始時のスコープ設定段階的警告機構
+  - `research` フェーズ完了時に情報レベルの推奨メッセージを表示
+  - `requirements` フェーズ完了時に警告レベルのスコープ未設定警告を追加
+  - `parallel_analysis` フェーズ移行時にスコープ未設定をブロック（既存動作維持）
+  - `workflow_set_scope` コマンド指示をメッセージに含める
+
+- **FR-2: ドキュメント階層化**: モジュール単位のドキュメント分離機構
+  - `types.ts` の `scope` インターフェースに `moduleName?: string` フィールド追加
+  - `set-scope.ts` で `dirs` パラメータから `moduleName` を自動推定（先頭ディレクトリのbasename）
+  - `definitions.ts` に `{moduleDir}` プレースホルダー追加（`{docsDir}/modules/{moduleName}` に展開）
+  - `moduleName` が未設定の場合、`{moduleDir}` は `{docsDir}` にフォールバック（後方互換性確保）
+
+- **FR-3: コンテキスト絞り込み**: スコープ指定時のドキュメント入力範囲制限ガイダンス
+  - CLAUDE.md のサブエージェント起動テンプレートにスコープ制約文言追記
+  - `definitions.ts` の inputFiles セクションに、スコープ設定時は対象ファイルのみ参照することを明記
+
+- **バグ修正: artifact-validator.ts の Mermaid ファイル誤検出**
+  - `.mmd` 拡張子ファイルの角括弧プレースホルダーチェックをスキップ
+  - `stateDiagram-v2` の `[*]` 記法や `flowchart` の `["text"]` 記法が正当に記述可能に
+
+- **セマンティックチェック改善: semantic-checker.ts**
+  - `validateKeywordTraceability` をLLMベースのセマンティック継承度検証に置換
+  - 新規関数 `validateLLMSemanticTraceability()`: Claude Haiku で前フェーズから後続フェーズへの情報伝搬を意味的に評価（0.0〜1.0スコア）
+  - 新規関数 `extractSummarySection()`: ドキュメントの `## サマリー` セクション抽出ヘルパー
+  - API失敗時は非ブロッキング（フォールバック）で処理継続
+
+### Changed
+
+- **CLAUDE.md**: スコープ設定ガイダンスセクション拡充
+  - `moduleName` 自動推定の仕組みを説明
+  - `{moduleDir}` プレースホルダーの使用方法とフォールバック動作を明記
+  - サブエージェント起動テンプレートにスコープ制約文言を追加
+
+- **フェーズ間コンテキスト引き継ぎ**: モジュール階層化に対応
+  - `resolvePhaseGuide()` 関数シグネチャに `moduleName?: string` 引数追加
+  - フェーズ定義内の `outputFile`・`inputFiles`・`requiredArtifacts` で `{moduleDir}` 使用可能に
+  - `next.ts` からの呼び出しで `taskState.scope?.moduleName` を自動渡し
+
+### Benefits
+
+- **早期問題検出**: スコープ未設定が `requirements` フェーズで警告される（`parallel_analysis` ブロック前）
+- **モジュール単位の成果物管理**: `moduleName` ベースの階層化で複数並行タスクの干渉を防止
+- **後方互換性**: `moduleName` はオプショナル、未設定時は既存の `{docsDir}` 展開と同一
+- **セマンティック検証精度向上**: キーワード頻度から意味的継承度へ（偽陽性削減）
+- **パフォーマンス**: スコープチェック追加処理はメモリアクセスのみ（10ms要件達成）
+
+### Documentation
+
+- CLAUDE.md: スコープ設定ガイダンスの詳細説明（moduleName自動推定、{moduleDir}展開説明）
+- CLAUDE.md: サブエージェント起動テンプレートにスコープ制約セクション追加
+- CLAUDE.md: {moduleDir}プレースホルダーの説明と使用例を追加
+
+### Tests
+
+- `next.test.ts` に4件の追加テスト（requirements フェーズのスコープ警告検証）
+- `definitions.test.ts` に4件の追加テスト（{moduleDir}プレースホルダー置換検証）
+- `semantic-checker.test.ts` に3件の追加テスト（LLMセマンティック検証、サマリー抽出検証）
+- `artifact-validator.test.ts` に1件の追加テスト（.mmd ファイルスキップ検証）
+
+---
+
 ## [1.6.0] - 2026-02-17
 
 ### Added

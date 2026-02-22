@@ -209,12 +209,17 @@ describe('REQ-1: SKIP_*環境変数の完全除去', () => {
 - \`src/backend/services/user.ts\`
       `);
 
+      // performDesignValidationが設計不整合を検出するようモック
+      vi.mocked(performDesignValidation).mockReturnValueOnce({
+        success: false,
+        message: '設計-実装整合性の検証に失敗しました: test-design.mdが見つかりません',
+      });
+
       // Act
       const result = workflowNext('test-task-001');
 
       // Assert: 設計検証が実行され、エラーが返ること
-      // （設計検証の具体的なエラー内容は実装に依存）
-      // ここでは、SKIP_DESIGN_VALIDATIONが無視されることを確認
+      // SKIP_DESIGN_VALIDATION=trueでも設計検証が実行されブロックされることを確認
       expect(result.success).toBe(false);
       // 設計検証が実行されたことを確認（エラーメッセージに設計関連の文言）
       // 実装によってはvalidation errorやspec.md関連のメッセージ
@@ -450,6 +455,12 @@ describe('REQ-1: SKIP_*環境変数の完全除去', () => {
       const taskState = mockTaskState('test_impl');
       vi.spyOn(stateManager, 'getTaskById').mockReturnValue(taskState);
       vi.mocked(fs.existsSync).mockReturnValue(false);
+
+      // performDesignValidationが設計検証を実行することを確認
+      vi.mocked(performDesignValidation).mockReturnValueOnce({
+        success: false,
+        message: '設計-実装整合性の検証に失敗しました',
+      });
 
       const result = workflowNext('test-task-001');
 
