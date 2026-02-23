@@ -245,7 +245,7 @@ export const PHASE_ARTIFACT_REQUIREMENTS: Record<string, ArtifactRequirement> = 
   },
   'code-review.md': {
     minLines: 30,
-    requiredSections: ['設計-実装整合性', 'コード品質', 'セキュリティ', 'パフォーマンス'],
+    requiredSections: ['設計-実装整合性', 'コード品質', 'セキュリティ', 'パフォーマンス', 'ユーザー意図との整合性'],
   },
   'manual-test.md': {
     minLines: 20,
