@@ -779,7 +779,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
     editableFileTypes: ['.test.ts', '.test.tsx', '.spec.ts', '.spec.tsx', '.md'],
     subagentType: 'general-purpose',
     model: 'sonnet',
-    subagentTemplate: '# test_implフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 入力\n${docsDir}/test-design.md を読み込んでください。\n\n## 作業内容\nテストコードを実装してください（TDD Red）。',
+    subagentTemplate: '# test_implフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 入力\n${docsDir}/test-design.md を読み込んでください。\n\n## 作業内容\nテストコードを実装してください（TDD Red）。\n\n## テストファイルの出力先\n\nこのプロジェクトのテストディレクトリは `workflow-plugin/mcp-server/src/` 配下の各モジュールディレクトリ内の `__tests__` サブディレクトリである。\n具体的なパス例:\n- `workflow-plugin/mcp-server/src/phases/__tests__/` （フェーズ定義のテスト）\n- `workflow-plugin/mcp-server/src/tools/__tests__/` （ツールのテスト）\n- `workflow-plugin/mcp-server/src/validation/__tests__/` （バリデーションのテスト）\n\nプロジェクト標準外の配置（ルートディレクトリ直下・`docs/workflows/`配下）は禁止。\n\n## workflow_record_test の呼び出し手順\n\nテストファイルを作成した後、`workflow_record_test` を呼び出してパスを登録すること（必須手順）。\nパラメータ:\n- `taskId`: プロンプト引数として渡されたタスクID\n- `testFile`: 作成したテストファイルの絶対パスまたはリポジトリルートからの相対パス\n\n登録の目的は testing および regression_test フェーズでのテスト実行対象として記録するためである。\n\n## 手動確認手順のみの場合の取り扱い\n\ntest-design.md がコードレベルのテストケースを定義していない場合（Grep や Read ツールによる確認手順のみを記述している場合）は、\nテストファイルを作成せず「コードレベルのテストが存在しない根拠」を成果物として残してフェーズを完了すること。\n\n## ★ワークフロー制御ツール禁止★\n\n以下のMCPツールはtest_implサブエージェントでは呼び出し禁止:\nworkflow_next, workflow_approve, workflow_start, workflow_reset, workflow_complete_sub\ntest_implの責任範囲はテストファイル作成と workflow_record_test 登録のみである。',
   },
   implementation: {
     phaseName: 'implementation',
@@ -875,7 +875,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
     editableFileTypes: ['.md', '.test.ts', '.test.tsx'],
     subagentType: 'general-purpose',
     model: 'haiku',
-    subagentTemplate: '# testingフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\nテストを実行してください。\n\n## workflow_record_test_result 呼び出し時の注意\n- output引数にはテストコマンドの標準出力をそのまま貼り付けること。日本語に翻訳したり、人間向けに整形したりしてはいけない\n- vitest/jestが出力する集計行の形式例: 「Test Files 3 passed (3)」「Tests: 12 passed (12)」「Duration 1.23s」\n- カスタムランナーを使用する場合でも「passed: N」「failed: N」「total: N」のいずれかの形式を出力に含めること\n- 同一の出力テキストを重複して送信した場合もブロックエラーとなる\n\n## sessionTokenの取得方法と使用制限\n- sessionTokenはOrchestratorからプロンプトの引数として渡される値であり、このsubagent自身がMCPツールを呼び出して取得するものではない\n- Orchestratorがプロンプト内にsessionTokenを記載している場合はその値を使用する\n- sessionTokenを受け取らなかった場合は、workflow_record_test_resultのsessionToken引数を省略して呼び出す\n- sessionTokenは workflow_record_test_result 呼び出し時のみ使用し、他のいかなるMCPツール呼び出しにも使用しないこと\n- workflow_record_test_result の output パラメータには100文字以上の生の標準出力が必要である\n- テストフレームワーク（vitest/jest/pytest等）が出力する集計行・パス結果・失敗詳細を含む完全な出力をそのまま貼り付けること\n- 出力を要約したり短縮したりした文字列ではなく、コマンド実行の完全な標準出力をそのまま使用すること\n- validateTestAuthenticity検証が実施されるため、加工・編集・要約した出力はエラーとなる\n\n## ★ワークフロー制御ツール禁止★\nこのsubagentは以下のワークフロー制御ツールを絶対に呼び出してはならない。\n禁止対象: workflow_next, workflow_approve, workflow_complete_sub, workflow_start, workflow_reset\nsessionTokenを保有している場合であっても、これらのワークフロー制御ツールへのsessionTokenの使用は禁止である。\nこのsubagentの責任範囲はテスト実行と workflow_record_test_result による結果記録のみである。\nフェーズ遷移の制御はOrchestratorの専権事項であり、subagentが行ってはならない。\nテスト実行とworkflow_record_test_result呼び出しが完了した後は、速やかに処理を終了してOrchestratorに制御を返すこと。',
+    subagentTemplate: '# testingフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\nテストを実行してください。\n\n## workflow_record_test_result 呼び出し時の注意\n- output引数にはテストコマンドの標準出力をそのまま貼り付けること。日本語に翻訳したり、人間向けに整形したりしてはいけない\n- vitest/jestが出力する集計行の形式例: 「Test Files 3 passed (3)」「Tests: 12 passed (12)」「Duration 1.23s」\n- カスタムランナーを使用する場合でも「passed: N」「failed: N」「total: N」のいずれかの形式を出力に含めること\n- 同一の出力テキストを重複して送信した場合もブロックエラーとなる\n\n## workflow_capture_baseline 呼び出し（ベースライン記録）\n\nテスト実行後、**必ず** `workflow_capture_baseline` を呼び出してベースラインを記録すること。\nこの呼び出しは `workflow_record_test_result` より先に行うことを推奨する。\n\nパラメータの説明:\n- `taskId`: OrchestratorからプロンプトのtaskId引数として渡されるタスクID文字列\n- `totalTests`: テストコマンドの集計行から読み取った総テスト数（整数値）\n- `passedTests`: 成功したテスト数（整数値）\n- `failedTests`: 失敗したテスト名の文字列配列\n\nテスト出力からの数値抽出例: vitestが出力する集計行 `Tests: 12 passed (12)` → totalTests: 12, passedTests: 12, failedTests: 空配列\n\n⚠️ 警告: ベースライン記録を省略した場合、regression_testフェーズへの遷移時に\n「ベースラインが記録されていません」エラーが発生してフェーズ遷移がブロックされる。\n\n成功時のレスポンスには baseline.totalTests・baseline.passedTests・baseline.failedTests が含まれる。\nこの値をテスト結果レポートに記録することを推奨する。\n\n## sessionTokenの取得方法と使用制限\n- sessionTokenはOrchestratorからプロンプトの引数として渡される値であり、このsubagent自身がMCPツールを呼び出して取得するものではない\n- Orchestratorがプロンプト内にsessionTokenを記載している場合はその値を使用する\n- sessionTokenを受け取らなかった場合は、workflow_record_test_resultのsessionToken引数を省略して呼び出す\n- sessionTokenは workflow_record_test_result 呼び出し時のみ使用し、他のいかなるMCPツール呼び出しにも使用しないこと\n- workflow_record_test_result の output パラメータには100文字以上の生の標準出力が必要である\n- テストフレームワーク（vitest/jest/pytest等）が出力する集計行・パス結果・失敗詳細を含む完全な出力をそのまま貼り付けること\n- 出力を要約したり短縮したりした文字列ではなく、コマンド実行の完全な標準出力をそのまま使用すること\n- validateTestAuthenticity検証が実施されるため、加工・編集・要約した出力はエラーとなる\n\n## ★ワークフロー制御ツール禁止★\nこのsubagentは以下のワークフロー制御ツールを絶対に呼び出してはならない。\n禁止対象: workflow_next, workflow_approve, workflow_complete_sub, workflow_start, workflow_reset\nsessionTokenを保有している場合であっても、これらのワークフロー制御ツールへのsessionTokenの使用は禁止である。\nこのsubagentの責任範囲はテスト実行と workflow_record_test_result による結果記録のみである。\nフェーズ遷移の制御はOrchestratorの専権事項であり、subagentが行ってはならない。\nテスト実行とworkflow_record_test_result呼び出しが完了した後は、速やかに処理を終了してOrchestratorに制御を返すこと。',
   },
   regression_test: {
     phaseName: 'regression_test',
@@ -950,7 +950,7 @@ export const PHASE_GUIDES: Partial<Record<string, PhaseGuide>> = {
     editableFileTypes: ['.md', '.mdx'],
     subagentType: 'general-purpose',
     model: 'haiku',
-    subagentTemplate: '# docs_updateフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\nドキュメントを更新してください。',
+    subagentTemplate: '# docs_updateフェーズ\n\n## タスク情報\n- ユーザーの意図: ${userIntent}\n- 出力先: ${docsDir}/\n\n## 作業内容\nドキュメントを更新してください。\n\n## 更新対象ドキュメント（永続ファイル）\n\nこのフェーズの目的は「実装・テスト完了後に、実装内容を永続ドキュメントに反映すること」である。\n更新が許可されている永続ドキュメントの範囲:\n- `docs/spec/` 配下（機能仕様書・画面仕様書・API仕様書・コンポーネント仕様書）\n- `docs/architecture/` 配下（システム概要・モジュール設計・ADR）\n- `docs/operations/` 配下（デプロイ手順・環境定義・監視設計）\n- プロジェクトルートの `CHANGELOG.md`（変更履歴）\n- プロジェクトルートの `README.md`（更新が必要な場合のみ）\n\n## 更新禁止ファイル\n\n以下のファイルは絶対に編集してはならない:\n- `docs/workflows/{taskName}/` 配下の全ファイル（一時的な作業フォルダであり `.gitignore` 対象）\n- `MEMORY.md`（Claude Desktopのプロジェクトメモリ機能が管理するシステムファイル、docs_updateフェーズでの直接編集対象外）\n- `.claude/state/` 配下の全ファイル（HMAC整合性チェックが設定されており、直接編集するとワークフロー全体が動作不能になる）\n\n## 更新対象が存在しない場合の取り扱い\n\n永続ドキュメントに反映すべき実装変更が存在しない場合（例: テンプレート文字列のみの変更でAPIや画面に変化がない場合）は\n「更新対象となる永続ドキュメントが存在しない」とその理由を報告してフェーズを完了すること。\nドキュメント更新を行わずにフェーズを完了することが正しい動作である。\n\n## ★ワークフロー制御ツール禁止★\n\ndocs_updateサブエージェントの責任範囲は `docs/spec/` 配下等の永続ドキュメントの更新のみである。\nフェーズ遷移の制御はOrchestratorの専権事項であり、以下のMCPツールは呼び出し禁止:\nworkflow_next, workflow_approve, workflow_start, workflow_reset, workflow_complete_sub',
   },
   commit: {
     phaseName: 'commit',
@@ -1245,6 +1245,17 @@ export function buildPrompt(
       checklistSection += `${index + 1}. ${item}\n`;
     });
     sections.push(checklistSection);
+  }
+
+  // セクション8b: フェーズ固有作業指示（subagentTemplateの内容をそのまま含める）
+  // 元のsubagentTemplateには作業内容・MCPツール呼び出し手順・禁止事項等が記述されているため、
+  // buildPromptの出力にも含める（buildPromptの自動生成セクションと重複する場合はフェーズ固有部分を優先）
+  if (guide.subagentTemplate && guide.subagentTemplate.trim() !== '') {
+    const resolvedTemplate = resolvePlaceholders(guide.subagentTemplate, {
+      docsDir: docsDir,
+      userIntent: userIntent || '',
+    });
+    sections.push(`\n## フェーズ固有作業指示\n${resolvedTemplate}`);
   }
 
   // セクション9: 重要事項
