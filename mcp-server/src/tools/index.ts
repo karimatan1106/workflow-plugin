@@ -66,6 +66,9 @@ export { workflowCreateSubtask, createSubtaskToolDefinition } from './create-sub
 /** P1-2: タスクリンクツール */
 export { workflowLinkTasks, linkTasksToolDefinition } from './link-tasks.js';
 
+/** FR-1: サブフェーズテンプレート取得ツール */
+export { workflowGetSubphaseTemplate, getSubphaseTemplateToolDefinition } from './get-subphase-template.js';
+
 // ============================================================================
 // ツール定義のリスト
 // ============================================================================
@@ -96,4 +99,5 @@ export const allToolDefinitions = [
   { name: 'workflow_record_feedback', module: 'record-feedback' },
   { name: 'workflow_create_subtask', module: 'create-subtask' },
   { name: 'workflow_link_tasks', module: 'link-tasks' },
+  { name: 'workflow_get_subphase_template', module: 'get-subphase-template' },
 ] as const;

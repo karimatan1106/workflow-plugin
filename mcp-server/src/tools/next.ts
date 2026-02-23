@@ -19,6 +19,7 @@ import {
   PHASE_DESCRIPTIONS,
   calculatePhaseSkips,
   resolvePhaseGuide,
+  PHASE_GUIDES,
 } from '../phases/definitions.js';
 import { getTaskByIdOrError, safeExecute, verifySessionToken, getPhaseStartedAt } from './helpers.js';
 import { STATE_ERRORS } from '../utils/errors.js';
@@ -52,6 +53,45 @@ function slimSubPhaseGuide(subPhaseGuide: Record<string, unknown>): void {
   for (const field of fieldsToRemove) {
     delete subPhaseGuide[field];
   }
+}
+
+/**
+ * 成果物ファイル名から PHASE_GUIDES の minLines を取得するヘルパー関数（FR-3）
+ *
+ * PHASE_GUIDES を minLines の単一の正とする。循環参照を回避するために
+ * artifact-validator.ts 側ではなく next.ts 側で PHASE_GUIDES を参照する設計。
+ *
+ * @param artifactFileName 成果物ファイル名（例: 'research.md', 'spec.md'）
+ * @returns PHASE_GUIDES に定義された minLines。対応するフェーズが存在しない場合は undefined を返す
+ */
+export function getMinLinesFromPhaseGuide(artifactFileName: string): number | undefined {
+  // ファイル名からフェーズ名を逆引きするマッピング
+  const FILE_TO_PHASE: Record<string, string> = {
+    'research.md': 'research',
+    'requirements.md': 'requirements',
+    'spec.md': 'parallel_analysis',  // spec.md は planning サブフェーズの成果物
+    'threat-model.md': 'parallel_analysis',
+    'test-design.md': 'test_design',
+    'code-review.md': 'parallel_quality',
+  };
+  const phaseName = FILE_TO_PHASE[artifactFileName];
+  if (!phaseName) return undefined;
+  const guide = PHASE_GUIDES[phaseName];
+  if (!guide) return undefined;
+  // サブフェーズの場合は subPhases から取得
+  if (artifactFileName === 'spec.md') {
+    const planningGuide = guide.subPhases?.['planning'] as (typeof guide | undefined);
+    return planningGuide?.minLines;
+  }
+  if (artifactFileName === 'threat-model.md') {
+    const threatGuide = guide.subPhases?.['threat_modeling'] as (typeof guide | undefined);
+    return threatGuide?.minLines;
+  }
+  if (artifactFileName === 'code-review.md') {
+    const codeReviewGuide = guide.subPhases?.['code_review'] as (typeof guide | undefined);
+    return codeReviewGuide?.minLines;
+  }
+  return guide.minLines;
 }
 
 /**
@@ -130,8 +170,14 @@ function checkPhaseArtifacts(phase: PhaseName, docsDir: string): string[] {
       continue;
     }
 
+    // FR-3: PHASE_GUIDES の minLines を優先して使用（単一ソース化）
+    const phaseGuideMinLines = getMinLinesFromPhaseGuide(artifactFile);
+    const effectiveRequirements = phaseGuideMinLines !== undefined
+      ? { ...baseRequirements, minLines: phaseGuideMinLines }
+      : baseRequirements;
+
     // 品質検証を実行（フル検証）
-    const validationResult = validateArtifactQuality(filePath, baseRequirements);
+    const validationResult = validateArtifactQuality(filePath, effectiveRequirements);
     if (!validationResult.passed) {
       allErrors.push(...validationResult.errors);
     }

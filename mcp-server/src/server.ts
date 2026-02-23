@@ -53,6 +53,8 @@ import {
   createSubtaskToolDefinition,
   workflowLinkTasks,
   linkTasksToolDefinition,
+  workflowGetSubphaseTemplate,
+  getSubphaseTemplateToolDefinition,
 } from './tools/index.js';
 
 import type { ToolResult } from './state/types.js';
@@ -86,6 +88,7 @@ const TOOL_DEFINITIONS = [
   recordFeedbackToolDefinition,
   createSubtaskToolDefinition,
   linkTasksToolDefinition,
+  getSubphaseTemplateToolDefinition,
 ] as const;
 
 // ============================================================================
@@ -118,6 +121,7 @@ function validateToolArgs(toolName: string, args: Record<string, unknown>): { va
     workflow_record_feedback: ['feedback'],
     workflow_create_subtask: ['parentTaskId', 'subtaskName'],
     workflow_link_tasks: ['parentTaskId', 'childTaskId'],
+    workflow_get_subphase_template: ['subPhaseName'],
   };
 
   const required = requiredParams[toolName];
@@ -204,6 +208,8 @@ interface ToolArguments {
   workflow_create_subtask: { parentTaskId?: string; subtaskName?: string; taskSize?: string; sessionToken?: string };
   /** タスクリンク */
   workflow_link_tasks: { parentTaskId?: string; childTaskId?: string; sessionToken?: string };
+  /** サブフェーズテンプレート取得 */
+  workflow_get_subphase_template: { subPhaseName: string; taskId?: string };
 }
 
 /** ツール名の型 */
@@ -381,6 +387,11 @@ const TOOL_HANDLERS: Record<ToolName, ToolHandler> = {
   workflow_link_tasks: (args) => {
     const { parentTaskId, childTaskId, sessionToken } = args as ToolArguments['workflow_link_tasks'];
     return workflowLinkTasks(parentTaskId, childTaskId, sessionToken);
+  },
+
+  workflow_get_subphase_template: (args) => {
+    const { subPhaseName, taskId } = args as ToolArguments['workflow_get_subphase_template'];
+    return workflowGetSubphaseTemplate({ subPhaseName, taskId });
   },
 };
 

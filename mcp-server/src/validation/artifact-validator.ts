@@ -249,11 +249,11 @@ export const PHASE_ARTIFACT_REQUIREMENTS: Record<string, ArtifactRequirement> = 
   },
   'manual-test.md': {
     minLines: 20,
-    requiredSections: ['テストシナリオ', 'テスト結果'],
+    requiredSections: ['## テストシナリオ', '## テスト結果'],
   },
   'security-scan.md': {
     minLines: 20,
-    requiredSections: ['脆弱性スキャン結果', '検出された問題'],
+    requiredSections: ['## 脆弱性スキャン結果', '## 検出された問題'],
   },
   'performance-test.md': {
     minLines: 20,
