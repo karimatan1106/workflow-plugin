@@ -42,6 +42,19 @@ const MAX_SCOPE_DIRS = Math.min(
 const MIN_TESTS = 0; // テスト存在チェック用
 
 /**
+ * サブフェーズガイドからサイズの大きなフィールドを除外する
+ * status.tsの同等ロジックと対称性を保つ
+ *
+ * @param subPhaseGuide サブフェーズガイドオブジェクト
+ */
+function slimSubPhaseGuide(subPhaseGuide: Record<string, unknown>): void {
+  const fieldsToRemove = ['subagentTemplate', 'content', 'claudeMdSections'] as const;
+  for (const field of fieldsToRemove) {
+    delete subPhaseGuide[field];
+  }
+}
+
+/**
  * フェーズ名から成果物ファイル名への対応表（REQ-3: 品質検証強化）
  *
  * @spec docs/workflows/ワークフロー全問題完全解決/spec.md REQ-3
@@ -605,11 +618,9 @@ export function workflowNext(taskId?: string, sessionToken?: string, forceTransi
     }
     if (phaseGuide?.subPhases) {
       for (const sp of Object.values(phaseGuide.subPhases)) {
-        if (sp.subagentTemplate) {
-          sp.subagentTemplate = sp.subagentTemplate
-            .replace(/\$\{taskName\}/g, taskState.taskName || '')
-            .replace(/\$\{taskId\}/g, taskState.taskId || '');
-        }
+        // workflow_nextのサブフェーズからはサイズの大きなフィールドを除外する
+        // サブフェーズ個別のsubagentTemplateが必要な場合はworkflow_statusで取得すること
+        slimSubPhaseGuide(sp as unknown as Record<string, unknown>);
       }
     }
 
