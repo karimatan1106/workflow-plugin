@@ -122,7 +122,23 @@ export function workflowStatus(taskId?: string): StatusResult {
   if (phase !== 'idle' && phase !== 'completed') {
     const phaseGuide = resolvePhaseGuide(phase, taskState.docsDir, taskState.userIntent);
     if (phaseGuide) {
-      result.phaseGuide = phaseGuide;
+      // workflow_statusではサイズの大きなフィールドを除外してレスポンスを削減する
+      // workflow_nextには引き続き全フィールドを含めることで後方互換性を維持する
+      const slimGuide = { ...phaseGuide } as Record<string, unknown>;
+      delete slimGuide['subagentTemplate'];
+      delete slimGuide['content'];
+      delete slimGuide['claudeMdSections'];
+      if (slimGuide['subPhases'] && typeof slimGuide['subPhases'] === 'object') {
+        for (const subPhase of Object.values(slimGuide['subPhases'] as Record<string, unknown>)) {
+          if (subPhase && typeof subPhase === 'object') {
+            const sub = subPhase as Record<string, unknown>;
+            delete sub['subagentTemplate'];
+            delete sub['content'];
+            delete sub['claudeMdSections'];
+          }
+        }
+      }
+      result.phaseGuide = slimGuide as unknown as typeof phaseGuide;
     }
   }
 
