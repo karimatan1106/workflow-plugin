@@ -221,6 +221,7 @@ const WORKFLOW_CONFIG_PATTERNS = [
   /\.claude[\/\\]settings\.json$/i,
   /\.claude[\/\\]state[\/\\].*\.json$/i,
   /\.claude-.*\.json$/i,
+  /\.claude[\/\\]projects[\/\\][^\/\\]+[\/\\]memory[\/\\]/i,
 ];
 
 function isWorkflowConfigFile(filePath) {

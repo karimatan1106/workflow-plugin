@@ -1180,6 +1180,7 @@ export function buildPrompt(
   qualitySection += `- stateDiagram-v2では最低${rules.mermaidMinStates}つの状態と${rules.mermaidMinTransitions}つの遷移が必要\n`;
   qualitySection += `- flowchartでも最低${rules.mermaidMinStates}ノードと${rules.mermaidMinTransitions}エッジが必要\n`;
   qualitySection += `- stateDiagram-v2では開始・終了に名前付き状態（Start, End）を使うこと\n`;
+  qualitySection += `- flowchartノードは NodeID(text) の丸括弧形式を使うこと。.mmdファイルは全行がバリデーター検出対象となるため NodeID[text] や NodeID["text"] の角括弧形式は角括弧プレースホルダーとして誤検出されるため禁止\n`;
   qualitySection += `\n### テストファイル品質要件\n`;
   qualitySection += `アサーションパターン: ${rules.testFileRules.assertionPatterns.join('、')}\n`;
   qualitySection += `テストケースパターン: ${rules.testFileRules.testCasePatterns.join('、')}\n`;
@@ -1248,7 +1249,7 @@ export function buildPrompt(
 
   // セクション9: 重要事項
   let importantSection = '\n## ★重要★ サマリーセクション必須化\n';
-  importantSection += `成果物の先頭には必ず以下のセクションを配置してください:\n\n## サマリー\n\n（${rules.maxSummaryLines}行以内で、このドキュメントの要点を記述）\n- 目的: このドキュメントの目的\n- 主要な決定事項: 重要な設計決定や技術選定\n- 次フェーズで必要な情報: 後続フェーズで必須となる情報\n\n`;
+  importantSection += `成果物の先頭には必ず以下のセクションを配置してください:\n\n## サマリー\n\n（${rules.maxSummaryLines}行以内で、このドキュメントの要点を記述）\n- 目的: このドキュメントの目的\n- 評価スコープ: 対象となるシステム・ファイル・機能の範囲\n- 主要な決定事項: 重要な設計決定や技術選定\n- 検証状況: テスト実施の有無と結果の概要\n- 次フェーズで必要な情報: 後続フェーズで必須となる情報\n\n`;
   importantSection += `★重要: 出力先のパスは必ず ${docsDir}/ を正確に使用すること。タスク名から独自にパスを構築しないこと。\n`;
   importantSection += `workflow_statusで確認したdocsDirの値: ${docsDir}/ — この値をそのまま出力ファイルパスのプレフィックスに使用すること。\n\n`;
   importantSection += `バリデーション失敗時: 成果物がvalidationエラーになった場合は、エラーメッセージに従って修正してください。\n`;

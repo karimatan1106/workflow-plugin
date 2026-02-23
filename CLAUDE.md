@@ -1978,9 +1978,9 @@ stateDiagram-v2
 
 ```mermaid
 flowchart TD
-    A[開始] --> B{条件判定}
-    B -->|Yes| C[処理A]
-    B -->|No| D[処理B]
-    C --> E[終了]
+    A(開始) --> B{条件判定}
+    B -->|Yes| C(処理A)
+    B -->|No| D(処理B)
+    C --> E(終了)
     D --> E
 ```
