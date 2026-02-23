@@ -1153,11 +1153,13 @@ export function buildPrompt(
   qualitySection += `コードフェンス外の行（Markdown本文の散文テキスト・箇条書き等）が角括弧プレースホルダー検出の対象となる。コードフェンス内の行はextractNonCodeLinesにより検出から除外されるため、コードフェンス内であれば配列アクセス記法や正規表現の文字クラス表記を安全に記述できる\n`;
   qualitySection += `コードフェンス外の箇条書きに文字クラス表記や配列アクセス記法を直接書くことが禁止対象であり、コードフェンス内は安全な代替手段として使用可能である\n`;
   qualitySection += `\n正規表現パターンの記述:\n`;
-  qualitySection += `- NG: 正規表現で「英小文字1文字以上」を表すパターンをそのままコードブロックに書く\n`;
-  qualitySection += `- OK: 「英小文字の1文字以上の繰り返しを表す正規表現」のように散文で説明する\n`;
+  qualitySection += `- NG: コードフェンス外の散文や箇条書きに正規表現の文字クラス表記を直接記述すること\n`;
+  qualitySection += `- OK（推奨）: コードフェンス内に正規表現パターンを記述すること（バリデーターはコードフェンス内の行を検出対象から除外するため安全）\n`;
+  qualitySection += `- OK（代替）: コードフェンス外では「英小文字の1文字以上の繰り返しを表す正規表現」のように散文形式で説明すること\n`;
   qualitySection += `\n配列アクセスの記述:\n`;
-  qualitySection += `- NG: 配列のインデックスアクセス記法をコードブロック内に直接記述する\n`;
-  qualitySection += `- OK: 「配列の先頭要素を取得する」「インデックス番号によるアクセス」のように散文形式で説明する\n`;
+  qualitySection += `- NG: コードフェンス外の散文や箇条書きに配列のインデックスアクセス記法を直接記述すること\n`;
+  qualitySection += `- OK（推奨）: コードフェンス内に配列アクセス記法を記述すること（バリデーターはコードフェンス内の行を検出対象から除外するため安全）\n`;
+  qualitySection += `- OK（代替）: コードフェンス外では「先頭要素を取得する」「インデックス番号によるアクセス」のように散文形式で説明すること\n`;
   qualitySection += `\n### 重複行禁止（structuralLine除外後に${rules.duplicateLineThreshold}回以上でエラー）\n`;
   qualitySection += `重複検出から除外される構造的行（structuralLine）:\n`;
   qualitySection += `- ヘッダー行（#で始まる行）\n`;
