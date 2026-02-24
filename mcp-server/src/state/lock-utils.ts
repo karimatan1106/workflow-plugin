@@ -104,26 +104,66 @@ export async function acquireLock(filePath: string, options?: LockOptions): Prom
 }
 
 /**
+ * 同期的に指定ミリ秒待機する
+ *
+ * Atomics.wait を使用してスレッドをブロックする同期スリープ実装。
+ * テスト環境では Atomics.wait をモックすることで即時リターンさせることができる。
+ *
+ * @param ms 待機時間（ミリ秒）
+ */
+function sleepSync(ms: number): void {
+  const sharedBuffer = new SharedArrayBuffer(4);
+  const arr = new Int32Array(sharedBuffer);
+  Atomics.wait(arr, 0, 0, ms);
+}
+
+/**
  * アトミックなJSONファイル書き込み
  *
  * 一時ファイルに書き込んでから rename することで、
  * 書き込み中のファイル破損を防ぐ。
+ * EPERM または EBUSY エラーが発生した場合は最大3回リトライする。
  *
  * @param filePath ファイルパス
  * @param data 書き込むデータ
  */
 export function atomicWriteJson<T>(filePath: string, data: T): void {
   const tmpFile = `${filePath}.tmp.${process.pid}`;
+  const maxRetries = 3;
+  let lastError: unknown;
+
   try {
     fs.writeFileSync(tmpFile, JSON.stringify(data, null, 2), 'utf-8');
-    fs.renameSync(tmpFile, filePath);
   } catch (error) {
-    // Clean up temp file on failure
-    try {
-      fs.unlinkSync(tmpFile);
-    } catch {}
     throw error;
   }
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      fs.renameSync(tmpFile, filePath);
+      return;
+    } catch (error: any) {
+      lastError = error;
+      if (error.code === 'EPERM' || error.code === 'EBUSY') {
+        if (attempt < maxRetries) {
+          sleepSync(100);
+          continue;
+        }
+      } else {
+        // Non-retryable error: clean up temp file and throw immediately
+        try {
+          fs.unlinkSync(tmpFile);
+        } catch {}
+        throw error;
+      }
+    }
+  }
+
+  // All retries exhausted: clean up temp file and throw the last error
+  try {
+    fs.unlinkSync(tmpFile);
+  } catch {}
+  throw lastError;
 }
 
 /**
