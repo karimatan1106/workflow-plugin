@@ -81,6 +81,7 @@ export function workflowStatus(taskId?: string): StatusResult {
     taskSize: currentTaskSize,
     userIntent: taskState.userIntent || taskState.taskName,
     activePhases: [...activePhases],
+    ...(taskState.sessionToken ? { sessionToken: taskState.sessionToken } : {}),
   };
 
   // 並列フェーズの場合、サブフェーズ状態を追加
