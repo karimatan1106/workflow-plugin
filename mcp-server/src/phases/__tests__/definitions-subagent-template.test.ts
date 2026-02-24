@@ -191,3 +191,34 @@ describe('FR-12: security_scanフェーズのsubagentTemplateに行数確保ガ�
     expect(template).toContain('20行');
   });
 });
+
+// ============================================================================
+// TC-FIX: regression_testフェーズのsubagentTemplateに誤用防止ガイダンスが含まれること
+// ============================================================================
+
+describe('TC-FIX: regression_testのsubagentTemplateにworkflow_capture_baseline誤用防止ガイダンスが含まれること', () => {
+  const phaseGuide = resolvePhaseGuide('regression_test', 'docs/workflows/test');
+  const template = phaseGuide?.subagentTemplate ?? '';
+
+  it('TC-FIX-1: regression_testのsubagentTemplateにworkflow_capture_baselineが含まれること', () => {
+    expect(template).toContain('workflow_capture_baseline');
+  });
+
+  it('TC-FIX-1b: regression_testのsubagentTemplateに禁止理由（testingフェーズでのみまたはアーキテクチャ上エラー）が含まれること', () => {
+    const hasTestingPhaseReason = template.includes('testingフェーズでのみ');
+    const hasArchitectureError = template.includes('アーキテクチャ上エラー');
+    expect(hasTestingPhaseReason || hasArchitectureError).toBe(true);
+  });
+
+  it('TC-FIX-2: regression_testのsubagentTemplateにベースライン前提条件セクションが含まれること', () => {
+    expect(template).toContain('ベースライン前提条件');
+  });
+
+  it('TC-FIX-2b: regression_testのsubagentTemplateにworkflow_get_test_infoが含まれること', () => {
+    expect(template).toContain('workflow_get_test_info');
+  });
+
+  it('TC-FIX-2c: regression_testのsubagentTemplateにworkflow_backが含まれること', () => {
+    expect(template).toContain('workflow_back');
+  });
+});
