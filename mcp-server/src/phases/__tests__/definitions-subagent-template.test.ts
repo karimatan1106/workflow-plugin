@@ -159,3 +159,35 @@ describe('FR-10: performance_testフェーズのsubagentTemplateにテスト実�
     expect(template).toContain('任意');
   });
 });
+
+// ============================================================================
+// FR-11: manual_testフェーズのsubagentTemplateに総合評価セクションのガイダンスを追加
+// ============================================================================
+
+describe('FR-11: manual_testフェーズのsubagentTemplateに総合評価セクションのガイダンスを追加', () => {
+  const parentPhaseGuide = resolvePhaseGuide('parallel_verification', 'docs/workflows/test');
+  const phaseGuide = parentPhaseGuide?.subPhases?.manual_test;
+  const template = phaseGuide?.subagentTemplate ?? '';
+
+  it('TC-11-1: manual_testのsubagentTemplateに総合評価への言及が含まれる', () => {
+    expect(template).toContain('総合評価');
+  });
+
+  it('TC-11-2: manual_testのsubagentTemplateに全テストシナリオへの言及が含まれる', () => {
+    expect(template).toContain('全テストシナリオ');
+  });
+});
+
+// ============================================================================
+// FR-12: security_scanフェーズのsubagentTemplateに行数確保ガイダンスを追加
+// ============================================================================
+
+describe('FR-12: security_scanフェーズのsubagentTemplateに行数確保ガイダンスを追加', () => {
+  const parentPhaseGuide = resolvePhaseGuide('parallel_verification', 'docs/workflows/test');
+  const phaseGuide = parentPhaseGuide?.subPhases?.security_scan;
+  const template = phaseGuide?.subagentTemplate ?? '';
+
+  it('TC-12-1: security_scanのsubagentTemplateにminLines数値への言及が含まれる', () => {
+    expect(template).toContain('20行');
+  });
+});
