@@ -119,3 +119,43 @@ describe('FR-8: docs_updateフェーズのsubagentTemplate検証', () => {
     expect(phaseGuide?.phaseName).toBe('docs_update');
   });
 });
+
+// ============================================================================
+// FR-9: performance_testフェーズのsubagentTemplateに総合評価セクションのガイダンスを追加
+// ============================================================================
+
+describe('FR-9: performance_testフェーズのsubagentTemplateに総合評価セクションのガイダンスを追加', () => {
+  const parentPhaseGuide = resolvePhaseGuide('parallel_verification', 'docs/workflows/test');
+  const phaseGuide = parentPhaseGuide?.subPhases?.performance_test;
+  const template = phaseGuide?.subagentTemplate ?? '';
+
+  it('TC-9-1: performance_testフェーズのsubagentTemplateに総合評価への言及が含まれる', () => {
+    expect(template).toContain('総合評価');
+  });
+
+  it('TC-9-2: performance_testフェーズのsubagentTemplateに5行以上の実質行要件への言及が含まれる', () => {
+    expect(template).toContain('5行以上');
+  });
+
+  it('TC-9-3: performance_testフェーズのsubagentTemplateに総合評価の観点説明が含まれる', () => {
+    expect(template).toContain('全体的なパフォーマンス達成状況');
+  });
+});
+
+// ============================================================================
+// FR-10: performance_testフェーズのsubagentTemplateにテスト実行証拠セクションのガイダンスを追加
+// ============================================================================
+
+describe('FR-10: performance_testフェーズのsubagentTemplateにテスト実行証拠セクションのガイダンスを追加', () => {
+  const parentPhaseGuide = resolvePhaseGuide('parallel_verification', 'docs/workflows/test');
+  const phaseGuide = parentPhaseGuide?.subPhases?.performance_test;
+  const template = phaseGuide?.subagentTemplate ?? '';
+
+  it('TC-10-1: performance_testフェーズのsubagentTemplateにテスト実行証拠への言及が含まれる', () => {
+    expect(template).toContain('テスト実行証拠');
+  });
+
+  it('TC-10-2: performance_testフェーズのsubagentTemplateにテスト実行証拠が任意セクションであることが明記されている', () => {
+    expect(template).toContain('任意');
+  });
+});
