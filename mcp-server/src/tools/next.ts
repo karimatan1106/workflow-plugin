@@ -656,11 +656,23 @@ export function workflowNext(taskId?: string, sessionToken?: string, forceTransi
     // フェーズガイドを取得（FR-2-3: moduleName を第4引数として渡す）
     const phaseGuide = resolvePhaseGuide(nextPhase, taskState.docsDir, taskState.userIntent, taskState.scope?.moduleName);
 
-    // C-1: subagentTemplateのtaskName/taskIdプレースホルダー解決
+    // C-1: subagentTemplateのプレースホルダー解決（taskName/taskId/スコープ情報）
     if (phaseGuide?.subagentTemplate) {
+      // FR-21: スコープ情報の処理（docs_updateフェーズ用）
+      const affectedFiles = taskState.scope?.affectedFiles?.length
+        ? taskState.scope.affectedFiles.join(', ')
+        : 'なし';
+      const affectedDirs = taskState.scope?.affectedDirs?.length
+        ? taskState.scope.affectedDirs.join(', ')
+        : 'なし';
+      const moduleName = taskState.scope?.moduleName || '未判定';
+
       phaseGuide.subagentTemplate = phaseGuide.subagentTemplate
         .replace(/\$\{taskName\}/g, taskState.taskName || '')
-        .replace(/\$\{taskId\}/g, taskState.taskId || '');
+        .replace(/\$\{taskId\}/g, taskState.taskId || '')
+        .replace(/\$\{affectedFiles\}/g, affectedFiles)
+        .replace(/\$\{affectedDirs\}/g, affectedDirs)
+        .replace(/\$\{moduleName\}/g, moduleName);
     }
     if (phaseGuide?.subPhases) {
       for (const sp of Object.values(phaseGuide.subPhases)) {
