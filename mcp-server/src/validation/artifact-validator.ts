@@ -365,7 +365,7 @@ function validateArtifactQualityCore(
   // FR-3: .mmdファイル（Mermaid図）は角括弧が構文上必要なためスキップ
   const foundBracketPlaceholders: string[] = [];
   if (!filePath.endsWith('.mmd')) {
-    const bracketPlaceholderPattern = /\[##[^\]]{0,50}\]/g;
+    const bracketPlaceholderPattern = /\[#[^\]]{0,50}#\]/g;
     const bracketMatches = nonCodeContent.match(bracketPlaceholderPattern);
     if (bracketMatches) {
       // 重複排除
@@ -1294,9 +1294,9 @@ export function exportGlobalRules(): import('../state/types.js').GlobalRules {
       '未定', '未確定', '要検討', '検討中',
       '対応予定', 'サンプル', 'ダミー', '仮置き',
     ],
-    bracketPlaceholderRegex: /\[##[^\]]{0,50}\]/g,
+    bracketPlaceholderRegex: /\[#[^\]]{0,50}#\]/g,
     bracketPlaceholderInfo: {
-      pattern: '\\[##[^\\]]{0,50}\\]',
+      pattern: '\\[#[^\\]]{0,50}#\\]',
       allowedKeywords: [],
       maxLength: 50,
     },
