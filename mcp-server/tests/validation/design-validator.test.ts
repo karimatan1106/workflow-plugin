@@ -12,6 +12,8 @@ vi.mock('fs', () => ({
   existsSync: vi.fn(),
   readFileSync: vi.fn(),
   statSync: vi.fn(() => ({ isDirectory: () => false })),
+  mkdirSync: vi.fn(),
+  writeFileSync: vi.fn(),
 }));
 
 describe('DesignValidator', () => {

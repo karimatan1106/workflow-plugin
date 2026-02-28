@@ -31,8 +31,8 @@ try {
   console.warn(`[definitions] GlobalRules初期化エラー: ${e instanceof Error ? e.message : String(e)}`);
   GLOBAL_RULES_CACHE = {
     forbiddenPatterns: ['TODO', 'TBD', 'WIP', 'FIXME', '未定', '未確定', '要検討', '検討中', '対応予定', 'サンプル', 'ダミー', '仮置き'],
-    bracketPlaceholderRegex: /\[(?!関連|参考|注|例|出典)[^\]]{1,50}\]/g,
-    bracketPlaceholderInfo: { pattern: '\\[(?!関連|参考|注|例|出典)[^\\]]{1,50}\\]', allowedKeywords: ['関連', '参考', '注', '例', '出典'], maxLength: 50 },
+    bracketPlaceholderRegex: /\[#[^\]]{0,50}#\]/g,
+    bracketPlaceholderInfo: { pattern: '\\[#[^\\]]{0,50}#\\]', allowedKeywords: [], maxLength: 50 },
     duplicateLineThreshold: 3,
     duplicateExclusionPatterns: { headers: '^#+\\s', horizontalRules: '^[-*_]{3,}$', codeFences: '^```', tableSeparators: '^\\s*\\|[\\s:-]+(\\|[\\s:-]+)*\\|\\s*$', tableDataRows: '^\\s*\\|.+\\|.+\\|\\s*$', boldLabels: '^\\*\\*[^*]+\\*\\*[:：]?\\s*$', listBoldLabels: '^[-*]\\s+\\*\\*[^*]+\\*\\*[:：]?\\s*$', plainLabels: '^[-*]\\s+.{1,50}[:：]\\s*$' },
     minSectionDensity: 0.3, minSectionLines: 5, maxSummaryLines: 200, shortLineMinLength: 10, shortLineMaxRatio: 0.5, minNonHeaderLines: 5, mermaidMinStates: 3, mermaidMinTransitions: 2,
