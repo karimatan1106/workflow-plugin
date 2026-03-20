@@ -6,13 +6,7 @@
   "license": "MIT",
   "homepage": "https://github.com/anthropics/workflow-plugin",
 
-  "skills": [
-    {
-      "name": "workflow",
-      "path": "skills/workflow/SKILL.md",
-      "description": "ワークフロー管理コマンド（/workflow start, next, status, approve, reset）"
-    }
-  ],
+  "skills": [],
 
   "commands": [
     {
